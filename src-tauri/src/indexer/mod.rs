@@ -55,7 +55,7 @@ impl IndexManager {
     }
 
     /// Search the index
-    pub fn search(&self, query: &str) -> Result<Vec<SearchResult>> {
-        self.searcher.search(query, 50) // Return top 50 results
+    pub fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
+        self.searcher.search(query, limit)
     }
 }

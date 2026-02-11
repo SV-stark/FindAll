@@ -40,7 +40,7 @@ impl Scanner {
     }
     
     /// Scan a directory and index all supported files
-    pub async fn scan_directory(&self, root: PathBuf) -> Result<()> {
+    pub async fn scan_directory(&self, root: PathBuf, exclude_patterns: Vec<String>) -> Result<()> {
         // Build gitignore matcher with AnyTXT-style default exclusions
         let mut gitignore_builder = GitignoreBuilder::new(&root);
         
@@ -73,6 +73,11 @@ impl Scanner {
         // IDEs
         gitignore_builder.add_line(None, ".vscode/").ok();
         gitignore_builder.add_line(None, ".idea/").ok();
+
+        // Custom exclusions from settings
+        for pattern in exclude_patterns {
+            gitignore_builder.add_line(None, &pattern).ok();
+        }
         
         let gitignore = gitignore_builder.build().expect("Failed to build gitignore");
         

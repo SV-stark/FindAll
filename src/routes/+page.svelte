@@ -3,6 +3,7 @@
   import { openPath } from "@tauri-apps/plugin-opener";
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
+  import { fade } from "svelte/transition";
 
   // Types
   interface SearchResult {
@@ -12,10 +13,60 @@
   }
 
   // State
+  let activeTab = $state<"search" | "settings">("search");
   let query = $state("");
   let results = $state<SearchResult[]>([]);
   let isSearching = $state(false);
   let isIndexing = $state(false);
+  
+  // Settings state
+  let settings = $state({
+    index_dirs: [] as string[],
+    exclude_patterns: [] as string[],
+    theme: "auto",
+    max_results: 50
+  });
+
+  async fn loadSettings() {
+    try {
+      settings = await invoke("get_settings");
+    } catch (e) {
+      console.error("Failed to load settings:", e);
+    }
+  }
+
+  async fn saveSettings() {
+    try {
+      await invoke("save_settings", { settings });
+    } catch (e) {
+      console.error("Failed to save settings:", e);
+    }
+  }
+
+  function addIndexDir(path: string) {
+    if (path && !settings.index_dirs.includes(path)) {
+      settings.index_dirs = [...settings.index_dirs, path];
+      saveSettings();
+    }
+  }
+
+  function removeIndexDir(path: string) {
+    settings.index_dirs = settings.index_dirs.filter(p => p !== path);
+    saveSettings();
+  }
+
+  function addExcludePattern(pattern: string) {
+    if (pattern && !settings.exclude_patterns.includes(pattern)) {
+      settings.exclude_patterns = [...settings.exclude_patterns, pattern];
+      saveSettings();
+    }
+  }
+
+  function removeExcludePattern(pattern: string) {
+    settings.exclude_patterns = settings.exclude_patterns.filter(p => p !== pattern);
+    saveSettings();
+  }
+
   let selectedPath = $state<string | null>(null);
   let previewContent = $state<string | null>(null);
   
@@ -44,7 +95,10 @@
 
     isSearching = true;
     try {
-      results = await invoke<SearchResult[]>("search_query", { query });
+      results = await invoke<SearchResult[]>("search_query", { 
+        query, 
+        limit: settings.max_results 
+      });
     } catch (e) {
       console.error("Search failed:", e);
       results = [];
@@ -100,8 +154,19 @@
     }
   }
 
+  const effectiveTheme = $derived(
+    settings.theme === "auto" 
+      ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+      : settings.theme
+  );
+
+  $effect(() => {
+    document.body.setAttribute("data-theme", effectiveTheme);
+  });
+
   onMount(async () => {
     window.addEventListener("keydown", handleKeydown);
+    await loadSettings();
 
     const unlisten = await listen<{
       total: number,
@@ -129,9 +194,21 @@
 </script>
 
 <main class="container">
-  <div class="search-container">
-    <h1>Flash Search</h1>
-    <p class="subtitle">Ultrafast local full-text search</p>
+  <nav class="tabs">
+    <button class:active={activeTab === "search"} onclick={() => activeTab = "search"}>
+      <span class="tab-icon">🔍</span> Search
+    </button>
+    <button class:active={activeTab === "settings"} onclick={() => activeTab = "settings"}>
+      <span class="tab-icon">⚙️</span> Settings
+    </button>
+  </nav>
+
+  {#if activeTab === "search"}
+    <div class="search-tab" in:fade={{ duration: 200 }}>
+      <div class="search-header">
+        <h1>Flash Search</h1>
+        <p class="subtitle">Ultrafast local full-text search</p>
+      </div>
 
     <div class="search-box">
       <input
@@ -151,7 +228,73 @@
         {isIndexing ? "Indexing..." : "Start Indexing"}
       </button>
       <span class="hint">Press ESC to clear</span>
+      </div>
+  {:else}
+    <div class="settings-tab" in:fade={{ duration: 200 }}>
+      <h1>Settings</h1>
+      
+      <section class="settings-section">
+        <h2>Appearance</h2>
+        <div class="setting-item">
+          <label>Theme</label>
+          <select bind:value={settings.theme} onchange={saveSettings}>
+            <option value="auto">System Default</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <h2>Index Locations</h2>
+        <div class="dir-list">
+          {#each settings.index_dirs as dir}
+            <div class="dir-item">
+              <span>{dir}</span>
+              <button class="remove-btn" onclick={() => removeIndexDir(dir)}>✕</button>
+            </div>
+          {/each}
+          {#if settings.index_dirs.length === 0}
+            <p class="empty-hint">No specific directories added (Home is indexed by default)</p>
+          {/if}
+        </div>
+        <button class="add-btn" onclick={async () => {
+          const home = await invoke<string>("get_home_dir");
+          // Here we could use a directory picker plugin if available
+          addIndexDir(home);
+        }}>Add Folder</button>
+      </section>
+
+      <section class="settings-section">
+        <h2>Exclusions</h2>
+        <div class="pattern-list">
+          {#each settings.exclude_patterns as pattern}
+            <div class="pattern-pill">
+              {pattern}
+              <button onclick={() => removeExcludePattern(pattern)}>✕</button>
+            </div>
+          {/each}
+        </div>
+        <div class="add-pattern">
+          <input type="text" placeholder="Add pattern (e.g. *.tmp or backup/)" 
+            onkeydown={(e) => {
+              if (e.key === 'Enter') {
+                addExcludePattern(e.currentTarget.value);
+                e.currentTarget.value = '';
+              }
+            }} />
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <h2>Search Performance</h2>
+        <div class="setting-item">
+          <label>Max Results</label>
+          <input type="number" bind:value={settings.max_results} onchange={saveSettings} min="10" max="1000" />
+        </div>
+      </section>
     </div>
+  {/if}
   </div>
 
   <div class="results-container">
@@ -217,18 +360,64 @@
 
   :global(body) {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    min-height: 100vh;
+    margin: 0;
+  }
+
+  :global(body[data-theme="dark"]) {
     background: #1a1a2e;
     color: #eaeaea;
-    min-height: 100vh;
   }
+
+  :global(body[data-theme="light"]) {
+    background: #f5f5f7;
+    color: #1a1a2e;
+  }
+
 
   .container {
     max-width: 1200px;
     margin: 0 auto;
-    padding: 2rem;
+    padding: 1rem 2rem 2rem 2rem;
   }
 
-  .search-container {
+  .tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 2rem;
+    background: #252542;
+    padding: 0.4rem;
+    border-radius: 12px;
+    width: fit-content;
+    margin-left: auto;
+    margin-right: auto;
+    border: 1px solid #3a3a5c;
+  }
+
+  .tabs button {
+    background: transparent;
+    padding: 0.5rem 1.2rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #6b6b8c;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.2s;
+  }
+
+  .tabs button.active {
+    background: #30305a;
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  }
+
+  .tab-icon {
+    font-size: 1rem;
+  }
+
+  .search-header {
     text-align: center;
     margin-bottom: 2rem;
   }
@@ -427,42 +616,62 @@
     }
   }
 
-  @media (prefers-color-scheme: light) {
-    :global(body) {
-      background: #f5f5f7;
-      color: #1a1a2e;
-    }
-
-    .search-input {
-      background: #ffffff;
-      color: #1a1a2e;
-      border-color: #e0e0e5;
-    }
-
-    .search-input::placeholder {
-      color: #999;
-    }
-
-    .result-item {
-      background: #ffffff;
-    }
-
-    .result-item:hover {
-      background: #f0f0f5;
-    }
-
-    .result-path {
-      color: #666;
-    }
-
-    .preview-panel {
-      background: #ffffff;
-    }
-
-    .preview-content {
-      color: #333;
-    }
+  :global(body[data-theme="light"]) .search-input {
+    background: #ffffff;
+    color: #1a1a2e;
+    border-color: #e0e0e5;
   }
+
+  :global(body[data-theme="light"]) .search-input::placeholder {
+    color: #999;
+  }
+
+  :global(body[data-theme="light"]) .result-item {
+    background: #ffffff;
+  }
+
+  :global(body[data-theme="light"]) .result-item:hover {
+    background: #f0f0f5;
+  }
+
+  :global(body[data-theme="light"]) .result-path {
+    color: #666;
+  }
+
+  :global(body[data-theme="light"]) .preview-panel {
+    background: #ffffff;
+  }
+
+  :global(body[data-theme="light"]) .preview-content {
+    color: #333;
+  }
+
+  :global(body[data-theme="light"]) .settings-section {
+    background: #ffffff;
+    border-color: #e0e0e5;
+  }
+
+  :global(body[data-theme="light"]) .dir-item,
+  :global(body[data-theme="light"]) .pattern-pill,
+  :global(body[data-theme="light"]) .tabs,
+  :global(body[data-theme="light"]) .progress-bar-container {
+    background: #fcfcfd;
+    border-color: #e0e0e5;
+  }
+
+  :global(body[data-theme="light"]) select,
+  :global(body[data-theme="light"]) input[type="number"],
+  :global(body[data-theme="light"]) .add-pattern input {
+    background: #f5f5f7;
+    color: #1a1a2e;
+    border-color: #e0e0e5;
+  }
+
+  :global(body[data-theme="light"]) .tabs button.active {
+    background: #667eea;
+    color: #fff;
+  }
+
 
   /* Progress Bar Styles */
   .progress-bar-container {
@@ -529,5 +738,136 @@
   @keyframes slideUp {
     from { transform: translateY(20px); opacity: 0; }
     to { transform: translateY(0); opacity: 1; }
+  }
+
+  /* Settings Tab Styles */
+  .settings-tab {
+    max-width: 700px;
+    margin: 0 auto;
+    animation: fadeIn 0.3s ease;
+  }
+
+  .settings-tab h1 {
+    margin-bottom: 1.5rem;
+    font-size: 1.8rem;
+  }
+
+  .settings-section {
+    background: #252542;
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    border: 1px solid #3a3a5c;
+  }
+
+  .settings-section h2 {
+    font-size: 1.1rem;
+    margin-bottom: 1.2rem;
+    color: #667eea;
+  }
+
+  .setting-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+  }
+
+  .setting-item label {
+    font-weight: 500;
+  }
+
+  select, input[type="number"] {
+    background: #1a1a2e;
+    color: #fff;
+    border: 1px solid #3a3a5c;
+    padding: 0.4rem 0.8rem;
+    border-radius: 6px;
+    outline: none;
+  }
+
+  .dir-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .dir-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #1a1a2e;
+    padding: 0.6rem 0.8rem;
+    border-radius: 6px;
+    font-size: 0.85rem;
+  }
+
+  .remove-btn {
+    background: rgba(255, 100, 100, 0.1);
+    color: #ff6b6b;
+    padding: 0.2rem 0.5rem;
+    font-size: 0.8rem;
+  }
+
+  .remove-btn:hover {
+    background: #ff6b6b;
+    color: #fff;
+  }
+
+  .add-btn {
+    width: 100%;
+    background: #30305a;
+    font-size: 0.85rem;
+    padding: 0.5rem;
+  }
+
+  .pattern-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .pattern-pill {
+    background: #30305a;
+    padding: 0.3rem 0.6rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    border: 1px solid #3a3a5c;
+  }
+
+  .pattern-pill button {
+    background: transparent;
+    padding: 0;
+    color: #6b6b8c;
+    font-size: 0.75rem;
+  }
+
+  .add-pattern input {
+    width: 100%;
+    background: #1a1a2e;
+    border: 1px solid #3a3a5c;
+    padding: 0.6rem;
+    border-radius: 6px;
+    color: #fff;
+    font-size: 0.85rem;
+  }
+
+  .empty-hint {
+    font-size: 0.85rem;
+    color: #6b6b8c;
+    text-align: center;
+    padding: 1rem;
+    border: 1px dashed #3a3a5c;
+    border-radius: 6px;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
 </style>
