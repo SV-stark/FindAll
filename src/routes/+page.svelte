@@ -1,6 +1,6 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
-  import { open } from "@tauri-apps/plugin-opener";
+  import { openPath } from "@tauri-apps/plugin-opener";
   import { onMount } from "svelte";
 
   // Types
@@ -61,7 +61,7 @@
 
   async function openFile(path: string) {
     try {
-      await open(path);
+      await openPath(path);
     } catch (e) {
       console.error("Failed to open file:", e);
     }
