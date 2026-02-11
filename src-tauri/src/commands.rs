@@ -38,6 +38,7 @@ pub async fn search_query(
 pub async fn start_indexing(
     path: String,
     state: State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
 ) -> Result<(), String> {
     let path = std::path::PathBuf::from(path);
     
@@ -47,7 +48,7 @@ pub async fn start_indexing(
     
     // Spawn indexing in background
     tokio::spawn(async move {
-        let scanner = Scanner::new(indexer, metadata_db);
+        let scanner = Scanner::new(indexer, metadata_db, app);
         
         if let Err(e) = scanner.scan_directory(path).await {
             eprintln!("Indexing error: {}", e);

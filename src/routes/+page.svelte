@@ -1,6 +1,7 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { openPath } from "@tauri-apps/plugin-opener";
+  import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
 
   // Types
@@ -17,6 +18,20 @@
   let isIndexing = $state(false);
   let selectedPath = $state<string | null>(null);
   let previewContent = $state<string | null>(null);
+  
+  // Indexing progress state
+  let indexProgress = $state({
+    total: 0,
+    processed: 0,
+    currentFile: "",
+    status: "idle" as "idle" | "scanning" | "indexing" | "done"
+  });
+
+  let progressPercentage = $derived(
+    indexProgress.total > 0 
+      ? Math.round((indexProgress.processed / indexProgress.total) * 100) 
+      : 0
+  );
 
   // Debounce search
   let debounceTimer: ReturnType<typeof setTimeout>;
@@ -85,10 +100,30 @@
     }
   }
 
-  onMount(() => {
+  onMount(async () => {
     window.addEventListener("keydown", handleKeydown);
+
+    const unlisten = await listen<{
+      total: number,
+      processed: number,
+      current_file: string,
+      status: string
+    }>("indexing-progress", (event) => {
+      indexProgress.total = event.payload.total;
+      indexProgress.processed = event.payload.processed;
+      indexProgress.currentFile = event.payload.current_file;
+      indexProgress.status = event.payload.status as any;
+
+      if (indexProgress.status === "done") {
+        setTimeout(() => {
+          indexProgress.status = "idle";
+        }, 5000);
+      }
+    });
+
     return () => {
       window.removeEventListener("keydown", handleKeydown);
+      unlisten();
     };
   });
 </script>
@@ -152,6 +187,25 @@
       </div>
     {/if}
   </div>
+
+  {#if indexProgress.status !== "idle"}
+    <div class="progress-bar-container" class:done={indexProgress.status === "done"}>
+      <div class="progress-info">
+        <span class="status-text">
+          {indexProgress.status === "scanning" ? "Scanning files..." : 
+           indexProgress.status === "done" ? "Indexing completed" : 
+           `Indexing: ${indexProgress.processed} / ${indexProgress.total}`}
+        </span>
+        <span class="percentage">{progressPercentage}%</span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" style="width: {progressPercentage}%"></div>
+      </div>
+      {#if indexProgress.currentFile && indexProgress.status !== "done"}
+        <div class="current-file">{indexProgress.currentFile.split(/[\\/]/).pop()}</div>
+      {/if}
+    </div>
+  {/if}
 </main>
 
 <style>
@@ -408,5 +462,72 @@
     .preview-content {
       color: #333;
     }
+  }
+
+  /* Progress Bar Styles */
+  .progress-bar-container {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 320px;
+    background: #252542;
+    border: 1px solid #3a3a5c;
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    z-index: 1000;
+    transition: all 0.3s ease;
+    animation: slideUp 0.3s ease-out;
+    backdrop-filter: blur(10px);
+  }
+
+  .progress-bar-container.done {
+    border-color: #48bb78;
+  }
+
+  .progress-info {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 0.85rem;
+  }
+
+  .status-text {
+    font-weight: 600;
+    color: #eaeaea;
+  }
+
+  .percentage {
+    color: #667eea;
+    font-weight: 700;
+  }
+
+  .progress-track {
+    width: 100%;
+    height: 6px;
+    background: #1a1a2e;
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 8px;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #667eea, #764ba2);
+    border-radius: 3px;
+    transition: width 0.3s ease;
+  }
+
+  .current-file {
+    font-size: 0.75rem;
+    color: #6b6b8c;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  @keyframes slideUp {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
   }
 </style>
