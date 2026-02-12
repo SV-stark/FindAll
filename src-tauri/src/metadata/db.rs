@@ -1,5 +1,5 @@
 use crate::error::{FlashError, Result};
-use redb::{Database, ReadableTable, RedbKey, RedbValue, TableDefinition, TypeName};
+use redb::{Database, ReadableTable, RedbValue, TableDefinition, TypeName};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::time::SystemTime;

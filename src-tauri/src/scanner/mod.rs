@@ -1,9 +1,9 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tokio::sync::Mutex;
-use walkdir::WalkDir;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use tokio::sync::{mpsc, Mutex};
 use rayon::prelude::*;
-use ignore::gitignore::GitignoreBuilder;
+use ignore::WalkBuilder;
 use tauri::{AppHandle, Emitter};
 use crate::error::Result;
 use crate::indexer::IndexManager;
@@ -19,7 +19,19 @@ pub struct ProgressEvent {
     pub status: String,
 }
 
-/// Scans directories and indexes files
+/// Document batch for efficient indexing
+const BATCH_SIZE: usize = 50;
+
+/// Message sent through channel for indexing
+#[derive(Debug)]
+struct IndexTask {
+    doc: ParsedDocument,
+    modified: u64,
+    size: u64,
+    content_hash: [u8; 32],
+}
+
+/// Scans directories and indexes files efficiently
 pub struct Scanner {
     indexer: Arc<Mutex<IndexManager>>,
     metadata_db: Arc<MetadataDb>,
@@ -39,133 +51,165 @@ impl Scanner {
         }
     }
     
-    /// Scan a directory and index all supported files
+    /// Scan a directory and index all supported files using streaming
     pub async fn scan_directory(&self, root: PathBuf, exclude_patterns: Vec<String>) -> Result<()> {
-        // Build gitignore matcher with AnyTXT-style default exclusions
-        let mut gitignore_builder = GitignoreBuilder::new(&root);
+        // Build walker with default and custom exclusions
+        let mut builder = WalkBuilder::new(&root);
+        builder.hidden(false);
+        builder.git_ignore(true);
+        builder.require_git(false);
         
-        // Version Control
-        gitignore_builder.add_line(None, ".git/").ok();
-        gitignore_builder.add_line(None, ".svn/").ok();
-        gitignore_builder.add_line(None, ".hg/").ok();
-        
-        // Development / Build Folders
-        gitignore_builder.add_line(None, "node_modules/").ok();
-        gitignore_builder.add_line(None, "target/").ok();
-        gitignore_builder.add_line(None, "bin/").ok();
-        gitignore_builder.add_line(None, "obj/").ok();
-        gitignore_builder.add_line(None, "build/").ok();
-        gitignore_builder.add_line(None, "dist/").ok();
-        gitignore_builder.add_line(None, "__pycache__/").ok();
-        
-        // System / Temp Folders
-        gitignore_builder.add_line(None, "AppData/").ok();
-        gitignore_builder.add_line(None, "Local Settings/").ok();
-        gitignore_builder.add_line(None, "Application Data/").ok();
-        gitignore_builder.add_line(None, "Program Files/").ok();
-        gitignore_builder.add_line(None, "Program Files (x86)/").ok();
-        gitignore_builder.add_line(None, "Windows/").ok();
-        gitignore_builder.add_line(None, "$RECYCLE.BIN/").ok();
-        gitignore_builder.add_line(None, "System Volume Information/").ok();
-        gitignore_builder.add_line(None, "temp/").ok();
-        gitignore_builder.add_line(None, "tmp/").ok();
-        
-        // IDEs
-        gitignore_builder.add_line(None, ".vscode/").ok();
-        gitignore_builder.add_line(None, ".idea/").ok();
+        // Add default system exclusions
+        let system_excludes = vec![
+            ".git", ".svn", ".hg", "node_modules", "target", "bin", "obj", 
+            "build", "dist", "__pycache__", "AppData", "Local Settings", 
+            "Application Data", "Program Files", "Windows", "$RECYCLE.BIN",
+            "System Volume Information", "temp", "tmp", ".vscode", ".idea", ".next"
+        ];
 
-        // Custom exclusions from settings
+        let mut override_builder = ignore::overrides::OverrideBuilder::new(&root);
+        for pattern in system_excludes {
+            override_builder.add(&format!("!**/{}", pattern)).ok();
+        }
         for pattern in exclude_patterns {
-            gitignore_builder.add_line(None, &pattern).ok();
+            override_builder.add(&format!("!**/{}", pattern)).ok();
         }
         
-        let gitignore = gitignore_builder.build().expect("Failed to build gitignore");
-        
-        // Collect all files first
-        let files: Vec<_> = WalkDir::new(&root)
-            .into_iter()
+        let overrides = override_builder.build().expect("Failed to build overrides");
+        builder.overrides(overrides);
+
+        // First pass: collect files (this is fast and memory-light)
+        let files: Vec<PathBuf> = builder.build()
             .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_file())
-            .filter(|e| {
-                let path = e.path();
-                let is_ignored = gitignore.matched(path, false).is_ignore();
-                !is_ignored
-            })
+            .filter(|e| e.file_type().map(|ft| ft.is_file()).unwrap_or(false))
             .map(|e| e.path().to_path_buf())
             .collect();
         
-        println!("Found {} files to process", files.len());
+        let total_files = files.len();
+        println!("Found {} files to process", total_files);
         
         // Report initial progress
         let _ = self.app_handle.emit("indexing-progress", ProgressEvent {
-            total: files.len(),
+            total: total_files,
             processed: 0,
             current_file: "".to_string(),
             status: "scanning".to_string(),
         });
-        
-        // Process files in parallel using Rayon
-        // We collect parsed documents that need indexing
-        let documents_to_index: Vec<(ParsedDocument, u64, u64, [u8; 32])> = files
-            .par_iter()
-            .filter_map(|path| self.process_file(path))
-            .collect();
-        
-        println!("Indexing {} documents...", documents_to_index.len());
-        
-        // Add documents to index in batches (serial access to IndexManager)
-        let batch_size = 100; // Smaller batch size for smoother UI updates
-        let indexer = self.indexer.lock().await;
-        
-        for (i, (doc, modified, size, content_hash)) in documents_to_index.iter().enumerate() {
-            // Update UI more frequently
-            if i % 10 == 0 {
-                let _ = self.app_handle.emit("indexing-progress", ProgressEvent {
-                    total: documents_to_index.len(),
-                    processed: i,
-                    current_file: doc.path.clone(),
-                    status: "indexing".to_string(),
-                });
-            }
 
-            // Add to search index
-            if let Err(e) = indexer.add_document(doc.clone()) {
-                eprintln!("Failed to add document {}: {}", doc.path, e);
-                continue;
-            }
+        // Create channel for producer-consumer pattern
+        let (tx, mut rx) = mpsc::channel::<IndexTask>(BATCH_SIZE * 4);
+        let processed_count = Arc::new(AtomicUsize::new(0));
+        let processed_clone = processed_count.clone();
+        
+        // Clone needed for the async task
+        let indexer = self.indexer.clone();
+        let metadata_db = self.metadata_db.clone();
+        let app_handle = self.app_handle.clone();
+        let total_clone = total_files;
+        
+        // Spawn consumer task that batches and commits documents
+        let consumer = tokio::spawn(async move {
+            let mut batch = Vec::with_capacity(BATCH_SIZE);
             
-            // Update metadata
-            let path = PathBuf::from(&doc.path);
-            if let Err(e) = self.metadata_db.update_metadata(&path, *modified, *size, *content_hash) {
-                eprintln!("Failed to update metadata for {}: {}", doc.path, e);
-            }
-            
-            // Commit every batch
-            if (i + 1) % batch_size == 0 {
-                if let Err(e) = indexer.commit() {
-                    eprintln!("Failed to commit batch: {}", e);
+            while let Some(task) = rx.recv().await {
+                batch.push(task);
+                
+                // Process batch when full
+                if batch.len() >= BATCH_SIZE {
+                    if let Err(e) = Self::commit_batch(&indexer, &metadata_db, &mut batch).await {
+                        eprintln!("Failed to commit batch: {}", e);
+                    }
+                    
+                    // Update progress
+                    let processed = processed_clone.fetch_add(batch.len(), Ordering::Relaxed) + batch.len();
+                    if processed % 50 == 0 {
+                        let _ = app_handle.emit("indexing-progress", ProgressEvent {
+                            total: total_clone,
+                            processed,
+                            current_file: batch.last().map(|t| t.doc.path.clone()).unwrap_or_default(),
+                            status: "indexing".to_string(),
+                        });
+                    }
+                    
+                    batch.clear();
                 }
             }
-        }
+            
+            // Process remaining documents
+            if !batch.is_empty() {
+                if let Err(e) = Self::commit_batch(&indexer, &metadata_db, &mut batch).await {
+                    eprintln!("Failed to commit final batch: {}", e);
+                }
+                processed_clone.fetch_add(batch.len(), Ordering::Relaxed);
+            }
+            
+            processed_clone.load(Ordering::Relaxed)
+        });
+
+        // Producer: Process files in parallel using Rayon
+        let metadata_db = self.metadata_db.clone();
         
-        // Final commit
-        indexer.commit()?;
+        files.par_iter().for_each(|path| {
+            if let Some(task) = Self::process_file(path, &metadata_db) {
+                // Send to consumer - blocking if channel is full
+                if let Err(e) = tx.blocking_send(task) {
+                    eprintln!("Failed to send task to channel: {}", e);
+                }
+            }
+        });
+        
+        // Drop sender to signal completion
+        drop(tx);
+        
+        // Wait for consumer to finish
+        let indexed_count = consumer.await.unwrap_or(0);
         
         // Final progress report
         let _ = self.app_handle.emit("indexing-progress", ProgressEvent {
-            total: documents_to_index.len(),
-            processed: documents_to_index.len(),
+            total: total_files,
+            processed: indexed_count,
             current_file: "Completed".to_string(),
             status: "done".to_string(),
         });
         
-        println!("Successfully indexed {} files", documents_to_index.len());
+        println!("Successfully indexed {} files (skipped {})", indexed_count, total_files - indexed_count);
+        
+        Ok(())
+    }
+    
+    /// Commit a batch of documents to the index
+    async fn commit_batch(
+        indexer: &Arc<Mutex<IndexManager>>,
+        metadata_db: &Arc<MetadataDb>,
+        batch: &mut Vec<IndexTask>,
+    ) -> Result<()> {
+        let indexer = indexer.lock().await;
+        
+        for task in batch.iter() {
+            // Add to search index
+            if let Err(e) = indexer.add_document(&task.doc, task.modified, task.size) {
+                eprintln!("Failed to add document {}: {}", task.doc.path, e);
+                continue;
+            }
+            
+            // Update metadata
+            let path = PathBuf::from(&task.doc.path);
+            if let Err(e) = metadata_db.update_metadata(&path, task.modified, task.size, task.content_hash) {
+                eprintln!("Failed to update metadata for {}: {}", task.doc.path, e);
+            }
+        }
+        
+        // Single commit for the entire batch
+        indexer.commit()?;
         
         Ok(())
     }
     
     /// Process a single file - check if needs reindexing and parse
-    fn process_file(&self, path: &Path) -> Option<(ParsedDocument, u64, u64, [u8; 32])> {
+    fn process_file(
+        path: &Path,
+        metadata_db: &Arc<MetadataDb>,
+    ) -> Option<IndexTask> {
         // Get file metadata
         let metadata = std::fs::metadata(path).ok()?;
         let modified = metadata.modified().ok()?
@@ -175,7 +219,7 @@ impl Scanner {
         let size = metadata.len();
         
         // Check if we need to reindex this file
-        match self.metadata_db.needs_reindex(path, modified, size) {
+        match metadata_db.needs_reindex(path, modified, size) {
             Ok(false) => return None, // No changes, skip
             Ok(true) => {} // Continue processing
             Err(e) => {
@@ -193,9 +237,14 @@ impl Scanner {
             }
         };
         
-        // Compute content hash
+        // Compute content hash for deduplication
         let content_hash = blake3::hash(parsed.content.as_bytes()).into();
         
-        Some((parsed, modified, size, content_hash))
+        Some(IndexTask {
+            doc: parsed,
+            modified,
+            size,
+            content_hash,
+        })
     }
 }

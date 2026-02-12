@@ -4,7 +4,7 @@ use memmap2::Mmap;
 use quick_xml::events::Event;
 use quick_xml::Reader;
 use std::fs::File;
-use std::io::{BufReader, Read};
+use std::io::Read;
 use std::path::Path;
 use zip::ZipArchive;
 

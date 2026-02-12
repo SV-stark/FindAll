@@ -19,6 +19,11 @@
   let isSearching = $state(false);
   let isIndexing = $state(false);
   
+  // Search filters
+  let minSize = $state<number | null>(null);
+  let maxSize = $state<number | null>(null);
+  let showFilters = $state(false);
+  
   // Settings state
   let settings = $state({
     index_dirs: [] as string[],
@@ -27,7 +32,7 @@
     max_results: 50
   });
 
-  async fn loadSettings() {
+  async function loadSettings() {
     try {
       settings = await invoke("get_settings");
     } catch (e) {
@@ -35,7 +40,7 @@
     }
   }
 
-  async fn saveSettings() {
+  async function saveSettings() {
     try {
       await invoke("save_settings", { settings });
     } catch (e) {
@@ -97,7 +102,9 @@
     try {
       results = await invoke<SearchResult[]>("search_query", { 
         query, 
-        limit: settings.max_results 
+        limit: settings.max_results,
+        min_size: minSize ? minSize * 1024 * 1024 : null, // Convert MB to Bytes
+        max_size: maxSize ? maxSize * 1024 * 1024 : null
       });
     } catch (e) {
       console.error("Search failed:", e);
@@ -204,31 +211,124 @@
   </nav>
 
   {#if activeTab === "search"}
-    <div class="search-tab" in:fade={{ duration: 200 }}>
-      <div class="search-header">
-        <h1>Flash Search</h1>
-        <p class="subtitle">Ultrafast local full-text search</p>
+    <div class="anytxt-layout" in:fade={{ duration: 200 }}>
+      <!-- AnyTXT Header Style -->
+      <header class="app-header">
+        <div class="search-section">
+          <div class="search-input-wrapper">
+            <span class="search-icon">🔍</span>
+            <input
+              type="text"
+              class="anytxt-search-input"
+              placeholder="Search everything or specific words..."
+              bind:value={query}
+              oninput={debouncedSearch}
+            />
+            {#if isSearching}
+              <div class="mini-spinner"></div>
+            {/if}
+          </div>
+          <button class="anytxt-btn primary" onclick={performSearch}>Search</button>
+        </div>
+      </header>
+
+      <!-- Toolbar / Filters -->
+      <div class="app-toolbar">
+        <div class="filter-group">
+          <label>Filter:</label>
+          <select class="toolbar-select">
+            <option>All File Types</option>
+            <option>Documents (*.docx, *.pdf...)</option>
+            <option>Code Files (*.rs, *.js...)</option>
+            <option>Text Files (*.txt, *.md)</option>
+          </select>
+        </div>
+        <div class="spacer"></div>
+        <div class="toolbar-actions">
+          <button class="toolbar-btn" class:active={showFilters} onclick={() => showFilters = !showFilters}>
+            ⚙️ Filters
+          </button>
+          <button class="toolbar-btn" onclick={startIndexing} disabled={isIndexing}>
+            {isIndexing ? "Indexing..." : "⚡ Rebuild Index"}
+          </button>
+        </div>
       </div>
 
-    <div class="search-box">
-      <input
-        type="text"
-        class="search-input"
-        placeholder="Search files..."
-        bind:value={query}
-        oninput={debouncedSearch}
-      />
-      {#if isSearching}
-        <span class="loading">Searching...</span>
+      {#if showFilters}
+        <div class="filter-panel" transition:fade>
+          <div class="filter-item">
+            <label>Min Size (MB):</label>
+            <input type="number" bind:value={minSize} oninput={debouncedSearch} placeholder="Any" />
+          </div>
+          <div class="filter-item">
+            <label>Max Size (MB):</label>
+            <input type="number" bind:value={maxSize} oninput={debouncedSearch} placeholder="Any" />
+          </div>
+          <button class="clear-filters" onclick={() => { minSize = null; maxSize = null; debouncedSearch(); }}>Clear</button>
+        </div>
       {/if}
-    </div>
 
-    <div class="actions">
-      <button onclick={startIndexing} disabled={isIndexing}>
-        {isIndexing ? "Indexing..." : "Start Indexing"}
-      </button>
-      <span class="hint">Press ESC to clear</span>
+      <!-- Main Content Area -->
+      <div class="workspace">
+        <div class="results-pane">
+          <div class="results-table-header">
+            <div class="col-name">Name</div>
+            <div class="col-path">Path</div>
+            <div class="col-score">Score</div>
+          </div>
+          <div class="results-scroller">
+            {#if results.length === 0 && query.trim()}
+              <div class="empty-state">No matching documents found.</div>
+            {:else if results.length > 0}
+              {#each results as result}
+                <div
+                  class="table-row"
+                  class:active={selectedPath === result.file_path}
+                  onclick={() => showPreview(result.file_path)}
+                  ondblclick={() => openFile(result.file_path)}
+                  role="button"
+                  tabindex="0"
+                >
+                  <div class="col-name">
+                    <span class="file-icon">{result.file_path.split('.').pop()?.toUpperCase() || '📄'}</span>
+                    <span class="file-title">{result.title || result.file_path.split(/[\\/]/).pop()}</span>
+                  </div>
+                  <div class="col-path">{result.file_path}</div>
+                  <div class="col-score">
+                    <button class="icon-btn" onclick={(e) => { e.stopPropagation(); invoke('open_folder', { path: result.file_path }); }} title="Open Location">📂</button>
+                    {result.score.toFixed(1)}
+                  </div>
+                </div>
+              {/each}
+            {/if}
+          </div>
+          <footer class="results-footer">
+            {#if results.length > 0}
+              {results.length} results found in the index
+            {:else}
+              Ready to search
+            {/if}
+          </footer>
+        </div>
+
+        <!-- Preview Pane -->
+        {#if selectedPath}
+          <div class="preview-pane" transition:fade>
+            <div class="preview-toolbar">
+              <span class="preview-title">Quick Preview: {selectedPath.split(/[\\/]/).pop()}</span>
+              <button class="close-preview" onclick={() => { selectedPath = null; previewContent = null; }}>✕</button>
+            </div>
+            <div class="preview-body">
+              {#if previewContent}
+                <pre>{previewContent}</pre>
+              {:else}
+                <div class="preview-loading">Loading content...</div>
+              {/if}
+            </div>
+          </div>
+        {/if}
       </div>
+    </div>
   {:else}
     <div class="settings-tab" in:fade={{ duration: 200 }}>
       <h1>Settings</h1>
@@ -259,10 +359,15 @@
           {/if}
         </div>
         <button class="add-btn" onclick={async () => {
-          const home = await invoke<string>("get_home_dir");
-          // Here we could use a directory picker plugin if available
-          addIndexDir(home);
-        }}>Add Folder</button>
+          try {
+            const selected = await invoke<string | null>("select_folder");
+            if (selected) {
+              addIndexDir(selected);
+            }
+          } catch (e) {
+            console.error("Failed to pick folder:", e);
+          }
+        }}>Browse Folder...</button>
       </section>
 
       <section class="settings-section">
@@ -295,41 +400,6 @@
       </section>
     </div>
   {/if}
-  </div>
-
-  <div class="results-container">
-    <div class="results-list">
-      {#if results.length === 0 && query.trim()}
-        <div class="no-results">No results found for "{query}"</div>
-      {:else if results.length > 0}
-        <div class="results-count">{results.length} results</div>
-        {#each results as result}
-          <div
-            class="result-item"
-            class:selected={selectedPath === result.file_path}
-            onclick={() => showPreview(result.file_path)}
-            ondblclick={() => openFile(result.file_path)}
-            role="button"
-            tabindex="0"
-          >
-            <div class="result-title">{result.title || result.file_path.split("/").pop()}</div>
-            <div class="result-path">{result.file_path}</div>
-            <div class="result-score">Score: {result.score.toFixed(2)}</div>
-          </div>
-        {/each}
-      {/if}
-    </div>
-
-    {#if previewContent}
-      <div class="preview-panel">
-        <div class="preview-header">
-          <span>Preview</span>
-          <button onclick={() => { selectedPath = null; previewContent = null; }}>✕</button>
-        </div>
-        <pre class="preview-content">{previewContent}</pre>
-      </div>
-    {/if}
-  </div>
 
   {#if indexProgress.status !== "idle"}
     <div class="progress-bar-container" class:done={indexProgress.status === "done"}>
@@ -352,522 +422,514 @@
 </main>
 
 <style>
-  :global(*) {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-  }
-
   :global(body) {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    min-height: 100vh;
+    font-family: "Segoe UI", Tahoma, sans-serif;
+    background: #fdfdfd;
+    color: #333;
+    overflow: hidden; /* App-like feel */
+    height: 100vh;
     margin: 0;
   }
 
   :global(body[data-theme="dark"]) {
-    background: #1a1a2e;
-    color: #eaeaea;
+    background: #1e1e1e;
+    color: #d4d4d4;
   }
-
-  :global(body[data-theme="light"]) {
-    background: #f5f5f7;
-    color: #1a1a2e;
-  }
-
 
   .container {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 1rem 2rem 2rem 2rem;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    max-width: 100vw;
+    padding: 0;
   }
 
+  /* Navigation Tabs */
   .tabs {
     display: flex;
-    gap: 0.5rem;
-    margin-bottom: 2rem;
-    background: #252542;
-    padding: 0.4rem;
-    border-radius: 12px;
-    width: fit-content;
-    margin-left: auto;
-    margin-right: auto;
-    border: 1px solid #3a3a5c;
+    background: #f3f3f3;
+    border-bottom: 1px solid #d1d1d1;
+    padding: 0 10px;
+    gap: 2px;
+  }
+
+  :global(body[data-theme="dark"]) .tabs {
+    background: #252526;
+    border-color: #3e3e42;
   }
 
   .tabs button {
     background: transparent;
-    padding: 0.5rem 1.2rem;
-    font-size: 0.9rem;
-    font-weight: 500;
-    color: #6b6b8c;
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
+    border: none;
+    padding: 8px 16px;
+    font-size: 13px;
+    color: #666;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
     transition: all 0.2s;
+  }
+
+  .tabs button:hover {
+    color: #333;
+    background: #e9e9e9;
+  }
+
+  :global(body[data-theme="dark"]) .tabs button:hover {
+    color: #fff;
+    background: #2d2d2d;
   }
 
   .tabs button.active {
-    background: #30305a;
-    color: #fff;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    color: #0078d4;
+    border-bottom-color: #0078d4;
+    font-weight: 600;
+    background: #fff;
+  }
+
+  :global(body[data-theme="dark"]) .tabs button.active {
+    color: #569cd6;
+    border-bottom-color: #569cd6;
+    background: #1e1e1e;
   }
 
   .tab-icon {
-    font-size: 1rem;
+    margin-right: 6px;
   }
 
-  .search-header {
-    text-align: center;
-    margin-bottom: 2rem;
+  /* Header / Search Area */
+  .app-header {
+    background: #fff;
+    padding: 20px 20px;
+    border-bottom: 1px solid #e1e1e1;
   }
 
-  h1 {
-    font-size: 2.5rem;
-    font-weight: 700;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    margin-bottom: 0.5rem;
+  :global(body[data-theme="dark"]) .app-header {
+    background: #2d2d2d;
+    border-color: #3e3e42;
   }
 
-  .subtitle {
-    color: #a0a0a0;
-    margin-bottom: 2rem;
-  }
-
-  .search-box {
-    position: relative;
-    max-width: 600px;
+  .search-section {
+    display: flex;
+    gap: 12px;
+    max-width: 900px;
     margin: 0 auto;
   }
 
-  .search-input {
-    width: 100%;
-    padding: 1rem 1.5rem;
-    font-size: 1.1rem;
-    border: 2px solid #3a3a5c;
-    border-radius: 12px;
-    background: #252542;
-    color: #fff;
-    outline: none;
-    transition: all 0.3s ease;
-  }
-
-  .search-input:focus {
-    border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-  }
-
-  .search-input::placeholder {
-    color: #6b6b8c;
-  }
-
-  .loading {
-    position: absolute;
-    right: 1rem;
-    top: 50%;
-    transform: translateY(-50%);
-    color: #667eea;
-    font-size: 0.875rem;
-  }
-
-  .actions {
-    margin-top: 1rem;
+  .search-input-wrapper {
+    position: relative;
+    flex: 1;
     display: flex;
-    gap: 1rem;
-    justify-content: center;
     align-items: center;
   }
 
-  button {
-    padding: 0.75rem 1.5rem;
-    font-size: 0.9rem;
-    border: none;
-    border-radius: 8px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
+  .search-icon {
+    position: absolute;
+    left: 12px;
+    color: #888;
+  }
+
+  .anytxt-search-input {
+    width: 100%;
+    padding: 10px 15px 10px 38px;
+    font-size: 14px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .anytxt-search-input:focus {
+    border-color: #0078d4;
+    box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.1);
+  }
+
+  :global(body[data-theme="dark"]) .anytxt-search-input {
+    background: #3c3c3c;
+    border-color: #555;
+    color: #fff;
+  }
+
+  .anytxt-btn {
+    padding: 8px 24px;
+    font-size: 14px;
+    border-radius: 4px;
     cursor: pointer;
-    transition: transform 0.2s, box-shadow 0.2s;
-  }
-
-  button:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-  }
-
-  button:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-
-  .hint {
-    color: #6b6b8c;
-    font-size: 0.8rem;
-  }
-
-  .results-container {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 1rem;
-  }
-
-  .results-container:has(.preview-panel) {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .results-list {
-    max-height: 600px;
-    overflow-y: auto;
-  }
-
-  .results-count {
-    color: #6b6b8c;
-    font-size: 0.875rem;
-    margin-bottom: 1rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid #3a3a5c;
-  }
-
-  .no-results {
-    text-align: center;
-    color: #6b6b8c;
-    padding: 2rem;
-  }
-
-  .result-item {
-    padding: 1rem;
-    margin-bottom: 0.5rem;
-    background: #252542;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.2s;
     border: 1px solid transparent;
+    transition: background 0.2s;
   }
 
-  .result-item:hover {
-    background: #2f2f52;
-    border-color: #667eea;
+  .anytxt-btn.primary {
+    background: #0078d4;
+    color: #fff;
   }
 
-  .result-item.selected {
-    border-color: #667eea;
-    background: #30305a;
+  .anytxt-btn.primary:hover {
+    background: #005a9e;
   }
 
-  .result-title {
-    font-weight: 600;
-    color: #eaeaea;
-    margin-bottom: 0.25rem;
-    font-size: 0.95rem;
+  /* Toolbar */
+  .app-toolbar {
+    background: #f9f9f9;
+    padding: 8px 20px;
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid #e1e1e1;
+    font-size: 13px;
   }
 
-  .result-path {
-    font-size: 0.8rem;
-    color: #6b6b8c;
-    margin-bottom: 0.25rem;
-    word-break: break-all;
+  :global(body[data-theme="dark"]) .app-toolbar {
+    background: #252526;
+    border-color: #3e3e42;
+    color: #ccc;
   }
 
-  .result-score {
-    font-size: 0.75rem;
-    color: #667eea;
+  .filter-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
 
-  .preview-panel {
-    background: #252542;
-    border-radius: 12px;
-    overflow: hidden;
+  .toolbar-select {
+    padding: 4px 8px;
+    border: 1px solid #ccc;
+    background: #fff;
+    border-radius: 3px;
+    font-size: 12px;
+  }
+
+  :global(body[data-theme="dark"]) .toolbar-select {
+    background: #3c3c3c;
+    border-color: #555;
+    color: #fff;
+  }
+
+  .toolbar-btn {
+    background: transparent;
+    border: 1px solid #ccc;
+    padding: 4px 12px;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+
+  .toolbar-btn.active {
+    background: #e1e1e1;
+    border-color: #0078d4;
+    color: #0078d4;
+  }
+
+  :global(body[data-theme="dark"]) .toolbar-btn.active {
+    background: #3c3c3c;
+    border-color: #569cd6;
+    color: #569cd6;
+  }
+
+  .filter-panel {
+    background: #fdfdfd;
+    border-bottom: 1px solid #d1d1d1;
+    padding: 10px 20px;
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    font-size: 12px;
+  }
+
+  :global(body[data-theme="dark"]) .filter-panel {
+    background: #252526;
+    border-color: #3e3e42;
+    color: #ccc;
+  }
+
+  .filter-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .filter-item input {
+    width: 80px;
+    padding: 4px 8px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    font-size: 12px;
+  }
+
+  :global(body[data-theme="dark"]) .filter-item input {
+    background: #3c3c3c;
+    border-color: #555;
+    color: #fff;
+  }
+
+  .clear-filters {
+    background: #eee;
+    border: none;
+    padding: 4px 10px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11px;
+  }
+
+  .clear-filters:hover {
+    background: #ddd;
+  }
+
+  :global(body[data-theme="dark"]) .toolbar-btn {
+    border-color: #555;
+    color: #ccc;
+  }
+
+  .spacer { flex: 1; }
+
+  /* Workspace / Results */
+  .workspace {
+    flex: 1;
+    display: flex;
+    overflow: hidden; /* Header and Toolbar stay fixed */
+  }
+
+  .results-pane {
+    flex: 1;
     display: flex;
     flex-direction: column;
-    max-height: 600px;
+    min-width: 0;
   }
 
-  .preview-header {
+  .results-table-header {
+    display: flex;
+    background: #f3f3f3;
+    border-bottom: 1px solid #d1d1d1;
+    font-weight: 600;
+    font-size: 12px;
+    padding: 5px 0;
+    color: #555;
+  }
+
+  :global(body[data-theme="dark"]) .results-table-header {
+    background: #2d2d2d;
+    border-color: #3e3e42;
+    color: #aaa;
+  }
+
+  .results-scroller {
+    flex: 1;
+    overflow-y: auto;
+  }
+
+  .table-row {
+    display: flex;
+    border-bottom: 1px solid #f0f0f0;
+    padding: 8px 0;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+
+  :global(body[data-theme="dark"]) .table-row {
+    border-color: #2d2d2d;
+  }
+
+  .table-row:hover {
+    background: #f0f7ff;
+  }
+
+  .table-row.active {
+    background: #e5f1ff;
+    border-left: 3px solid #0078d4;
+  }
+
+  :global(body[data-theme="dark"]) .table-row:hover {
+    background: #2a2d2e;
+  }
+
+  :global(body[data-theme="dark"]) .table-row.active {
+    background: #37373d;
+    border-left-color: #0078d4;
+  }
+
+  .col-name { flex: 2; padding-left: 15px; display: flex; align-items: center; gap: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .col-path { flex: 3; color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .col-score { width: 100px; text-align: center; color: #aaa; display: flex; align-items: center; justify-content: center; gap: 5px; }
+
+  .icon-btn {
+    background: transparent;
+    border: none;
+    padding: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    border-radius: 4px;
+    opacity: 0.6;
+    transition: all 0.2s;
+  }
+
+  .icon-btn:hover {
+    opacity: 1;
+    background: rgba(0,0,0,0.05);
+  }
+
+  :global(body[data-theme="dark"]) .icon-btn:hover {
+    background: rgba(255,255,255,0.1);
+  }
+
+  .file-icon {
+    font-size: 10px;
+    background: #e1e1e1;
+    padding: 2px 4px;
+    border-radius: 2px;
+    font-weight: bold;
+    color: #555;
+    min-width: 35px;
+    text-align: center;
+  }
+
+  :global(body[data-theme="dark"]) .file-icon {
+    background: #3c3c3c;
+    color: #aaa;
+  }
+
+  .results-footer {
+    padding: 5px 20px;
+    font-size: 11px;
+    background: #f3f3f3;
+    border-top: 1px solid #d1d1d1;
+    color: #888;
+  }
+
+  :global(body[data-theme="dark"]) .results-footer {
+    background: #252526;
+    border-color: #3e3e42;
+  }
+
+  /* Preview Pane */
+  .preview-pane {
+    width: 450px;
+    border-left: 1px solid #d1d1d1;
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+    z-index: 10;
+  }
+
+  :global(body[data-theme="dark"]) .preview-pane {
+    background: #1e1e1e;
+    border-color: #3e3e42;
+  }
+
+  .preview-toolbar {
+    padding: 10px 15px;
+    background: #f9f9f9;
+    border-bottom: 1px solid #e1e1e1;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 1rem;
-    background: #30305a;
-    border-bottom: 1px solid #3a3a5c;
   }
 
-  .preview-header button {
-    padding: 0.25rem 0.5rem;
-    background: transparent;
-    color: #6b6b8c;
-    font-size: 1.2rem;
+  :global(body[data-theme="dark"]) .preview-toolbar {
+    background: #2d2d2d;
+    border-color: #3e3e42;
   }
 
-  .preview-content {
-    padding: 1rem;
+  .preview-title { font-size: 12px; font-weight: 600; color: #555; }
+  .close-preview { background: transparent; border: none; font-size: 16px; cursor: pointer; color: #888; }
+
+  .preview-body {
+    flex: 1;
+    padding: 20px;
     overflow-y: auto;
-    white-space: pre-wrap;
-    font-family: "Consolas", "Monaco", monospace;
-    font-size: 0.85rem;
+    font-family: Consolas, monospace;
+    font-size: 12px;
     line-height: 1.5;
-    color: #d0d0e0;
-    max-height: 550px;
+    white-space: pre-wrap;
   }
 
-  @media (max-width: 900px) {
-    .results-container:has(.preview-panel) {
-      grid-template-columns: 1fr;
-    }
-  }
-
-  :global(body[data-theme="light"]) .search-input {
-    background: #ffffff;
-    color: #1a1a2e;
-    border-color: #e0e0e5;
-  }
-
-  :global(body[data-theme="light"]) .search-input::placeholder {
-    color: #999;
-  }
-
-  :global(body[data-theme="light"]) .result-item {
-    background: #ffffff;
-  }
-
-  :global(body[data-theme="light"]) .result-item:hover {
-    background: #f0f0f5;
-  }
-
-  :global(body[data-theme="light"]) .result-path {
-    color: #666;
-  }
-
-  :global(body[data-theme="light"]) .preview-panel {
-    background: #ffffff;
-  }
-
-  :global(body[data-theme="light"]) .preview-content {
-    color: #333;
-  }
-
-  :global(body[data-theme="light"]) .settings-section {
-    background: #ffffff;
-    border-color: #e0e0e5;
-  }
-
-  :global(body[data-theme="light"]) .dir-item,
-  :global(body[data-theme="light"]) .pattern-pill,
-  :global(body[data-theme="light"]) .tabs,
-  :global(body[data-theme="light"]) .progress-bar-container {
-    background: #fcfcfd;
-    border-color: #e0e0e5;
-  }
-
-  :global(body[data-theme="light"]) select,
-  :global(body[data-theme="light"]) input[type="number"],
-  :global(body[data-theme="light"]) .add-pattern input {
-    background: #f5f5f7;
-    color: #1a1a2e;
-    border-color: #e0e0e5;
-  }
-
-  :global(body[data-theme="light"]) .tabs button.active {
-    background: #667eea;
-    color: #fff;
-  }
-
-
-  /* Progress Bar Styles */
-  .progress-bar-container {
-    position: fixed;
-    bottom: 24px;
-    right: 24px;
-    width: 320px;
-    background: #252542;
-    border: 1px solid #3a3a5c;
-    border-radius: 12px;
-    padding: 16px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-    z-index: 1000;
-    transition: all 0.3s ease;
-    animation: slideUp 0.3s ease-out;
-    backdrop-filter: blur(10px);
-  }
-
-  .progress-bar-container.done {
-    border-color: #48bb78;
-  }
-
-  .progress-info {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 8px;
-    font-size: 0.85rem;
-  }
-
-  .status-text {
-    font-weight: 600;
-    color: #eaeaea;
-  }
-
-  .percentage {
-    color: #667eea;
-    font-weight: 700;
-  }
-
-  .progress-track {
-    width: 100%;
-    height: 6px;
-    background: #1a1a2e;
-    border-radius: 3px;
-    overflow: hidden;
-    margin-bottom: 8px;
-  }
-
-  .progress-fill {
-    height: 100%;
-    background: linear-gradient(90deg, #667eea, #764ba2);
-    border-radius: 3px;
-    transition: width 0.3s ease;
-  }
-
-  .current-file {
-    font-size: 0.75rem;
-    color: #6b6b8c;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  @keyframes slideUp {
-    from { transform: translateY(20px); opacity: 0; }
-    to { transform: translateY(0); opacity: 1; }
-  }
-
-  /* Settings Tab Styles */
+  /* Settings Page Polish */
   .settings-tab {
-    max-width: 700px;
-    margin: 0 auto;
-    animation: fadeIn 0.3s ease;
-  }
-
-  .settings-tab h1 {
-    margin-bottom: 1.5rem;
-    font-size: 1.8rem;
+    max-width: 800px;
+    margin: 40px auto;
+    padding: 0 20px;
+    overflow-y: auto;
   }
 
   .settings-section {
-    background: #252542;
-    border-radius: 12px;
-    padding: 1.5rem;
-    margin-bottom: 1.5rem;
-    border: 1px solid #3a3a5c;
+    background: #fff;
+    border: 1px solid #e1e1e1;
+    border-radius: 4px;
+    padding: 20px;
+    margin-bottom: 20px;
   }
 
-  .settings-section h2 {
-    font-size: 1.1rem;
-    margin-bottom: 1.2rem;
-    color: #667eea;
+  :global(body[data-theme="dark"]) .settings-section {
+    background: #2d2d2d;
+    border-color: #3e3e42;
   }
 
-  .setting-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 0.5rem;
+  .settings-section h2 { font-size: 16px; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
+  
+  /* Progress Bar at bottom */
+  .progress-bar-container {
+    position: fixed;
+    bottom: 25px;
+    right: 25px;
+    width: 320px;
+    background: #fff;
+    border: 1px solid #d1d1d1;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    border-radius: 8px;
+    padding: 15px;
+    z-index: 100;
   }
 
-  .setting-item label {
-    font-weight: 500;
+  :global(body[data-theme="dark"]) .progress-bar-container {
+    background: #2d2d2d;
+    border-color: #3e3e42;
   }
 
-  select, input[type="number"] {
-    background: #1a1a2e;
-    color: #fff;
-    border: 1px solid #3a3a5c;
-    padding: 0.4rem 0.8rem;
-    border-radius: 6px;
-    outline: none;
-  }
+  .progress-info { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 8px; }
+  .progress-track { height: 6px; background: #eee; border-radius: 3px; overflow: hidden; }
+  .progress-fill { height: 100%; background: #0078d4; transition: width 0.3s; }
+  .current-file { font-size: 10px; color: #888; margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-  .dir-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
-  }
-
-  .dir-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: #1a1a2e;
-    padding: 0.6rem 0.8rem;
-    border-radius: 6px;
-    font-size: 0.85rem;
-  }
-
-  .remove-btn {
-    background: rgba(255, 100, 100, 0.1);
-    color: #ff6b6b;
-    padding: 0.2rem 0.5rem;
-    font-size: 0.8rem;
-  }
-
-  .remove-btn:hover {
-    background: #ff6b6b;
-    color: #fff;
-  }
-
-  .add-btn {
-    width: 100%;
-    background: #30305a;
-    font-size: 0.85rem;
-    padding: 0.5rem;
-  }
-
-  .pattern-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
-  }
-
-  .pattern-pill {
-    background: #30305a;
-    padding: 0.3rem 0.6rem;
-    border-radius: 6px;
-    font-size: 0.8rem;
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    border: 1px solid #3a3a5c;
-  }
-
-  .pattern-pill button {
-    background: transparent;
-    padding: 0;
-    color: #6b6b8c;
-    font-size: 0.75rem;
-  }
-
-  .add-pattern input {
-    width: 100%;
-    background: #1a1a2e;
-    border: 1px solid #3a3a5c;
-    padding: 0.6rem;
-    border-radius: 6px;
-    color: #fff;
-    font-size: 0.85rem;
-  }
-
-  .empty-hint {
-    font-size: 0.85rem;
-    color: #6b6b8c;
+  .empty-state {
     text-align: center;
-    padding: 1rem;
-    border: 1px dashed #3a3a5c;
-    border-radius: 6px;
+    padding: 100px 20px;
+    color: #aaa;
+    font-style: italic;
   }
 
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+  .mini-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid #0078d4;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    position: absolute;
+    right: 12px;
   }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Misc */
+  .spacer { flex: 1; }
+  
+  .anytxt-btn:disabled, .toolbar-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .pattern-list { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; }
+  .pattern-pill { background: #eee; padding: 2px 8px; border-radius: 12px; font-size: 11px; display: flex; align-items: center; gap: 5px; border: 1px solid #ddd; }
+  :global(body[data-theme="dark"]) .pattern-pill { background: #333; border-color: #444; color: #aaa; }
+  .pattern-pill button { background: transparent; border: none; cursor: pointer; color: #888; }
+
+  .dir-list { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
+  .dir-item { display: flex; justify-content: space-between; background: #f9f9f9; padding: 5px 10px; border-radius: 4px; border: 1px solid #eee; font-size: 12px; }
+  :global(body[data-theme="dark"]) .dir-item { background: #3c3c3c; border-color: #444; color: #aaa; }
+  .remove-btn { color: #f44336; background: transparent; border: none; cursor: pointer; }
+
+  .add-pattern input { width: 100%; padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; outline: none; }
+  :global(body[data-theme="dark"]) .add-pattern input { background: #3c3c3c; border-color: #555; color: #fff; }
+
+  .setting-item { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 13px; }
+  .setting-item label { color: #666; }
+  :global(body[data-theme="dark"]) .setting-item label { color: #aaa; }
 </style>
+

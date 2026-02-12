@@ -1,9 +1,4 @@
-use std::path::Path;
-use std::sync::Arc;
-use tantivy::collector::TopDocs;
-use tantivy::query::QueryParser;
 use tantivy::schema::*;
-use tantivy::{Index, IndexReader, IndexWriter, ReloadPolicy, TantivyError};
 
 /// Create Tantivy schema optimized for file search
 pub fn create_schema() -> Schema {
@@ -28,6 +23,9 @@ pub fn create_schema() -> Schema {
 
     // Modified timestamp - indexed for sorting
     schema_builder.add_date_field("modified", FAST | INDEXED);
+
+    // File size - indexed for range queries
+    schema_builder.add_u64_field("size", FAST | INDEXED);
 
     schema_builder.build()
 }

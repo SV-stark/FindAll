@@ -8,6 +8,7 @@ use crate::scanner::Scanner;
 use crate::parsers::parse_file;
 
 use crate::settings::{AppSettings, SettingsManager};
+use crate::watcher::WatcherManager;
 
 #[derive(Serialize)]
 pub struct IndexStatus {
@@ -29,10 +30,12 @@ pub async fn search_query(
     query: String,
     limit: usize,
     state: State<'_, Arc<AppState>>,
+    min_size: Option<u64>,
+    max_size: Option<u64>,
 ) -> Result<Vec<SearchResult>, String> {
     let indexer = state.indexer.lock().await;
 
-    indexer.search(&query, limit)
+    indexer.search(&query, limit, min_size, max_size)
         .map_err(|e| e.to_string())
 }
 
@@ -68,7 +71,7 @@ pub async fn start_indexing(
 /// Get indexing status
 #[tauri::command]
 pub async fn get_index_status(
-    state: State<'_, Arc<AppState>>,
+    _state: State<'_, Arc<AppState>>,
 ) -> Result<IndexStatus, String> {
     // This is a placeholder - in production, track actual indexing progress
     Ok(IndexStatus {
@@ -90,6 +93,43 @@ pub async fn get_file_preview(
     }
 }
 
+/// Open folder and select file
+#[tauri::command]
+pub fn open_folder(path: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::Command;
+        Command::new("explorer")
+            .arg("/select,")
+            .arg(path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let path = std::path::PathBuf::from(path);
+        if let Some(parent) = path.parent() {
+            opener::reveal(parent).map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+}
+
+/// Pick a folder using native dialog
+#[tauri::command]
+pub async fn select_folder(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    
+    app.dialog().file().pick_folder(move |folder| {
+        let _ = tx.send(folder.map(|f| f.to_string()));
+    });
+    
+    rx.await.map_err(|e| e.to_string())
+}
+
 /// Get current settings
 #[tauri::command]
 pub fn get_settings(state: State<'_, Arc<AppState>>) -> Result<AppSettings, String> {
@@ -102,7 +142,13 @@ pub fn save_settings(
     settings: AppSettings,
     state: State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
-    state.settings_manager.save_settings(&settings).map_err(|e| e.to_string())
+    state.settings_manager.save_settings(&settings).map_err(|e| e.to_string())?;
+    
+    // Update watcher
+    let mut watcher = state.watcher.lock().unwrap();
+    watcher.update_watch_list(settings.index_dirs).map_err(|e| e.to_string())?;
+    
+    Ok(())
 }
 
 /// Application state shared across commands
@@ -110,18 +156,21 @@ pub struct AppState {
     pub indexer: Arc<Mutex<IndexManager>>,
     pub metadata_db: Arc<MetadataDb>,
     pub settings_manager: Arc<SettingsManager>,
+    pub watcher: std::sync::Mutex<WatcherManager>,
 }
 
 impl AppState {
     pub fn new(
-        indexer: IndexManager, 
-        metadata_db: MetadataDb,
+        indexer: Arc<Mutex<IndexManager>>, 
+        metadata_db: Arc<MetadataDb>,
         settings_manager: SettingsManager,
+        watcher: WatcherManager,
     ) -> Self {
         Self {
-            indexer: Arc::new(Mutex::new(indexer)),
-            metadata_db: Arc::new(metadata_db),
+            indexer,
+            metadata_db,
             settings_manager: Arc::new(settings_manager),
+            watcher: std::sync::Mutex::new(watcher),
         }
     }
 }

@@ -1,16 +1,12 @@
-use std::fs::File;
-use std::io::Read;
-use std::path::Path;
-use crate::error::{FlashError, Result};
+use crate::error::Result;
 use crate::parsers::ParsedDocument;
+use std::path::Path;
 
 /// Parse PDF file using pdf-extract crate
 /// Falls back to empty string on failure (don't crash on corrupted PDFs)
 pub fn parse_pdf(path: &Path) -> Result<ParsedDocument> {
-    let text = std::panic::catch_unwind(|| {
-        pdf_extract::extract_text(path)
-    });
-    
+    let text = std::panic::catch_unwind(|| pdf_extract::extract_text(path));
+
     let content = match text {
         Ok(Ok(text)) => text,
         Ok(Err(e)) => {
@@ -22,14 +18,11 @@ pub fn parse_pdf(path: &Path) -> Result<ParsedDocument> {
             String::new()
         }
     };
-    
+
     // Try to extract title from first line or filename
     let title = extract_title_from_content(&content)
-        .or_else(|| {
-            path.file_stem()
-                .map(|s| s.to_string_lossy().to_string())
-        });
-    
+        .or_else(|| path.file_stem().map(|s| s.to_string_lossy().to_string()));
+
     Ok(ParsedDocument {
         path: path.to_string_lossy().to_string(),
         content,
@@ -49,7 +42,7 @@ fn extract_title_from_content(content: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_pdf_parsing_placeholder() {
         // Placeholder for actual test

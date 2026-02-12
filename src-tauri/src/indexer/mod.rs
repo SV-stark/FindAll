@@ -45,8 +45,8 @@ impl IndexManager {
     }
 
     /// Add a document to the index
-    pub fn add_document(&self, doc: ParsedDocument) -> Result<()> {
-        self.writer.add_document(doc)
+    pub fn add_document(&self, doc: &ParsedDocument, modified: u64, size: u64) -> Result<()> {
+        self.writer.add_document(doc, modified, size)
     }
 
     /// Commit pending changes
@@ -55,7 +55,13 @@ impl IndexManager {
     }
 
     /// Search the index
-    pub fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
-        self.searcher.search(query, limit)
+    pub fn search(
+        &self,
+        query: &str,
+        limit: usize,
+        min_size: Option<u64>,
+        max_size: Option<u64>,
+    ) -> Result<Vec<SearchResult>> {
+        self.searcher.search(query, limit, min_size, max_size)
     }
 }
