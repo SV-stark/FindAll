@@ -435,7 +435,6 @@
               {/each}
             </div>
           {/if}
-          {/if}
         </div>
         <button class="btn-primary" onclick={performSearch}>Search</button>
       </header>
