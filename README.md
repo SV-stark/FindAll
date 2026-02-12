@@ -29,10 +29,11 @@
 ## 🚀 Features
 
 - **⚡ Blazing Fast**: Sub-50ms search results across millions of documents
+- **📂 Filename Search**: Instant filename-only search mode for ultra-fast navigation
 - **💾 Minimal Footprint**: <50MB RAM usage at idle (vs 200MB+ for Electron apps)
-- **📄 Universal Format Support**: PDF, DOCX, XLSX, TXT, Markdown, Code files
+- **📄 Universal Format Support**: PDF, DOCX, XLSX, EPUB, EML, MSG, ZIP, Markdown, Code files
 - **🔍 Full-Text Search**: BM25 scoring, boolean queries, exact phrase matching
-- **🖼️ OCR Ready**: Optional image text extraction
+- **📊 Advanced Filters**: Filter by size (`size:>1MB`), extension (`ext:rs`), or path (`path:src`)
 - **🔄 Live Indexing**: Automatic file watching and incremental updates
 - **🎯 Smart Filtering**: .gitignore support, custom exclude patterns
 - **🌙 Native UI**: Beautiful dark/light themes using system webview
@@ -83,7 +84,9 @@ npm run tauri dev
 | `rust OR python` | Boolean OR operator |
 | `code -python` | Exclude documents with "python" |
 | `title:api` | Search only in document titles |
-| `filetype:pdf` | Filter by file extension |
+| `ext:pdf` | Filter by file extension |
+| `path:docs` | Filter by folder path |
+| `size:>5MB` | Filter by file size (KB, MB, GB) |
 
 ### Keyboard Shortcuts
 
@@ -114,7 +117,9 @@ npm run tauri dev
 |--------|--------|--------|
 | PDF | `pdf-extract` / `lopdf` | ✅ Supported |
 | DOCX | `zip` + `quick-xml` | ✅ Supported |
-| XLSX | `calamine` | ✅ Supported |
+| XLSX, XLS, XLSB | `calamine` | ✅ Supported |
+| EPUB, EML, MSG | Native + `zip` | ✅ Supported |
+| ZIP, 7z, RAR | `zip` / `sevenz` | ✅ Supported (ZIP) |
 | TXT, MD, Code | Native Rust | ✅ Supported |
 | Images (OCR) | `ocrs` / Tesseract | 🚧 Planned |
 
@@ -149,17 +154,19 @@ Benchmarks on AMD Ryzen 7 5800X with NVMe SSD:
 - [x] Tantivy integration
 - [x] Parallel file scanning
 
-### Phase 2: Polish (In Progress 🚧)
-- [ ] OCR support for images and scanned PDFs
+### Phase 2: Polish (Completed ✅)
 - [x] Advanced search filters (date, size, type)
 - [x] Search result preview panel
-- [ ] Export search results
+- [x] Export search results (CSV, JSON)
+- [x] Fast filename-only search & indexing
+- [x] Enhanced indexing telemetry
 
-### Phase 3: Advanced Features (Planned 📋)
+### Phase 3: Advanced Features (In Progress 🚧)
+- [x] Search history and favorites (Pinned files)
 - [ ] Natural language queries
-- [ ] Search history and favorites
-- [ ] Cloud sync for index
 - [ ] Plugin system for custom parsers
+- [ ] OCR support for images and scanned PDFs
+- [ ] Cloud sync for index
 
 ### Phase 4: Enterprise (Future 🔮)
 - [ ] Network drive support
