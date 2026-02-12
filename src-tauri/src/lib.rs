@@ -8,8 +8,9 @@ pub mod settings;
 pub mod watcher;
 
 use commands::{
-    get_file_preview, get_home_dir, get_index_status, get_settings, open_folder, save_settings,
-    search_query, select_folder, start_indexing, AppState,
+    add_recent_search, clear_recent_searches, copy_to_clipboard, export_results,
+    get_file_preview, get_home_dir, get_index_status, get_recent_searches, get_settings,
+    open_folder, save_settings, search_query, select_folder, start_indexing, AppState,
 };
 use std::sync::Arc;
 use tauri::Manager;
@@ -75,6 +76,11 @@ pub fn run() {
             save_settings,
             open_folder,
             select_folder,
+            copy_to_clipboard,
+            export_results,
+            get_recent_searches,
+            add_recent_search,
+            clear_recent_searches,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

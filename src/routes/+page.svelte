@@ -1,15 +1,50 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
-  import { openPath } from "@tauri-apps/plugin-opener";
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
-  import { fade } from "svelte/transition";
+  import { fade, slide } from "svelte/transition";
 
   // Types
   interface SearchResult {
     file_path: string;
     title: string | null;
     score: number;
+  }
+
+  interface AppSettings {
+    // Indexing
+    index_dirs: string[];
+    exclude_patterns: string[];
+    auto_index_on_startup: boolean;
+    index_file_size_limit_mb: number;
+    
+    // Search
+    max_results: number;
+    search_history_enabled: boolean;
+    fuzzy_matching: boolean;
+    case_sensitive: boolean;
+    default_filters: {
+      file_types: string[];
+      min_size_mb: number | null;
+      max_size_mb: number | null;
+      modified_within_days: number | null;
+    };
+    
+    // Appearance
+    theme: "auto" | "light" | "dark";
+    font_size: "small" | "medium" | "large";
+    show_file_extensions: boolean;
+    results_per_page: number;
+    
+    // Behavior
+    minimize_to_tray: boolean;
+    auto_start_on_boot: boolean;
+    double_click_action: "open_file" | "show_in_folder" | "preview";
+    show_preview_panel: boolean;
+    
+    // Performance
+    indexing_threads: number;
+    memory_limit_mb: number;
   }
 
   // State
@@ -23,18 +58,61 @@
   let minSize = $state<number | null>(null);
   let maxSize = $state<number | null>(null);
   let showFilters = $state(false);
+  let selectedFileType = $state<string>("all");
+  let showRecentSearches = $state(false);
+  let recentSearches = $state<string[]>([]);
   
-  // Settings state
-  let settings = $state({
-    index_dirs: [] as string[],
-    exclude_patterns: [] as string[],
+  // Settings state with defaults
+  let settings = $state<AppSettings>({
+    index_dirs: [],
+    exclude_patterns: [],
+    auto_index_on_startup: true,
+    index_file_size_limit_mb: 100,
+    max_results: 50,
+    search_history_enabled: true,
+    fuzzy_matching: true,
+    case_sensitive: false,
+    default_filters: {
+      file_types: [],
+      min_size_mb: null,
+      max_size_mb: null,
+      modified_within_days: null
+    },
     theme: "auto",
-    max_results: 50
+    font_size: "medium",
+    show_file_extensions: true,
+    results_per_page: 50,
+    minimize_to_tray: true,
+    auto_start_on_boot: false,
+    double_click_action: "open_file",
+    show_preview_panel: true,
+    indexing_threads: 4,
+    memory_limit_mb: 512
   });
+
+  // Settings expanded sections
+  let expandedSections = $state({
+    indexing: true,
+    search: false,
+    appearance: false,
+    behavior: false,
+    performance: false,
+    advanced: false
+  });
+
+  // Settings has unsaved changes
+  let hasChanges = $state(false);
+  let showSaveSuccess = $state(false);
+
+  function toggleSection(section: keyof typeof expandedSections) {
+    expandedSections[section] = !expandedSections[section];
+  }
 
   async function loadSettings() {
     try {
-      settings = await invoke("get_settings");
+      const loaded = await invoke<AppSettings>("get_settings");
+      settings = { ...settings, ...loaded };
+      hasChanges = false;
     } catch (e) {
       console.error("Failed to load settings:", e);
     }
@@ -43,33 +121,96 @@
   async function saveSettings() {
     try {
       await invoke("save_settings", { settings });
+      hasChanges = false;
+      showSaveSuccess = true;
+      setTimeout(() => showSaveSuccess = false, 2000);
     } catch (e) {
       console.error("Failed to save settings:", e);
     }
   }
 
+  function updateSetting<K extends keyof AppSettings>(key: K, value: AppSettings[K]) {
+    settings[key] = value;
+    hasChanges = true;
+  }
+
+  function resetToDefaults() {
+    if (confirm("Are you sure you want to reset all settings to defaults?")) {
+      settings = {
+        index_dirs: [],
+        exclude_patterns: [".git/", "node_modules/", "target/", "AppData/", "*.tmp", "*.temp", "Thumbs.db", ".DS_Store"],
+        auto_index_on_startup: true,
+        index_file_size_limit_mb: 100,
+        max_results: 50,
+        search_history_enabled: true,
+        fuzzy_matching: true,
+        case_sensitive: false,
+        default_filters: { file_types: [], min_size_mb: null, max_size_mb: null, modified_within_days: null },
+        theme: "auto",
+        font_size: "medium",
+        show_file_extensions: true,
+        results_per_page: 50,
+        minimize_to_tray: true,
+        auto_start_on_boot: false,
+        double_click_action: "open_file",
+        show_preview_panel: true,
+        indexing_threads: 4,
+        memory_limit_mb: 512
+      };
+      hasChanges = true;
+    }
+  }
+
+  // Index directories
   function addIndexDir(path: string) {
     if (path && !settings.index_dirs.includes(path)) {
       settings.index_dirs = [...settings.index_dirs, path];
-      saveSettings();
+      hasChanges = true;
     }
   }
 
   function removeIndexDir(path: string) {
     settings.index_dirs = settings.index_dirs.filter(p => p !== path);
-    saveSettings();
+    hasChanges = true;
   }
 
+  // Exclude patterns
   function addExcludePattern(pattern: string) {
     if (pattern && !settings.exclude_patterns.includes(pattern)) {
       settings.exclude_patterns = [...settings.exclude_patterns, pattern];
-      saveSettings();
+      hasChanges = true;
     }
   }
 
   function removeExcludePattern(pattern: string) {
     settings.exclude_patterns = settings.exclude_patterns.filter(p => p !== pattern);
-    saveSettings();
+    hasChanges = true;
+  }
+
+  // File type filters
+  const availableFileTypes = [
+    { value: "docx", label: "Word Documents (.docx)" },
+    { value: "pdf", label: "PDF Files (.pdf)" },
+    { value: "txt", label: "Text Files (.txt)" },
+    { value: "md", label: "Markdown (.md)" },
+    { value: "rs", label: "Rust (.rs)" },
+    { value: "js", label: "JavaScript (.js)" },
+    { value: "ts", label: "TypeScript (.ts)" },
+    { value: "html", label: "HTML (.html)" },
+    { value: "css", label: "CSS (.css)" },
+    { value: "py", label: "Python (.py)" },
+    { value: "java", label: "Java (.java)" },
+    { value: "cpp", label: "C++ (.cpp)" }
+  ];
+
+  function toggleFileType(type: string) {
+    const current = settings.default_filters.file_types;
+    if (current.includes(type)) {
+      settings.default_filters.file_types = current.filter(t => t !== type);
+    } else {
+      settings.default_filters.file_types = [...current, type];
+    }
+    hasChanges = true;
   }
 
   let selectedPath = $state<string | null>(null);
@@ -100,17 +241,59 @@
 
     isSearching = true;
     try {
+      // Build file extensions filter based on selected file type
+      let fileExtensions: string[] | null = null;
+      if (selectedFileType !== "all") {
+        const fileTypeMap: Record<string, string[]> = {
+          documents: ["docx", "pdf", "odt", "txt", "rtf"],
+          code: ["rs", "js", "ts", "jsx", "tsx", "py", "java", "cpp", "c", "h", "go", "rb", "php", "swift", "kt"],
+          text: ["txt", "md", "json", "xml", "yaml", "yml", "csv"]
+        };
+        fileExtensions = fileTypeMap[selectedFileType] || null;
+      }
+
       results = await invoke<SearchResult[]>("search_query", { 
         query, 
         limit: settings.max_results,
-        min_size: minSize ? minSize * 1024 * 1024 : null, // Convert MB to Bytes
-        max_size: maxSize ? maxSize * 1024 * 1024 : null
+        min_size: minSize ? minSize * 1024 * 1024 : null,
+        max_size: maxSize ? maxSize * 1024 * 1024 : null,
+        file_extensions: fileExtensions
       });
+
+      // Add to recent searches
+      if (settings.search_history_enabled && query.trim()) {
+        await invoke("add_recent_search", { query: query.trim() });
+        loadRecentSearches();
+      }
     } catch (e) {
       console.error("Search failed:", e);
       results = [];
     } finally {
       isSearching = false;
+    }
+  }
+
+  async function loadRecentSearches() {
+    try {
+      recentSearches = await invoke<string[]>("get_recent_searches");
+    } catch (e) {
+      console.error("Failed to load recent searches:", e);
+    }
+  }
+
+  async function copyToClipboard(text: string) {
+    try {
+      await invoke("copy_to_clipboard", { text });
+    } catch (e) {
+      console.error("Failed to copy to clipboard:", e);
+    }
+  }
+
+  async function exportResults(format: 'csv' | 'json' | 'txt') {
+    try {
+      await invoke("export_results", { results, format });
+    } catch (e) {
+      console.error("Failed to export results:", e);
     }
   }
 
@@ -122,22 +305,18 @@
   async function startIndexing() {
     isIndexing = true;
     try {
-      // For demo, index the user's documents folder
-      // In production, this would be configurable
       const homeDir = await invoke<string>("get_home_dir").catch(() => "./");
       await invoke("start_indexing", { path: homeDir });
     } catch (e) {
       console.error("Indexing failed:", e);
     } finally {
-      // Note: indexing runs in background, so we set this to false immediately
-      // In production, you'd track actual indexing status
       isIndexing = false;
     }
   }
 
   async function openFile(path: string) {
     try {
-      await openPath(path);
+      await invoke("open_folder", { path });
     } catch (e) {
       console.error("Failed to open file:", e);
     }
@@ -167,13 +346,21 @@
       : settings.theme
   );
 
+  const fontSizeClass = $derived({
+    small: "font-small",
+    medium: "font-medium", 
+    large: "font-large"
+  }[settings.font_size]);
+
   $effect(() => {
     document.body.setAttribute("data-theme", effectiveTheme);
+    document.body.className = fontSizeClass;
   });
 
   onMount(async () => {
     window.addEventListener("keydown", handleKeydown);
     await loadSettings();
+    await loadRecentSearches();
 
     const unlisten = await listen<{
       total: number,
@@ -207,82 +394,117 @@
     </button>
     <button class:active={activeTab === "settings"} onclick={() => activeTab = "settings"}>
       <span class="tab-icon">⚙️</span> Settings
+      {#if hasChanges}
+        <span class="unsaved-indicator">●</span>
+      {/if}
     </button>
   </nav>
 
   {#if activeTab === "search"}
-    <div class="anytxt-layout" in:fade={{ duration: 200 }}>
-      <!-- AnyTXT Header Style -->
-      <header class="app-header">
-        <div class="search-section">
-          <div class="search-input-wrapper">
-            <span class="search-icon">🔍</span>
-            <input
-              type="text"
-              class="anytxt-search-input"
-              placeholder="Search everything or specific words..."
-              bind:value={query}
-              oninput={debouncedSearch}
-            />
-            {#if isSearching}
-              <div class="mini-spinner"></div>
-            {/if}
-          </div>
-          <button class="anytxt-btn primary" onclick={performSearch}>Search</button>
+    <div class="search-tab" in:fade={{ duration: 200 }}>
+      <header class="search-header">
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input
+            type="text"
+            class="search-input"
+            placeholder="Search files by name, content, or path..."
+            bind:value={query}
+            oninput={debouncedSearch}
+            onfocus={() => showRecentSearches = recentSearches.length > 0 && settings.search_history_enabled}
+            onblur={() => setTimeout(() => showRecentSearches = false, 200)}
+          />
+          {#if isSearching}
+            <div class="spinner"></div>
+          {/if}
+          
+          <!-- Recent Searches Dropdown -->
+          {#if showRecentSearches && recentSearches.length > 0}
+            <div class="recent-searches-dropdown">
+              <div class="recent-searches-header">
+                <span>Recent Searches</span>
+                <button class="clear-recent" onclick={() => { invoke("clear_recent_searches"); recentSearches = []; }}>Clear</button>
+              </div>
+              {#each recentSearches as search}
+                <button 
+                  class="recent-search-item" 
+                  onclick={() => { query = search; performSearch(); showRecentSearches = false; }}
+                >
+                  {search}
+                </button>
+              {/each}
+            </div>
+          {/if}
+          {/if}
         </div>
+        <button class="btn-primary" onclick={performSearch}>Search</button>
       </header>
 
-      <!-- Toolbar / Filters -->
-      <div class="app-toolbar">
+      <div class="toolbar">
         <div class="filter-group">
-          <label>Filter:</label>
-          <select class="toolbar-select">
-            <option>All File Types</option>
-            <option>Documents (*.docx, *.pdf...)</option>
-            <option>Code Files (*.rs, *.js...)</option>
-            <option>Text Files (*.txt, *.md)</option>
+          <label>File Type:</label>
+          <select class="select-input" bind:value={selectedFileType} onchange={() => { if (query.trim()) performSearch(); }}>
+            <option value="all">All Files</option>
+            <option value="documents">Documents (*.docx, *.pdf...)</option>
+            <option value="code">Code Files (*.rs, *.js...)</option>
+            <option value="text">Text Files (*.txt, *.md)</option>
           </select>
         </div>
         <div class="spacer"></div>
-        <div class="toolbar-actions">
-          <button class="toolbar-btn" class:active={showFilters} onclick={() => showFilters = !showFilters}>
-            ⚙️ Filters
-          </button>
-          <button class="toolbar-btn" onclick={startIndexing} disabled={isIndexing}>
-            {isIndexing ? "Indexing..." : "⚡ Rebuild Index"}
-          </button>
-        </div>
+        {#if results.length > 0}
+          <div class="export-group">
+            <button class="toolbar-btn" onclick={() => exportResults('csv')} title="Export as CSV">
+              📊 Export CSV
+            </button>
+            <button class="toolbar-btn" onclick={() => exportResults('json')} title="Export as JSON">
+              📋 Export JSON
+            </button>
+          </div>
+        {/if}
+        <button class="toolbar-btn" class:active={showFilters} onclick={() => showFilters = !showFilters}>
+          ⚙️ Filters
+        </button>
+        <button class="toolbar-btn" onclick={startIndexing} disabled={isIndexing}>
+          {isIndexing ? "⏳ Indexing..." : "⚡ Rebuild Index"}
+        </button>
       </div>
 
       {#if showFilters}
-        <div class="filter-panel" transition:fade>
-          <div class="filter-item">
-            <label>Min Size (MB):</label>
-            <input type="number" bind:value={minSize} oninput={debouncedSearch} placeholder="Any" />
+        <div class="filter-panel" transition:slide>
+          <div class="filter-row">
+            <div class="filter-field">
+              <label>Min Size (MB)</label>
+              <input type="number" bind:value={minSize} oninput={debouncedSearch} placeholder="Any" />
+            </div>
+            <div class="filter-field">
+              <label>Max Size (MB)</label>
+              <input type="number" bind:value={maxSize} oninput={debouncedSearch} placeholder="Any" />
+            </div>
+            <button class="btn-secondary" onclick={() => { minSize = null; maxSize = null; debouncedSearch(); }}>
+              Clear Filters
+            </button>
           </div>
-          <div class="filter-item">
-            <label>Max Size (MB):</label>
-            <input type="number" bind:value={maxSize} oninput={debouncedSearch} placeholder="Any" />
-          </div>
-          <button class="clear-filters" onclick={() => { minSize = null; maxSize = null; debouncedSearch(); }}>Clear</button>
         </div>
       {/if}
 
-      <!-- Main Content Area -->
-      <div class="workspace">
-        <div class="results-pane">
-          <div class="results-table-header">
-            <div class="col-name">Name</div>
-            <div class="col-path">Path</div>
-            <div class="col-score">Score</div>
+      <div class="content-area">
+        <div class="results-panel">
+          <div class="results-header">
+            <span class="col-name">Name</span>
+            <span class="col-path">Path</span>
+            <span class="col-actions">Actions</span>
           </div>
-          <div class="results-scroller">
+          <div class="results-list">
             {#if results.length === 0 && query.trim()}
-              <div class="empty-state">No matching documents found.</div>
+              <div class="empty-state">
+                <div class="empty-icon">🔍</div>
+                <p>No results found for "{query}"</p>
+                <span class="empty-hint">Try different keywords or adjust filters</span>
+              </div>
             {:else if results.length > 0}
               {#each results as result}
                 <div
-                  class="table-row"
+                  class="result-item"
                   class:active={selectedPath === result.file_path}
                   onclick={() => showPreview(result.file_path)}
                   ondblclick={() => openFile(result.file_path)}
@@ -294,35 +516,59 @@
                     <span class="file-title">{result.title || result.file_path.split(/[\\/]/).pop()}</span>
                   </div>
                   <div class="col-path">{result.file_path}</div>
-                  <div class="col-score">
-                    <button class="icon-btn" onclick={(e) => { e.stopPropagation(); invoke('open_folder', { path: result.file_path }); }} title="Open Location">📂</button>
-                    {result.score.toFixed(1)}
+                  <div class="col-actions">
+                    <button 
+                      class="action-btn" 
+                      title="Copy Path"
+                      onclick={(e) => { e.stopPropagation(); copyToClipboard(result.file_path); }}
+                    >
+                      📋
+                    </button>
+                    <button 
+                      class="action-btn" 
+                      title="Copy Content"
+                      onclick={async (e) => { 
+                        e.stopPropagation(); 
+                        const content = await invoke<string>("get_file_preview", { path: result.file_path });
+                        copyToClipboard(content);
+                      }}
+                    >
+                      📄
+                    </button>
+                    <button 
+                      class="action-btn" 
+                      title="Open Location"
+                      onclick={(e) => { e.stopPropagation(); openFile(result.file_path); }}
+                    >
+                      📂
+                    </button>
                   </div>
                 </div>
               {/each}
+            {:else}
+              <div class="empty-state">
+                <div class="empty-icon">📁</div>
+                <p>Ready to search</p>
+                <span class="empty-hint">Type above to search through indexed files</span>
+              </div>
             {/if}
           </div>
-          <footer class="results-footer">
-            {#if results.length > 0}
-              {results.length} results found in the index
-            {:else}
-              Ready to search
-            {/if}
-          </footer>
+          <div class="results-footer">
+            {results.length > 0 ? `${results.length} results found` : 'No active search'}
+          </div>
         </div>
 
-        <!-- Preview Pane -->
-        {#if selectedPath}
-          <div class="preview-pane" transition:fade>
-            <div class="preview-toolbar">
-              <span class="preview-title">Quick Preview: {selectedPath.split(/[\\/]/).pop()}</span>
-              <button class="close-preview" onclick={() => { selectedPath = null; previewContent = null; }}>✕</button>
+        {#if selectedPath && settings.show_preview_panel}
+          <div class="preview-panel" transition:fade>
+            <div class="preview-header">
+              <span class="preview-title">{selectedPath.split(/[\\/]/).pop()}</span>
+              <button class="close-btn" onclick={() => { selectedPath = null; previewContent = null; }}>✕</button>
             </div>
-            <div class="preview-body">
+            <div class="preview-content">
               {#if previewContent}
                 <pre>{previewContent}</pre>
               {:else}
-                <div class="preview-loading">Loading content...</div>
+                <div class="preview-loading">Loading...</div>
               {/if}
             </div>
           </div>
@@ -330,88 +576,443 @@
       </div>
     </div>
   {:else}
-    <div class="settings-tab" in:fade={{ duration: 200 }}>
-      <h1>Settings</h1>
-      
-      <section class="settings-section">
-        <h2>Appearance</h2>
-        <div class="setting-item">
-          <label>Theme</label>
-          <select bind:value={settings.theme} onchange={saveSettings}>
-            <option value="auto">System Default</option>
-            <option value="light">Light</option>
-            <option value="dark">Dark</option>
-          </select>
+    <div class="settings-container" in:fade={{ duration: 200 }}>
+      <div class="settings-header">
+        <h1>Settings</h1>
+        <div class="header-actions">
+          <button class="btn-secondary" onclick={resetToDefaults}>Reset to Defaults</button>
+          <button class="btn-primary" onclick={saveSettings} disabled={!hasChanges}>
+            {hasChanges ? 'Save Changes' : 'Saved'}
+          </button>
         </div>
-      </section>
+      </div>
 
-      <section class="settings-section">
-        <h2>Index Locations</h2>
-        <div class="dir-list">
-          {#each settings.index_dirs as dir}
-            <div class="dir-item">
-              <span>{dir}</span>
-              <button class="remove-btn" onclick={() => removeIndexDir(dir)}>✕</button>
+      <!-- Indexing Section -->
+      <div class="settings-section">
+        <button class="section-header" onclick={() => toggleSection('indexing')}>
+          <span class="section-icon">📁</span>
+          <div class="section-title">
+            <h3>Indexing</h3>
+            <p>Configure which folders to index and exclusion patterns</p>
+          </div>
+          <span class="expand-icon">{expandedSections.indexing ? '▼' : '▶'}</span>
+        </button>
+        
+        {#if expandedSections.indexing}
+          <div class="section-content" transition:slide>
+            <div class="setting-group">
+              <label class="setting-label">Index Locations</label>
+              <p class="setting-description">Folders that will be scanned and indexed for searching</p>
+              <div class="tag-list">
+                {#each settings.index_dirs as dir}
+                  <div class="tag">
+                    <span class="tag-text">{dir}</span>
+                    <button class="tag-remove" onclick={() => removeIndexDir(dir)}>✕</button>
+                  </div>
+                {/each}
+                {#if settings.index_dirs.length === 0}
+                  <span class="empty-hint">No directories added (Home folder indexed by default)</span>
+                {/if}
+              </div>
+              <button class="btn-secondary" onclick={async () => {
+                try {
+                  const selected = await invoke<string | null>("select_folder");
+                  if (selected) addIndexDir(selected);
+                } catch (e) {
+                  console.error("Failed to pick folder:", e);
+                }
+              }}>
+                + Add Folder
+              </button>
             </div>
-          {/each}
-          {#if settings.index_dirs.length === 0}
-            <p class="empty-hint">No specific directories added (Home is indexed by default)</p>
-          {/if}
-        </div>
-        <button class="add-btn" onclick={async () => {
-          try {
-            const selected = await invoke<string | null>("select_folder");
-            if (selected) {
-              addIndexDir(selected);
-            }
-          } catch (e) {
-            console.error("Failed to pick folder:", e);
-          }
-        }}>Browse Folder...</button>
-      </section>
 
-      <section class="settings-section">
-        <h2>Exclusions</h2>
-        <div class="pattern-list">
-          {#each settings.exclude_patterns as pattern}
-            <div class="pattern-pill">
-              {pattern}
-              <button onclick={() => removeExcludePattern(pattern)}>✕</button>
+            <div class="setting-group">
+              <label class="setting-label">Exclusion Patterns</label>
+              <p class="setting-description">Files and folders matching these patterns will be skipped</p>
+              <div class="tag-list">
+                {#each settings.exclude_patterns as pattern}
+                  <div class="tag secondary">
+                    <span class="tag-text">{pattern}</span>
+                    <button class="tag-remove" onclick={() => removeExcludePattern(pattern)}>✕</button>
+                  </div>
+                {/each}
+              </div>
+              <div class="input-with-button">
+                <input 
+                  type="text" 
+                  placeholder="Add pattern (e.g., *.tmp, backup/)"
+                  onkeydown={(e) => {
+                    if (e.key === 'Enter') {
+                      addExcludePattern(e.currentTarget.value);
+                      e.currentTarget.value = '';
+                    }
+                  }}
+                />
+                <button class="btn-secondary" onclick={(e) => {
+                  const input = e.currentTarget.previousElementSibling as HTMLInputElement;
+                  addExcludePattern(input.value);
+                  input.value = '';
+                }}>Add</button>
+              </div>
             </div>
-          {/each}
-        </div>
-        <div class="add-pattern">
-          <input type="text" placeholder="Add pattern (e.g. *.tmp or backup/)" 
-            onkeydown={(e) => {
-              if (e.key === 'Enter') {
-                addExcludePattern(e.currentTarget.value);
-                e.currentTarget.value = '';
-              }
-            }} />
-        </div>
-      </section>
 
-      <section class="settings-section">
-        <h2>Search Performance</h2>
-        <div class="setting-item">
-          <label>Max Results</label>
-          <input type="number" bind:value={settings.max_results} onchange={saveSettings} min="10" max="1000" />
-        </div>
-      </section>
+            <div class="setting-row">
+              <div class="setting-info">
+                <label class="setting-label">Auto-index on Startup</label>
+                <p class="setting-description">Automatically update index when app starts</p>
+              </div>
+              <label class="toggle">
+                <input 
+                  type="checkbox" 
+                  checked={settings.auto_index_on_startup}
+                  onchange={(e) => updateSetting('auto_index_on_startup', e.currentTarget.checked)}
+                />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <div class="setting-row">
+              <div class="setting-info">
+                <label class="setting-label">Max File Size</label>
+                <p class="setting-description">Skip files larger than this limit</p>
+              </div>
+              <div class="input-with-unit">
+                <input 
+                  type="number" 
+                  min="1" 
+                  max="1000"
+                  value={settings.index_file_size_limit_mb}
+                  onchange={(e) => updateSetting('index_file_size_limit_mb', parseInt(e.currentTarget.value))}
+                />
+                <span class="unit">MB</span>
+              </div>
+            </div>
+          </div>
+        {/if}
+      </div>
+
+      <!-- Search Section -->
+      <div class="settings-section">
+        <button class="section-header" onclick={() => toggleSection('search')}>
+          <span class="section-icon">🔍</span>
+          <div class="section-title">
+            <h3>Search</h3>
+            <p>Configure search behavior and default filters</p>
+          </div>
+          <span class="expand-icon">{expandedSections.search ? '▼' : '▶'}</span>
+        </button>
+        
+        {#if expandedSections.search}
+          <div class="section-content" transition:slide>
+            <div class="setting-row">
+              <div class="setting-info">
+                <label class="setting-label">Max Results</label>
+                <p class="setting-description">Maximum number of search results to display</p>
+              </div>
+              <input 
+                type="number" 
+                class="input-small"
+                min="10" 
+                max="1000"
+                value={settings.max_results}
+                onchange={(e) => updateSetting('max_results', parseInt(e.currentTarget.value))}
+              />
+            </div>
+
+            <div class="setting-row">
+              <div class="setting-info">
+                <label class="setting-label">Results Per Page</label>
+                <p class="setting-description">Number of results shown before pagination</p>
+              </div>
+              <input 
+                type="number" 
+                class="input-small"
+                min="10" 
+                max="200"
+                value={settings.results_per_page}
+                onchange={(e) => updateSetting('results_per_page', parseInt(e.currentTarget.value))}
+              />
+            </div>
+
+            <div class="setting-row">
+              <div class="setting-info">
+                <label class="setting-label">Search History</label>
+                <p class="setting-description">Remember recent searches for quick access</p>
+              </div>
+              <label class="toggle">
+                <input 
+                  type="checkbox" 
+                  checked={settings.search_history_enabled}
+                  onchange={(e) => updateSetting('search_history_enabled', e.currentTarget.checked)}
+                />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <div class="setting-row">
+              <div class="setting-info">
+                <label class="setting-label">Fuzzy Matching</label>
+                <p class="setting-description">Allow approximate matches for typos</p>
+              </div>
+              <label class="toggle">
+                <input 
+                  type="checkbox" 
+                  checked={settings.fuzzy_matching}
+                  onchange={(e) => updateSetting('fuzzy_matching', e.currentTarget.checked)}
+                />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <div class="setting-row">
+              <div class="setting-info">
+                <label class="setting-label">Case Sensitive</label>
+                <p class="setting-description">Match exact capitalization in searches</p>
+              </div>
+              <label class="toggle">
+                <input 
+                  type="checkbox" 
+                  checked={settings.case_sensitive}
+                  onchange={(e) => updateSetting('case_sensitive', e.currentTarget.checked)}
+                />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <div class="setting-group">
+              <label class="setting-label">Default File Types</label>
+              <p class="setting-description">Only search these file types by default (empty = all files)</p>
+              <div class="checkbox-grid">
+                {#each availableFileTypes as type}
+                  <label class="checkbox-item">
+                    <input 
+                      type="checkbox" 
+                      checked={settings.default_filters.file_types.includes(type.value)}
+                      onchange={() => toggleFileType(type.value)}
+                    />
+                    <span>{type.label}</span>
+                  </label>
+                {/each}
+              </div>
+            </div>
+          </div>
+        {/if}
+      </div>
+
+      <!-- Appearance Section -->
+      <div class="settings-section">
+        <button class="section-header" onclick={() => toggleSection('appearance')}>
+          <span class="section-icon">🎨</span>
+          <div class="section-title">
+            <h3>Appearance</h3>
+            <p>Customize the look and feel of the application</p>
+          </div>
+          <span class="expand-icon">{expandedSections.appearance ? '▼' : '▶'}</span>
+        </button>
+        
+        {#if expandedSections.appearance}
+          <div class="section-content" transition:slide>
+            <div class="setting-row">
+              <div class="setting-info">
+                <label class="setting-label">Theme</label>
+                <p class="setting-description">Choose your preferred color scheme</p>
+              </div>
+              <select 
+                class="select-input"
+                value={settings.theme}
+                onchange={(e) => updateSetting('theme', e.currentTarget.value as any)}
+              >
+                <option value="auto">🌓 System Default</option>
+                <option value="light">☀️ Light</option>
+                <option value="dark">🌙 Dark</option>
+              </select>
+            </div>
+
+            <div class="setting-row">
+              <div class="setting-info">
+                <label class="setting-label">Font Size</label>
+                <p class="setting-description">Adjust text size throughout the app</p>
+              </div>
+              <select 
+                class="select-input"
+                value={settings.font_size}
+                onchange={(e) => updateSetting('font_size', e.currentTarget.value as any)}
+              >
+                <option value="small">Small</option>
+                <option value="medium">Medium</option>
+                <option value="large">Large</option>
+              </select>
+            </div>
+
+            <div class="setting-row">
+              <div class="setting-info">
+                <label class="setting-label">Show File Extensions</label>
+                <p class="setting-description">Display file extensions in search results</p>
+              </div>
+              <label class="toggle">
+                <input 
+                  type="checkbox" 
+                  checked={settings.show_file_extensions}
+                  onchange={(e) => updateSetting('show_file_extensions', e.currentTarget.checked)}
+                />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <div class="setting-row">
+              <div class="setting-info">
+                <label class="setting-label">Show Preview Panel</label>
+                <p class="setting-description">Show file preview on the right side</p>
+              </div>
+              <label class="toggle">
+                <input 
+                  type="checkbox" 
+                  checked={settings.show_preview_panel}
+                  onchange={(e) => updateSetting('show_preview_panel', e.currentTarget.checked)}
+                />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+        {/if}
+      </div>
+
+      <!-- Behavior Section -->
+      <div class="settings-section">
+        <button class="section-header" onclick={() => toggleSection('behavior')}>
+          <span class="section-icon">⚡</span>
+          <div class="section-title">
+            <h3>Behavior</h3>
+            <p>Configure how the app behaves and responds to actions</p>
+          </div>
+          <span class="expand-icon">{expandedSections.behavior ? '▼' : '▶'}</span>
+        </button>
+        
+        {#if expandedSections.behavior}
+          <div class="section-content" transition:slide>
+            <div class="setting-row">
+              <div class="setting-info">
+                <label class="setting-label">Minimize to Tray</label>
+                <p class="setting-description">Keep app running in system tray when closed</p>
+              </div>
+              <label class="toggle">
+                <input 
+                  type="checkbox" 
+                  checked={settings.minimize_to_tray}
+                  onchange={(e) => updateSetting('minimize_to_tray', e.currentTarget.checked)}
+                />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <div class="setting-row">
+              <div class="setting-info">
+                <label class="setting-label">Start on System Boot</label>
+                <p class="setting-description">Launch app automatically when computer starts</p>
+              </div>
+              <label class="toggle">
+                <input 
+                  type="checkbox" 
+                  checked={settings.auto_start_on_boot}
+                  onchange={(e) => updateSetting('auto_start_on_boot', e.currentTarget.checked)}
+                />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <div class="setting-row">
+              <div class="setting-info">
+                <label class="setting-label">Double-Click Action</label>
+                <p class="setting-description">What happens when you double-click a result</p>
+              </div>
+              <select 
+                class="select-input"
+                value={settings.double_click_action}
+                onchange={(e) => updateSetting('double_click_action', e.currentTarget.value as any)}
+              >
+                <option value="open_file">Open File</option>
+                <option value="show_in_folder">Show in Folder</option>
+                <option value="preview">Show Preview</option>
+              </select>
+            </div>
+          </div>
+        {/if}
+      </div>
+
+      <!-- Performance Section -->
+      <div class="settings-section">
+        <button class="section-header" onclick={() => toggleSection('performance')}>
+          <span class="section-icon">🚀</span>
+          <div class="section-title">
+            <h3>Performance</h3>
+            <p>Optimize resource usage and indexing speed</p>
+          </div>
+          <span class="expand-icon">{expandedSections.performance ? '▼' : '▶'}</span>
+        </button>
+        
+        {#if expandedSections.performance}
+          <div class="section-content" transition:slide>
+            <div class="setting-row">
+              <div class="setting-info">
+                <label class="setting-label">Indexing Threads</label>
+                <p class="setting-description">Number of CPU cores to use for indexing (restart required)</p>
+              </div>
+              <input 
+                type="number" 
+                class="input-small"
+                min="1" 
+                max="16"
+                value={settings.indexing_threads}
+                onchange={(e) => updateSetting('indexing_threads', parseInt(e.currentTarget.value))}
+              />
+            </div>
+
+            <div class="setting-row">
+              <div class="setting-info">
+                <label class="setting-label">Memory Limit</label>
+                <p class="setting-description">Maximum RAM usage for the indexer</p>
+              </div>
+              <div class="input-with-unit">
+                <input 
+                  type="number" 
+                  min="128" 
+                  max="4096"
+                  value={settings.memory_limit_mb}
+                  onchange={(e) => updateSetting('memory_limit_mb', parseInt(e.currentTarget.value))}
+                />
+                <span class="unit">MB</span>
+              </div>
+            </div>
+          </div>
+        {/if}
+      </div>
+
+      <!-- Footer info -->
+      <div class="settings-footer">
+        <p>Flash Search v0.2.0 • <a href="#" onclick={() => invoke('open_folder', { path: '.' })}>Open Data Folder</a></p>
+      </div>
     </div>
   {/if}
 
+  <!-- Save Success Toast -->
+  {#if showSaveSuccess}
+    <div class="toast success" transition:fade>
+      <span>✓ Settings saved successfully</span>
+    </div>
+  {/if}
+
+  <!-- Indexing Progress -->
   {#if indexProgress.status !== "idle"}
-    <div class="progress-bar-container" class:done={indexProgress.status === "done"}>
-      <div class="progress-info">
+    <div class="progress-toast" class:done={indexProgress.status === "done"}>
+      <div class="progress-header">
         <span class="status-text">
-          {indexProgress.status === "scanning" ? "Scanning files..." : 
-           indexProgress.status === "done" ? "Indexing completed" : 
-           `Indexing: ${indexProgress.processed} / ${indexProgress.total}`}
+          {indexProgress.status === "scanning" ? "📂 Scanning files..." : 
+           indexProgress.status === "done" ? "✅ Indexing completed" : 
+           `🔄 Indexing: ${indexProgress.processed} / ${indexProgress.total}`}
         </span>
         <span class="percentage">{progressPercentage}%</span>
       </div>
-      <div class="progress-track">
+      <div class="progress-bar">
         <div class="progress-fill" style="width: {progressPercentage}%"></div>
       </div>
       {#if indexProgress.currentFile && indexProgress.status !== "done"}
@@ -423,164 +1024,168 @@
 
 <style>
   :global(body) {
-    font-family: "Segoe UI", Tahoma, sans-serif;
-    background: #fdfdfd;
-    color: #333;
-    overflow: hidden; /* App-like feel */
-    height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     margin: 0;
+    padding: 0;
+    background: #f5f5f5;
+    color: #333;
+    overflow: hidden;
+    height: 100vh;
   }
 
   :global(body[data-theme="dark"]) {
-    background: #1e1e1e;
-    color: #d4d4d4;
+    background: #1a1a1a;
+    color: #e0e0e0;
   }
+
+  /* Font sizes */
+  :global(.font-small) { font-size: 12px; }
+  :global(.font-medium) { font-size: 14px; }
+  :global(.font-large) { font-size: 16px; }
 
   .container {
     display: flex;
     flex-direction: column;
     height: 100vh;
-    max-width: 100vw;
+  }
+
+  /* Tabs */
+  .tabs {
+    display: flex;
+    background: #fff;
+    border-bottom: 1px solid #e0e0e0;
     padding: 0;
   }
 
-  /* Navigation Tabs */
-  .tabs {
-    display: flex;
-    background: #f3f3f3;
-    border-bottom: 1px solid #d1d1d1;
-    padding: 0 10px;
-    gap: 2px;
-  }
-
   :global(body[data-theme="dark"]) .tabs {
-    background: #252526;
-    border-color: #3e3e42;
+    background: #252525;
+    border-color: #3a3a3a;
   }
 
   .tabs button {
     background: transparent;
     border: none;
-    padding: 8px 16px;
-    font-size: 13px;
+    padding: 14px 24px;
+    font-size: 14px;
     color: #666;
     cursor: pointer;
     border-bottom: 2px solid transparent;
     transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
 
   .tabs button:hover {
     color: #333;
-    background: #e9e9e9;
+    background: #f9f9f9;
   }
 
   :global(body[data-theme="dark"]) .tabs button:hover {
     color: #fff;
-    background: #2d2d2d;
+    background: #2a2a2a;
   }
 
   .tabs button.active {
     color: #0078d4;
     border-bottom-color: #0078d4;
     font-weight: 600;
-    background: #fff;
   }
 
   :global(body[data-theme="dark"]) .tabs button.active {
-    color: #569cd6;
-    border-bottom-color: #569cd6;
-    background: #1e1e1e;
+    color: #4fc3f7;
+    border-bottom-color: #4fc3f7;
   }
 
-  .tab-icon {
-    margin-right: 6px;
+  .unsaved-indicator {
+    color: #ff9800;
+    font-size: 8px;
   }
 
-  /* Header / Search Area */
-  .app-header {
+  /* Search Tab */
+  .search-tab {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .search-header {
     background: #fff;
-    padding: 20px 20px;
-    border-bottom: 1px solid #e1e1e1;
-  }
-
-  :global(body[data-theme="dark"]) .app-header {
-    background: #2d2d2d;
-    border-color: #3e3e42;
-  }
-
-  .search-section {
+    padding: 24px 32px;
+    border-bottom: 1px solid #e0e0e0;
     display: flex;
     gap: 12px;
-    max-width: 900px;
-    margin: 0 auto;
   }
 
-  .search-input-wrapper {
-    position: relative;
+  :global(body[data-theme="dark"]) .search-header {
+    background: #252525;
+    border-color: #3a3a3a;
+  }
+
+  .search-box {
     flex: 1;
     display: flex;
     align-items: center;
+    background: #f5f5f5;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 0 16px;
+    transition: all 0.2s;
+    position: relative;
+  }
+
+  :global(body[data-theme="dark"]) .search-box {
+    background: #1a1a1a;
+    border-color: #3a3a3a;
+  }
+
+  .search-box:focus-within {
+    border-color: #0078d4;
+    box-shadow: 0 0 0 3px rgba(0, 120, 212, 0.1);
   }
 
   .search-icon {
-    position: absolute;
-    left: 12px;
-    color: #888;
+    font-size: 18px;
+    margin-right: 12px;
   }
 
-  .anytxt-search-input {
-    width: 100%;
-    padding: 10px 15px 10px 38px;
-    font-size: 14px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
+  .search-input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    padding: 14px 0;
+    font-size: 16px;
     outline: none;
-    transition: border-color 0.2s;
+    color: inherit;
   }
 
-  .anytxt-search-input:focus {
-    border-color: #0078d4;
-    box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.1);
+  .spinner {
+    width: 20px;
+    height: 20px;
+    border: 2px solid #ddd;
+    border-top-color: #0078d4;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
   }
 
-  :global(body[data-theme="dark"]) .anytxt-search-input {
-    background: #3c3c3c;
-    border-color: #555;
-    color: #fff;
-  }
-
-  .anytxt-btn {
-    padding: 8px 24px;
-    font-size: 14px;
-    border-radius: 4px;
-    cursor: pointer;
-    border: 1px solid transparent;
-    transition: background 0.2s;
-  }
-
-  .anytxt-btn.primary {
-    background: #0078d4;
-    color: #fff;
-  }
-
-  .anytxt-btn.primary:hover {
-    background: #005a9e;
+  @keyframes spin {
+    to { transform: rotate(360deg); }
   }
 
   /* Toolbar */
-  .app-toolbar {
-    background: #f9f9f9;
-    padding: 8px 20px;
+  .toolbar {
     display: flex;
     align-items: center;
-    border-bottom: 1px solid #e1e1e1;
-    font-size: 13px;
+    padding: 12px 32px;
+    background: #fafafa;
+    border-bottom: 1px solid #e0e0e0;
+    gap: 16px;
   }
 
-  :global(body[data-theme="dark"]) .app-toolbar {
-    background: #252526;
-    border-color: #3e3e42;
-    color: #ccc;
+  :global(body[data-theme="dark"]) .toolbar {
+    background: #202020;
+    border-color: #3a3a3a;
   }
 
   .filter-group {
@@ -589,347 +1194,898 @@
     gap: 8px;
   }
 
-  .toolbar-select {
-    padding: 4px 8px;
-    border: 1px solid #ccc;
-    background: #fff;
-    border-radius: 3px;
-    font-size: 12px;
+  .filter-group label {
+    font-size: 13px;
+    color: #666;
   }
 
-  :global(body[data-theme="dark"]) .toolbar-select {
-    background: #3c3c3c;
-    border-color: #555;
-    color: #fff;
+  :global(body[data-theme="dark"]) .filter-group label {
+    color: #999;
+  }
+
+  .select-input {
+    padding: 6px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background: #fff;
+    font-size: 13px;
+    outline: none;
+    color: inherit;
+  }
+
+  :global(body[data-theme="dark"]) .select-input {
+    background: #1a1a1a;
+    border-color: #444;
+    color: #e0e0e0;
   }
 
   .toolbar-btn {
-    background: transparent;
-    border: 1px solid #ccc;
-    padding: 4px 12px;
-    border-radius: 3px;
+    background: #fff;
+    border: 1px solid #ddd;
+    padding: 8px 16px;
+    border-radius: 6px;
     cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s;
+  }
+
+  :global(body[data-theme="dark"]) .toolbar-btn {
+    background: #1a1a1a;
+    border-color: #444;
+    color: #e0e0e0;
+  }
+
+  .toolbar-btn:hover {
+    background: #f5f5f5;
   }
 
   .toolbar-btn.active {
-    background: #e1e1e1;
     border-color: #0078d4;
     color: #0078d4;
   }
 
-  :global(body[data-theme="dark"]) .toolbar-btn.active {
-    background: #3c3c3c;
-    border-color: #569cd6;
-    color: #569cd6;
+  .spacer {
+    flex: 1;
   }
 
+  /* Filter Panel */
   .filter-panel {
-    background: #fdfdfd;
-    border-bottom: 1px solid #d1d1d1;
-    padding: 10px 20px;
-    display: flex;
-    gap: 20px;
-    align-items: center;
-    font-size: 12px;
+    background: #fafafa;
+    border-bottom: 1px solid #e0e0e0;
+    padding: 16px 32px;
   }
 
   :global(body[data-theme="dark"]) .filter-panel {
-    background: #252526;
-    border-color: #3e3e42;
-    color: #ccc;
+    background: #202020;
+    border-color: #3a3a3a;
   }
 
-  .filter-item {
+  .filter-row {
     display: flex;
-    align-items: center;
-    gap: 8px;
+    gap: 16px;
+    align-items: flex-end;
   }
 
-  .filter-item input {
-    width: 80px;
-    padding: 4px 8px;
-    border: 1px solid #ccc;
-    border-radius: 3px;
+  .filter-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .filter-field label {
     font-size: 12px;
+    color: #666;
   }
 
-  :global(body[data-theme="dark"]) .filter-item input {
-    background: #3c3c3c;
-    border-color: #555;
-    color: #fff;
+  .filter-field input {
+    width: 120px;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 13px;
   }
 
-  .clear-filters {
-    background: #eee;
-    border: none;
-    padding: 4px 10px;
-    border-radius: 3px;
-    cursor: pointer;
-    font-size: 11px;
-  }
-
-  .clear-filters:hover {
-    background: #ddd;
-  }
-
-  :global(body[data-theme="dark"]) .toolbar-btn {
-    border-color: #555;
-    color: #ccc;
-  }
-
-  .spacer { flex: 1; }
-
-  /* Workspace / Results */
-  .workspace {
+  /* Content Area */
+  .content-area {
     flex: 1;
     display: flex;
-    overflow: hidden; /* Header and Toolbar stay fixed */
+    overflow: hidden;
   }
 
-  .results-pane {
+  .results-panel {
     flex: 1;
     display: flex;
     flex-direction: column;
-    min-width: 0;
+    background: #fff;
   }
 
-  .results-table-header {
+  :global(body[data-theme="dark"]) .results-panel {
+    background: #1a1a1a;
+  }
+
+  .results-header {
     display: flex;
-    background: #f3f3f3;
-    border-bottom: 1px solid #d1d1d1;
+    padding: 12px 32px;
+    background: #fafafa;
+    border-bottom: 1px solid #e0e0e0;
     font-weight: 600;
     font-size: 12px;
-    padding: 5px 0;
-    color: #555;
+    color: #666;
   }
 
-  :global(body[data-theme="dark"]) .results-table-header {
-    background: #2d2d2d;
-    border-color: #3e3e42;
-    color: #aaa;
+  :global(body[data-theme="dark"]) .results-header {
+    background: #252525;
+    border-color: #3a3a3a;
+    color: #999;
   }
 
-  .results-scroller {
+  .results-list {
     flex: 1;
     overflow-y: auto;
   }
 
-  .table-row {
+  .result-item {
     display: flex;
+    align-items: center;
+    padding: 12px 32px;
     border-bottom: 1px solid #f0f0f0;
-    padding: 8px 0;
-    font-size: 13px;
     cursor: pointer;
-    transition: background 0.1s;
+    transition: background 0.15s;
   }
 
-  :global(body[data-theme="dark"]) .table-row {
-    border-color: #2d2d2d;
+  :global(body[data-theme="dark"]) .result-item {
+    border-color: #2a2a2a;
   }
 
-  .table-row:hover {
-    background: #f0f7ff;
+  .result-item:hover {
+    background: #f5f5f5;
   }
 
-  .table-row.active {
-    background: #e5f1ff;
+  :global(body[data-theme="dark"]) .result-item:hover {
+    background: #252525;
+  }
+
+  .result-item.active {
+    background: #e3f2fd;
     border-left: 3px solid #0078d4;
   }
 
-  :global(body[data-theme="dark"]) .table-row:hover {
-    background: #2a2d2e;
+  :global(body[data-theme="dark"]) .result-item.active {
+    background: #1e3a5f;
+    border-left-color: #4fc3f7;
   }
 
-  :global(body[data-theme="dark"]) .table-row.active {
-    background: #37373d;
-    border-left-color: #0078d4;
+  .col-name {
+    flex: 2;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
   }
 
-  .col-name { flex: 2; padding-left: 15px; display: flex; align-items: center; gap: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .col-path { flex: 3; color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .col-score { width: 100px; text-align: center; color: #aaa; display: flex; align-items: center; justify-content: center; gap: 5px; }
+  .file-icon {
+    font-size: 11px;
+    background: #e0e0e0;
+    padding: 3px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+    color: #555;
+    min-width: 36px;
+    text-align: center;
+  }
 
-  .icon-btn {
+  :global(body[data-theme="dark"]) .file-icon {
+    background: #3a3a3a;
+    color: #aaa;
+  }
+
+  .file-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .col-path {
+    flex: 3;
+    color: #888;
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .col-actions {
+    width: 80px;
+    text-align: center;
+  }
+
+  .action-btn {
     background: transparent;
     border: none;
-    padding: 4px;
+    padding: 6px;
     cursor: pointer;
-    font-size: 14px;
     border-radius: 4px;
     opacity: 0.6;
     transition: all 0.2s;
   }
 
-  .icon-btn:hover {
+  .action-btn:hover {
     opacity: 1;
-    background: rgba(0,0,0,0.05);
-  }
-
-  :global(body[data-theme="dark"]) .icon-btn:hover {
-    background: rgba(255,255,255,0.1);
-  }
-
-  .file-icon {
-    font-size: 10px;
-    background: #e1e1e1;
-    padding: 2px 4px;
-    border-radius: 2px;
-    font-weight: bold;
-    color: #555;
-    min-width: 35px;
-    text-align: center;
-  }
-
-  :global(body[data-theme="dark"]) .file-icon {
-    background: #3c3c3c;
-    color: #aaa;
+    background: rgba(0, 0, 0, 0.05);
   }
 
   .results-footer {
-    padding: 5px 20px;
-    font-size: 11px;
-    background: #f3f3f3;
-    border-top: 1px solid #d1d1d1;
+    padding: 10px 32px;
+    background: #fafafa;
+    border-top: 1px solid #e0e0e0;
+    font-size: 12px;
     color: #888;
   }
 
   :global(body[data-theme="dark"]) .results-footer {
-    background: #252526;
-    border-color: #3e3e42;
+    background: #252525;
+    border-color: #3a3a3a;
   }
 
-  /* Preview Pane */
-  .preview-pane {
-    width: 450px;
-    border-left: 1px solid #d1d1d1;
+  /* Empty State */
+  .empty-state {
+    text-align: center;
+    padding: 80px 20px;
+    color: #888;
+  }
+
+  .empty-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+    opacity: 0.5;
+  }
+
+  .empty-state p {
+    font-size: 16px;
+    margin: 0 0 8px;
+  }
+
+  .empty-hint {
+    font-size: 13px;
+    color: #aaa;
+  }
+
+  /* Preview Panel */
+  .preview-panel {
+    width: 400px;
+    border-left: 1px solid #e0e0e0;
+    background: #fff;
     display: flex;
     flex-direction: column;
-    background: #fff;
-    z-index: 10;
   }
 
-  :global(body[data-theme="dark"]) .preview-pane {
-    background: #1e1e1e;
-    border-color: #3e3e42;
+  :global(body[data-theme="dark"]) .preview-panel {
+    background: #1a1a1a;
+    border-color: #3a3a3a;
   }
 
-  .preview-toolbar {
-    padding: 10px 15px;
-    background: #f9f9f9;
-    border-bottom: 1px solid #e1e1e1;
+  .preview-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    padding: 16px;
+    border-bottom: 1px solid #e0e0e0;
+    background: #fafafa;
   }
 
-  :global(body[data-theme="dark"]) .preview-toolbar {
-    background: #2d2d2d;
-    border-color: #3e3e42;
+  :global(body[data-theme="dark"]) .preview-header {
+    background: #252525;
+    border-color: #3a3a3a;
   }
 
-  .preview-title { font-size: 12px; font-weight: 600; color: #555; }
-  .close-preview { background: transparent; border: none; font-size: 16px; cursor: pointer; color: #888; }
+  .preview-title {
+    font-weight: 600;
+    font-size: 13px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
-  .preview-body {
+  .close-btn {
+    background: transparent;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+    color: #888;
+    padding: 4px;
+  }
+
+  .preview-content {
     flex: 1;
+    overflow: auto;
     padding: 20px;
-    overflow-y: auto;
-    font-family: Consolas, monospace;
+  }
+
+  .preview-content pre {
+    margin: 0;
+    font-family: "Consolas", "Monaco", monospace;
     font-size: 12px;
-    line-height: 1.5;
+    line-height: 1.6;
     white-space: pre-wrap;
+    word-wrap: break-word;
   }
 
-  /* Settings Page Polish */
-  .settings-tab {
-    max-width: 800px;
-    margin: 40px auto;
-    padding: 0 20px;
-    overflow-y: auto;
+  /* Buttons */
+  .btn-primary {
+    background: #0078d4;
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-weight: 500;
   }
 
-  .settings-section {
-    background: #fff;
-    border: 1px solid #e1e1e1;
-    border-radius: 4px;
-    padding: 20px;
-    margin-bottom: 20px;
+  .btn-primary:hover:not(:disabled) {
+    background: #005a9e;
   }
 
-  :global(body[data-theme="dark"]) .settings-section {
-    background: #2d2d2d;
-    border-color: #3e3e42;
-  }
-
-  .settings-section h2 { font-size: 16px; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
-  
-  /* Progress Bar at bottom */
-  .progress-bar-container {
-    position: fixed;
-    bottom: 25px;
-    right: 25px;
-    width: 320px;
-    background: #fff;
-    border: 1px solid #d1d1d1;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    border-radius: 8px;
-    padding: 15px;
-    z-index: 100;
-  }
-
-  :global(body[data-theme="dark"]) .progress-bar-container {
-    background: #2d2d2d;
-    border-color: #3e3e42;
-  }
-
-  .progress-info { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 8px; }
-  .progress-track { height: 6px; background: #eee; border-radius: 3px; overflow: hidden; }
-  .progress-fill { height: 100%; background: #0078d4; transition: width 0.3s; }
-  .current-file { font-size: 10px; color: #888; margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-  .empty-state {
-    text-align: center;
-    padding: 100px 20px;
-    color: #aaa;
-    font-style: italic;
-  }
-
-  .mini-spinner {
-    width: 14px;
-    height: 14px;
-    border: 2px solid #0078d4;
-    border-top-color: transparent;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-    position: absolute;
-    right: 12px;
-  }
-
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  /* Misc */
-  .spacer { flex: 1; }
-  
-  .anytxt-btn:disabled, .toolbar-btn:disabled {
+  .btn-primary:disabled {
     opacity: 0.5;
     cursor: not-allowed;
   }
 
-  .pattern-list { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; }
-  .pattern-pill { background: #eee; padding: 2px 8px; border-radius: 12px; font-size: 11px; display: flex; align-items: center; gap: 5px; border: 1px solid #ddd; }
-  :global(body[data-theme="dark"]) .pattern-pill { background: #333; border-color: #444; color: #aaa; }
-  .pattern-pill button { background: transparent; border: none; cursor: pointer; color: #888; }
+  .btn-secondary {
+    background: #fff;
+    color: #333;
+    border: 1px solid #ddd;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
 
-  .dir-list { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
-  .dir-item { display: flex; justify-content: space-between; background: #f9f9f9; padding: 5px 10px; border-radius: 4px; border: 1px solid #eee; font-size: 12px; }
-  :global(body[data-theme="dark"]) .dir-item { background: #3c3c3c; border-color: #444; color: #aaa; }
-  .remove-btn { color: #f44336; background: transparent; border: none; cursor: pointer; }
+  :global(body[data-theme="dark"]) .btn-secondary {
+    background: #2a2a2a;
+    color: #e0e0e0;
+    border-color: #444;
+  }
 
-  .add-pattern input { width: 100%; padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; outline: none; }
-  :global(body[data-theme="dark"]) .add-pattern input { background: #3c3c3c; border-color: #555; color: #fff; }
+  .btn-secondary:hover {
+    background: #f5f5f5;
+  }
 
-  .setting-item { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 13px; }
-  .setting-item label { color: #666; }
-  :global(body[data-theme="dark"]) .setting-item label { color: #aaa; }
+  /* Settings Container */
+  .settings-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 32px;
+    max-width: 900px;
+    margin: 0 auto;
+    width: 100%;
+  }
+
+  .settings-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 32px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid #e0e0e0;
+  }
+
+  :global(body[data-theme="dark"]) .settings-header {
+    border-color: #3a3a3a;
+  }
+
+  .settings-header h1 {
+    margin: 0;
+    font-size: 28px;
+    font-weight: 600;
+  }
+
+  .header-actions {
+    display: flex;
+    gap: 12px;
+  }
+
+  /* Settings Section */
+  .settings-section {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+
+  :global(body[data-theme="dark"]) .settings-section {
+    background: #252525;
+    border-color: #3a3a3a;
+  }
+
+  .section-header {
+    width: 100%;
+    background: transparent;
+    border: none;
+    padding: 20px 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.2s;
+  }
+
+  .section-header:hover {
+    background: #f9f9f9;
+  }
+
+  :global(body[data-theme="dark"]) .section-header:hover {
+    background: #2a2a2a;
+  }
+
+  .section-icon {
+    font-size: 24px;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f0f0f0;
+    border-radius: 8px;
+  }
+
+  :global(body[data-theme="dark"]) .section-icon {
+    background: #3a3a3a;
+  }
+
+  .section-title {
+    flex: 1;
+  }
+
+  .section-title h3 {
+    margin: 0 0 4px;
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  .section-title p {
+    margin: 0;
+    font-size: 13px;
+    color: #888;
+  }
+
+  .expand-icon {
+    color: #888;
+    font-size: 12px;
+  }
+
+  .section-content {
+    padding: 0 24px 24px 80px;
+    border-top: 1px solid #f0f0f0;
+  }
+
+  :global(body[data-theme="dark"]) .section-content {
+    border-color: #3a3a3a;
+  }
+
+  /* Setting Row */
+  .setting-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 0;
+    border-bottom: 1px solid #f0f0f0;
+  }
+
+  :global(body[data-theme="dark"]) .setting-row {
+    border-color: #3a3a3a;
+  }
+
+  .setting-row:last-child {
+    border-bottom: none;
+  }
+
+  .setting-info {
+    flex: 1;
+  }
+
+  .setting-label {
+    display: block;
+    font-weight: 500;
+    margin-bottom: 4px;
+    font-size: 14px;
+  }
+
+  .setting-description {
+    margin: 0;
+    font-size: 12px;
+    color: #888;
+  }
+
+  /* Setting Group */
+  .setting-group {
+    padding: 16px 0;
+    border-bottom: 1px solid #f0f0f0;
+  }
+
+  :global(body[data-theme="dark"]) .setting-group {
+    border-color: #3a3a3a;
+  }
+
+  .setting-group:last-child {
+    border-bottom: none;
+  }
+
+  /* Toggle Switch */
+  .toggle {
+    position: relative;
+    display: inline-block;
+    width: 48px;
+    height: 24px;
+  }
+
+  .toggle input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+
+  .toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: 0.3s;
+    border-radius: 24px;
+  }
+
+  :global(body[data-theme="dark"]) .toggle-slider {
+    background-color: #555;
+  }
+
+  .toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.3s;
+    border-radius: 50%;
+  }
+
+  .toggle input:checked + .toggle-slider {
+    background-color: #0078d4;
+  }
+
+  .toggle input:checked + .toggle-slider:before {
+    transform: translateX(24px);
+  }
+
+  /* Tag List */
+  .tag-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 12px 0;
+  }
+
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #e3f2fd;
+    color: #0078d4;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  :global(body[data-theme="dark"]) .tag {
+    background: #1e3a5f;
+    color: #4fc3f7;
+  }
+
+  .tag.secondary {
+    background: #f5f5f5;
+    color: #666;
+  }
+
+  :global(body[data-theme="dark"]) .tag.secondary {
+    background: #3a3a3a;
+    color: #aaa;
+  }
+
+  .tag-text {
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tag-remove {
+    background: transparent;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    padding: 0;
+    font-size: 14px;
+    opacity: 0.6;
+  }
+
+  .tag-remove:hover {
+    opacity: 1;
+  }
+
+  /* Input with button */
+  .input-with-button {
+    display: flex;
+    gap: 8px;
+  }
+
+  .input-with-button input {
+    flex: 1;
+    padding: 10px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 13px;
+    outline: none;
+    color: inherit;
+    background: #fff;
+  }
+
+  :global(body[data-theme="dark"]) .input-with-button input {
+    background: #1a1a1a;
+    border-color: #444;
+    color: #e0e0e0;
+  }
+
+  .input-with-button input:focus {
+    border-color: #0078d4;
+  }
+
+  /* Input with unit */
+  .input-with-unit {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .input-with-unit input {
+    width: 80px;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 13px;
+    text-align: right;
+    color: inherit;
+    background: #fff;
+  }
+
+  :global(body[data-theme="dark"]) .input-with-unit input {
+    background: #1a1a1a;
+    border-color: #444;
+    color: #e0e0e0;
+  }
+
+  .unit {
+    font-size: 13px;
+    color: #888;
+  }
+
+  .input-small {
+    width: 80px;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 13px;
+    text-align: center;
+    color: inherit;
+    background: #fff;
+  }
+
+  :global(body[data-theme="dark"]) .input-small {
+    background: #1a1a1a;
+    border-color: #444;
+    color: #e0e0e0;
+  }
+
+  /* Checkbox Grid */
+  .checkbox-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+    margin-top: 12px;
+  }
+
+  .checkbox-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  .checkbox-item input {
+    cursor: pointer;
+  }
+
+  /* Settings Footer */
+  .settings-footer {
+    text-align: center;
+    padding: 32px;
+    color: #888;
+    font-size: 13px;
+  }
+
+  .settings-footer a {
+    color: #0078d4;
+    text-decoration: none;
+  }
+
+  .settings-footer a:hover {
+    text-decoration: underline;
+  }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #333;
+    color: white;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 14px;
+    z-index: 1000;
+  }
+
+  .toast.success {
+    background: #4caf50;
+  }
+
+  /* Progress Toast */
+  .progress-toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 320px;
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    z-index: 100;
+  }
+
+  :global(body[data-theme="dark"]) .progress-toast {
+    background: #252525;
+    border-color: #3a3a3a;
+  }
+
+  .progress-toast.done {
+    border-color: #4caf50;
+  }
+
+  .progress-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    font-size: 13px;
+  }
+
+  .status-text {
+    font-weight: 500;
+  }
+
+  .percentage {
+    color: #0078d4;
+    font-weight: 600;
+  }
+
+  .progress-bar {
+    height: 6px;
+    background: #e0e0e0;
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  :global(body[data-theme="dark"]) .progress-bar {
+    background: #3a3a3a;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: #0078d4;
+    transition: width 0.3s;
+    border-radius: 3px;
+  }
+
+  .current-file {
+    margin-top: 8px;
+    font-size: 11px;
+    color: #888;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Recent Searches Dropdown */
+  .recent-searches-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 0 0 8px 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 100;
+    max-height: 250px;
+    overflow-y: auto;
+  }
+
+  :global(body[data-theme="dark"]) .recent-searches-dropdown {
+    background: #252525;
+    border-color: #3a3a3a;
+  }
+
+  .recent-searches-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 16px;
+    border-bottom: 1px solid #f0f0f0;
+    font-size: 12px;
+    color: #888;
+  }
+
+  :global(body[data-theme="dark"]) .recent-searches-header {
+    border-color: #3a3a3a;
+  }
+
+  .clear-recent {
+    background: transparent;
+    border: none;
+    color: #0078d4;
+    font-size: 11px;
+    cursor: pointer;
+  }
+
+  .recent-search-item {
+    display: block;
+    width: 100%;
+    padding: 10px 16px;
+    text-align: left;
+    background: transparent;
+    border: none;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .recent-search-item:hover {
+    background: #f5f5f5;
+  }
+
+  :global(body[data-theme="dark"]) .recent-search-item:hover {
+    background: #2a2a2a;
+  }
+
+  /* Export Group */
+  .export-group {
+    display: flex;
+    gap: 8px;
+  }
+
+  .export-group .toolbar-btn {
+    font-size: 12px;
+    padding: 6px 12px;
+  }
 </style>
-

@@ -1,12 +1,13 @@
 use crate::error::{FlashError, Result};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::ops::Bound;
+use std::sync::Arc;
 use tantivy::collector::TopDocs;
 use tantivy::query::{BooleanQuery, Occur, QueryParser, RangeQuery};
 use tantivy::schema::{Field, Schema, Term, Value};
 use tantivy::{Index, IndexReader, ReloadPolicy, TantivyDocument};
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SearchResult {
     pub file_path: String,
     pub title: Option<String>,
@@ -69,6 +70,7 @@ impl IndexSearcher {
         limit: usize,
         min_size: Option<u64>,
         max_size: Option<u64>,
+        file_extensions: Option<&[String]>,
     ) -> Result<Vec<SearchResult>> {
         let searcher = self.reader.searcher();
 
@@ -78,46 +80,54 @@ impl IndexSearcher {
             .map_err(|e| FlashError::Search(e.to_string()))?;
 
         // Build query with optional filters
-        let final_query: Box<dyn tantivy::query::Query> = match (min_size, max_size) {
-            (None, None) => text_query,
-            (min, max) => {
-                let mut combine: Vec<(Occur, Box<dyn tantivy::query::Query>)> =
-                    vec![(Occur::Must, text_query)];
+        let mut combine: Vec<(Occur, Box<dyn tantivy::query::Query>)> =
+            vec![(Occur::Must, text_query)];
 
-                // Get the field name for the range query
-                let size_field_name = self.schema.get_field_name(self.size_field).to_string();
-                let value_type = tantivy::schema::Type::U64;
+        // Add size filters
+        if min_size.is_some() || max_size.is_some() {
+            let size_field_name = self.schema.get_field_name(self.size_field).to_string();
+            let value_type = tantivy::schema::Type::U64;
 
-                if let Some(min_val) = min {
-                    let lower = Term::from_field_u64(self.size_field, min_val);
-                    let upper = Term::from_field_u64(self.size_field, u64::MAX);
-                    let range = RangeQuery::new_term_bounds(
-                        size_field_name.clone(),
-                        value_type,
-                        &Bound::Included(lower),
-                        &Bound::Included(upper),
-                    );
-                    combine.push((Occur::Must, Box::new(range)));
-                }
-
-                if let Some(max_val) = max {
-                    let lower = Term::from_field_u64(self.size_field, 0);
-                    let upper = Term::from_field_u64(self.size_field, max_val);
-                    let range = RangeQuery::new_term_bounds(
-                        size_field_name.clone(),
-                        value_type,
-                        &Bound::Included(lower),
-                        &Bound::Included(upper),
-                    );
-                    combine.push((Occur::Must, Box::new(range)));
-                }
-
-                Box::new(BooleanQuery::new(combine))
+            if let Some(min_val) = min_size {
+                let lower = Term::from_field_u64(self.size_field, min_val);
+                let upper = Term::from_field_u64(self.size_field, u64::MAX);
+                let range = RangeQuery::new_term_bounds(
+                    size_field_name.clone(),
+                    value_type,
+                    &Bound::Included(lower),
+                    &Bound::Included(upper),
+                );
+                combine.push((Occur::Must, Box::new(range)));
             }
+
+            if let Some(max_val) = max_size {
+                let lower = Term::from_field_u64(self.size_field, 0);
+                let upper = Term::from_field_u64(self.size_field, max_val);
+                let range = RangeQuery::new_term_bounds(
+                    size_field_name.clone(),
+                    value_type,
+                    &Bound::Included(lower),
+                    &Bound::Included(upper),
+                );
+                combine.push((Occur::Must, Box::new(range)));
+            }
+        }
+
+        let final_query: Box<dyn tantivy::query::Query> = if combine.len() == 1 {
+            combine.remove(0).1
+        } else {
+            Box::new(BooleanQuery::new(combine))
+        };
+
+        // Increase limit if we have file extension filtering to ensure we get enough results
+        let search_limit = if file_extensions.map_or(false, |e| !e.is_empty()) {
+            limit * 3 // Get more results since we'll filter some out
+        } else {
+            limit
         };
 
         let top_docs = searcher
-            .search(&*final_query, &TopDocs::with_limit(limit))
+            .search(&*final_query, &TopDocs::with_limit(search_limit))
             .map_err(|e| FlashError::Search(e.to_string()))?;
 
         let mut results = Vec::with_capacity(top_docs.len());
@@ -133,6 +143,25 @@ impl IndexSearcher {
                 .map(|s: &str| s.to_string())
                 .unwrap_or_default();
 
+            // Apply file extension filter post-query
+            if let Some(extensions) = file_extensions {
+                if !extensions.is_empty() {
+                    let path_lower = file_path.to_lowercase();
+                    let matches_extension = extensions.iter().any(|ext| {
+                        let ext_lower = ext.to_lowercase();
+                        let ext_with_dot = if ext_lower.starts_with('.') {
+                            ext_lower
+                        } else {
+                            format!(".{}", ext_lower)
+                        };
+                        path_lower.ends_with(&ext_with_dot)
+                    });
+                    if !matches_extension {
+                        continue;
+                    }
+                }
+            }
+
             let title = retrieved_doc
                 .get_first(self.title_field)
                 .and_then(|f| f.as_str())
@@ -143,6 +172,11 @@ impl IndexSearcher {
                 title,
                 score,
             });
+
+            // Stop once we have enough results
+            if results.len() >= limit {
+                break;
+            }
         }
 
         Ok(results)

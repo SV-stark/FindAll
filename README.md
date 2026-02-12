@@ -151,8 +151,8 @@ Benchmarks on AMD Ryzen 7 5800X with NVMe SSD:
 
 ### Phase 2: Polish (In Progress 🚧)
 - [ ] OCR support for images and scanned PDFs
-- [ ] Advanced search filters (date, size, type)
-- [ ] Search result preview panel
+- [x] Advanced search filters (date, size, type)
+- [x] Search result preview panel
 - [ ] Export search results
 
 ### Phase 3: Advanced Features (Planned 📋)

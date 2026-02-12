@@ -32,10 +32,11 @@ pub async fn search_query(
     state: State<'_, Arc<AppState>>,
     min_size: Option<u64>,
     max_size: Option<u64>,
+    file_extensions: Option<Vec<String>>,
 ) -> Result<Vec<SearchResult>, String> {
     let indexer = state.indexer.lock().await;
 
-    indexer.search(&query, limit, min_size, max_size)
+    indexer.search(&query, limit, min_size, max_size, file_extensions.as_deref())
         .map_err(|e| e.to_string())
 }
 
@@ -148,6 +149,116 @@ pub fn save_settings(
     let mut watcher = state.watcher.lock().unwrap();
     watcher.update_watch_list(settings.index_dirs).map_err(|e| e.to_string())?;
     
+    Ok(())
+}
+
+/// Copy text to clipboard
+#[tauri::command]
+pub fn copy_to_clipboard(text: String) -> Result<(), String> {
+    use arboard::Clipboard;
+    let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
+    clipboard.set_text(text).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Export search results to CSV
+#[tauri::command]
+pub async fn export_results(
+    results: Vec<SearchResult>,
+    format: String,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    use tauri_plugin_dialog::DialogExt;
+    
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    
+    let extension = match format.as_str() {
+        "csv" => "csv",
+        "json" => "json",
+        _ => "txt",
+    };
+    
+    app.dialog().file()
+        .add_filter(format.to_uppercase(), &[extension])
+        .save_file(move |file_path| {
+            let _ = tx.send(file_path.map(|f| f.to_string()));
+        });
+    
+    let file_path = rx.await.map_err(|e| e.to_string())?;
+    
+    if let Some(path) = file_path {
+        let content = match format.as_str() {
+            "csv" => {
+                let mut csv = String::from("File Path,Title,Score\n");
+                for result in results {
+                    let title = result.title.unwrap_or_default().replace('"', "\"");
+                    csv.push_str(&format!("\"{}\",\"{}\",{}\n", 
+                        result.file_path.replace('"', "\""),
+                        title,
+                        result.score
+                    ));
+                }
+                csv
+            }
+            "json" => serde_json::to_string_pretty(&results).map_err(|e| e.to_string())?,
+            _ => {
+                let mut text = String::new();
+                for result in results {
+                    text.push_str(&format!("{}\t{}\t{}\n", 
+                        result.file_path,
+                        result.title.unwrap_or_default(),
+                        result.score
+                    ));
+                }
+                text
+            }
+        };
+        
+        tokio::fs::write(path, content).await.map_err(|e| e.to_string())?;
+    }
+    
+    Ok(())
+}
+
+/// Get recent searches
+#[tauri::command]
+pub fn get_recent_searches(state: State<'_, Arc<AppState>>) -> Result<Vec<String>, String> {
+    let settings = state.settings_manager.load().map_err(|e| e.to_string())?;
+    Ok(settings.recent_searches.unwrap_or_default())
+}
+
+/// Add a search to recent searches
+#[tauri::command]
+pub fn add_recent_search(
+    query: String,
+    state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    let mut settings = state.settings_manager.load().map_err(|e| e.to_string())?;
+    
+    // Get or initialize recent searches
+    let mut recent = settings.recent_searches.unwrap_or_default();
+    
+    // Remove if already exists (to move to front)
+    recent.retain(|q| q != &query);
+    
+    // Add to front
+    recent.insert(0, query);
+    
+    // Keep only last 10
+    recent.truncate(10);
+    
+    settings.recent_searches = Some(recent);
+    state.settings_manager.save_settings(&settings).map_err(|e| e.to_string())?;
+    
+    Ok(())
+}
+
+/// Clear recent searches
+#[tauri::command]
+pub fn clear_recent_searches(state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    let mut settings = state.settings_manager.load().map_err(|e| e.to_string())?;
+    settings.recent_searches = Some(vec![]);
+    state.settings_manager.save_settings(&settings).map_err(|e| e.to_string())?;
     Ok(())
 }
 
