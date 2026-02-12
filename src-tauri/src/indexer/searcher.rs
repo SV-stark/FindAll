@@ -1,7 +1,6 @@
 use crate::error::{FlashError, Result};
 use serde::{Deserialize, Serialize};
 use std::ops::Bound;
-use std::sync::Arc;
 use tantivy::collector::TopDocs;
 use tantivy::query::{BooleanQuery, Occur, QueryParser, RangeQuery};
 use tantivy::schema::{Field, Schema, Term, Value};
