@@ -2,6 +2,7 @@ pub mod schema;
 pub mod searcher;
 pub mod writer;
 pub mod query_parser;
+pub mod filename_index;
 
 use self::schema::create_schema;
 use self::searcher::{IndexSearcher, SearchResult, IndexStatistics};

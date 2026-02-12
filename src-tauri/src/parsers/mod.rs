@@ -5,6 +5,7 @@ use std::path::Path;
 pub mod docx;
 pub mod epub;
 pub mod excel;
+pub mod extended;
 pub mod odt;
 pub mod pdf;
 pub mod text;
@@ -58,6 +59,42 @@ pub fn parse_file(path: &Path) -> Result<ParsedDocument> {
         || extension_matches(extension, "xls") 
         || extension_matches(extension, "xlsb") {
         return excel::parse_excel(path);
+    }
+
+    // Check RTF format
+    if extension_matches(extension, "rtf") {
+        return extended::parse_rtf(path);
+    }
+
+    // Check email formats
+    if extension_matches(extension, "eml") {
+        return extended::parse_eml(path);
+    }
+    if extension_matches(extension, "msg") {
+        return extended::parse_msg(path);
+    }
+
+    // Check CHM format
+    if extension_matches(extension, "chm") {
+        return extended::parse_chm(path);
+    }
+
+    // Check Kindle/AZW formats
+    if extension_matches(extension, "azw") 
+        || extension_matches(extension, "azw3")
+        || extension_matches(extension, "mobi") {
+        return extended::parse_azw(path);
+    }
+
+    // Check archive formats
+    if extension_matches(extension, "zip") {
+        return extended::parse_zip_content(path);
+    }
+    if extension_matches(extension, "7z") {
+        return extended::parse_7z_content(path);
+    }
+    if extension_matches(extension, "rar") {
+        return extended::parse_rar_content(path);
     }
 
     // Check text-based formats using a static lookup
@@ -135,6 +172,68 @@ fn is_text_format(ext: &OsStr) -> bool {
         b"properties",
         b"proto",
         b"dockerfile",
+        // More code files
+        b"cs",
+        b"jsx",
+        b"tsx",
+        b"vue",
+        b"jsx",
+        b"sx",
+        b"asm",
+        b"s",
+        b"m",
+        b"pl",
+        b"lua",
+        b"ex",
+        b"exs",
+        b"erl",
+        b"clj",
+        b"fs",
+        b"fsx",
+        b"vb",
+        b"pas",
+        b"d",
+        b"zig",
+        b"nim",
+        b"hlsl",
+        b"glsl",
+        b"cmake",
+        b"makefile",
+        // Data formats
+        b"csv",
+        b"tsv",
+        b"dat",
+        b"msgpack",
+        b"cbor",
+        b"toml",
+        // Documents
+        b"tex",
+        b"latex",
+        b"rst",
+        b"adoc",
+        b"asciidoc",
+        // Config
+        b"gitignore",
+        b"gitattributes",
+        b"editorconfig",
+        b"prettierrc",
+        b"eslintrc",
+        b"babelrc",
+        b"webpack",
+        b"nginx",
+        b"apache",
+        b"htaccess",
+        // Shell/other
+        b"fish",
+        b"zsh",
+        b"csh",
+        b"awk",
+        b"sed",
+        b"vim",
+        b"vimrc",
+        b"gitconfig",
+        b"env",
+        b"properties",
     ];
 
     if let Some(ext_bytes) = ext.to_str().map(|s| s.as_bytes()) {

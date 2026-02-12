@@ -8,18 +8,25 @@ pub mod settings;
 pub mod watcher;
 
 use commands::{
-    add_recent_search, clear_recent_searches, copy_to_clipboard, export_results,
-    get_file_preview, get_file_preview_highlighted, get_home_dir, get_index_status, 
+    add_recent_search, add_search_history, clear_recent_searches, copy_to_clipboard, 
+    export_results, filter_by_filename, get_file_preview, get_file_preview_highlighted, 
+    get_filename_index_stats, get_home_dir, get_index_status, 
     get_index_statistics, get_recent_files, get_recent_searches, get_settings, 
-    get_pinned_files, pin_file, unpin_file, open_folder, save_settings, 
-    search_query, select_folder, start_indexing, AppState,
+    get_search_history, get_pinned_files, pin_file, unpin_file, open_folder, 
+    save_settings, search_filenames, search_query, select_folder, 
+    start_indexing, build_filename_index, AppState,
 };
+use scanner::Scanner;
 use std::sync::Arc;
 use tauri::Manager;
 use tracing::{info, warn};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    run_with_args(None, None);
+}
+
+pub fn run_with_args(initial_search: Option<String>, index_dir: Option<String>) {
     // Initialize tracing subscriber for structured logging
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env()
@@ -98,14 +105,59 @@ pub fn run() {
             let initial_settings = settings_manager.load().unwrap_or_default();
             watcher.update_watch_list(initial_settings.index_dirs).ok();
 
+            // Initialize filename index (fast filename-only search)
+            let filename_index = if initial_settings.filename_index_enabled {
+                match indexer::filename_index::FilenameIndex::open(&app_data_dir.join("filename_index")) {
+                    Ok(idx) => {
+                        info!("Filename index opened successfully");
+                        Some(Arc::new(idx))
+                    }
+                    Err(e) => {
+                        warn!("Failed to open filename index: {}", e);
+                        None
+                    }
+                }
+            } else {
+                info!("Filename index disabled in settings");
+                None
+            };
+
             // Create and manage app state
             let state = Arc::new(AppState::new(
                 indexer_shared,
                 metadata_db_shared,
                 settings_manager,
                 watcher,
+                filename_index,
             ));
             app.manage(state);
+
+            // Handle command-line arguments
+            if let Some(search) = initial_search {
+                // Emit initial search query to frontend
+                let handle = app.handle().clone();
+                let search_clone = search.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    if let Some(window) = handle.get_webview_window("main") {
+                        let _ = window.emit("initial-search", search_clone);
+                    }
+                });
+            }
+
+            if let Some(dir) = index_dir {
+                // Start indexing the specified directory
+                let app_handle = app.handle().clone();
+                let dir_clone = dir.clone();
+                let indexer = state.indexer.clone();
+                let metadata_db = state.metadata_db.clone();
+                let settings = state.settings_manager.load().unwrap_or_default();
+                
+                tokio::spawn(async move {
+                    let scanner = Scanner::new(indexer, metadata_db, app_handle);
+                    let _ = scanner.scan_directory(std::path::PathBuf::from(dir_clone), settings.exclude_patterns).await;
+                });
+            }
 
             Ok(())
         })
@@ -130,6 +182,12 @@ pub fn run() {
             pin_file,
             unpin_file,
             get_pinned_files,
+            search_filenames,
+            get_filename_index_stats,
+            build_filename_index,
+            add_search_history,
+            get_search_history,
+            filter_by_filename,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

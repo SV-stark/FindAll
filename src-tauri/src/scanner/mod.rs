@@ -19,6 +19,9 @@ pub struct ProgressEvent {
     pub processed: usize,
     pub current_file: String,
     pub status: String,
+    pub files_per_second: f64,
+    pub eta_seconds: u64,
+    pub current_folder: String,
 }
 
 /// Document batch for efficient indexing
@@ -107,6 +110,9 @@ impl Scanner {
                 processed: 0,
                 current_file: "No files found".to_string(),
                 status: "done".to_string(),
+                files_per_second: 0.0,
+                eta_seconds: 0,
+                current_folder: String::new(),
             });
             return Ok(());
         }
@@ -116,6 +122,9 @@ impl Scanner {
             processed: 0,
             current_file: "Starting...".to_string(),
             status: "indexing".to_string(),
+            files_per_second: 0.0,
+            eta_seconds: 0,
+            current_folder: root.display().to_string(),
         });
 
         let processed_count = Arc::new(AtomicUsize::new(0));
@@ -137,6 +146,9 @@ impl Scanner {
             let mut metadata_batch = Vec::with_capacity(BATCH_SIZE);
             let mut last_commit = Instant::now();
             let mut total_indexed = 0usize;
+            let start_time = Instant::now();
+            let mut last_emit_time = Instant::now();
+            let mut current_folder = String::new();
             
             loop {
                 match tokio::time::timeout(
@@ -187,13 +199,31 @@ impl Scanner {
                         let last_emitted = last_progress_clone.load(Ordering::Relaxed);
                         
                         if processed + skipped >= last_emitted + PROGRESS_UPDATE_INTERVAL {
+                            let elapsed = start_time.elapsed().as_secs_f64();
+                            let files_per_second = if elapsed > 0.0 {
+                                (processed + skipped) as f64 / elapsed
+                            } else {
+                                0.0
+                            };
+                            
+                            let remaining = total_clone - processed - skipped;
+                            let eta_seconds = if files_per_second > 0.0 {
+                                (remaining as f64 / files_per_second) as u64
+                            } else {
+                                0
+                            };
+                            
                             let _ = app_handle.emit("indexing-progress", ProgressEvent {
                                 total: total_clone,
                                 processed: processed + skipped,
                                 current_file: format!("{} files processed", processed + skipped),
                                 status: "indexing".to_string(),
+                                files_per_second,
+                                eta_seconds,
+                                current_folder: current_folder.clone(),
                             });
                             last_progress_clone.store(processed + skipped, Ordering::Relaxed);
+                            last_emit_time = Instant::now();
                         }
                     }
                 }
@@ -250,6 +280,9 @@ impl Scanner {
             processed: indexed_count + skipped,
             current_file: "Completed".to_string(),
             status: "done".to_string(),
+            files_per_second: 0.0,
+            eta_seconds: 0,
+            current_folder: String::new(),
         });
         
         info!(

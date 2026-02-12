@@ -4,6 +4,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchHistoryItem {
+    pub query: String,
+    pub frequency: u32,
+    pub last_used: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
     // Indexing
     pub index_dirs: Vec<String>,
@@ -18,6 +25,8 @@ pub struct AppSettings {
     pub case_sensitive: bool,
     pub default_filters: DefaultFilters,
     pub recent_searches: Option<Vec<String>>,
+    pub search_history: Option<Vec<SearchHistoryItem>>,
+    pub filename_index_enabled: bool,
 
     // Appearance
     pub theme: Theme,
@@ -151,6 +160,8 @@ impl Default for AppSettings {
             case_sensitive: false,
             default_filters: DefaultFilters::default(),
             recent_searches: Some(vec![]),
+            search_history: Some(vec![]),
+            filename_index_enabled: false,
 
             // Appearance
             theme: Theme::default(),

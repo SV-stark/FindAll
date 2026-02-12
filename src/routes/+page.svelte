@@ -70,6 +70,10 @@
   let searchChips = $state<{type: string, value: string, label: string}[]>([]);
   let showOperatorHelp = $state(false);
   
+  // Search mode: 'content' = full-text search, 'filename' = filename only (fast)
+  let searchMode = $state<"content" | "filename">("content");
+  let filenameIndexReady = $state(false);
+  
   // Search filters
   let minSize = $state<number | null>(null);
   let maxSize = $state<number | null>(null);
@@ -334,10 +338,41 @@
     selectedIndex = -1;
     
     try {
-      // Parse operators from query
-      const { query: cleanQuery, chips } = parseSearchOperators(query);
-      searchChips = chips;
+      // Parse operators from query (only for content search)
+      let chips: typeof searchChips = [];
+      if (searchMode === "content") {
+        const parsed = parseSearchOperators(query);
+        chips = parsed.chips;
+        searchChips = chips;
+      }
       
+      // Handle filename search mode
+      if (searchMode === "filename") {
+        // Use filename index for fast filename-only search
+        const filenameResults = await invoke<{file_path: string, file_name: string}[]>("search_filenames", {
+          query: query.trim(),
+          limit: settings.max_results
+        });
+        
+        // Convert to SearchResult format
+        results = filenameResults.map(r => ({
+          file_path: r.file_path,
+          title: r.file_name,
+          score: 1.0,
+          matched_terms: []
+        }));
+        
+        // Add to recent searches
+        if (settings.search_history_enabled && query.trim()) {
+          await invoke("add_recent_search", { query: query.trim() });
+          loadRecentSearches();
+        }
+        
+        isSearching = false;
+        return;
+      }
+      
+      // Content search mode (full-text)
       // Build file extensions filter
       let fileExtensions: string[] | null = null;
       if (selectedFileType !== "all") {
@@ -350,7 +385,7 @@
       }
       
       // Add extension from chip if present
-      const extChip = searchChips.find(c => c.type === "ext");
+      const extChip = chips.find(c => c.type === "ext");
       if (extChip) {
         fileExtensions = fileExtensions ? [...fileExtensions, extChip.value] : [extChip.value];
       }
@@ -619,6 +654,15 @@
     await loadPinnedFiles();
     await loadRecentFiles();
     await loadStatistics();
+    
+    // Check if filename index exists
+    try {
+      await invoke<{total_files: number, index_size_bytes: number}>("get_filename_index_stats");
+      filenameIndexReady = true;
+    } catch (e) {
+      console.log("Filename index not available:", e);
+      filenameIndexReady = false;
+    }
 
     const unlisten = await listen<{
       total: number,
@@ -686,7 +730,7 @@
           <input
             type="text"
             class="search-input"
-            placeholder="Search files... Try: ext:pdf path:docs report"
+            placeholder={searchMode === "filename" ? "Search filenames... (fast mode)" : "Search files... Try: ext:pdf path:docs report"}
             bind:value={query}
             oninput={debouncedSearch}
             onfocus={() => showRecentSearches = recentSearches.length > 0 && settings.search_history_enabled}
@@ -720,7 +764,48 @@
             </div>
           {/if}
         </div>
-        <button class="btn-primary" onclick={performSearch}>Search</button>
+        
+        <!-- Search Mode Toggle -->
+        <div class="search-mode-toggle">
+          <button 
+            class="mode-btn" 
+            class:active={searchMode === "content"}
+            onclick={() => searchMode = "content"}
+            title="Full-text search (slower but comprehensive)"
+          >
+            📝 Content
+          </button>
+          <button 
+            class="mode-btn" 
+            class:active={searchMode === "filename"}
+            onclick={() => searchMode = "filename"}
+            title="Filename only (instant results)"
+            disabled={!filenameIndexReady}
+          >
+            📁 Filename {!filenameIndexReady && "⚠️"}
+          </button>
+        </div>
+        
+        {#if searchMode === "filename" && !filenameIndexReady}
+          <button 
+            class="btn-secondary build-index-btn"
+            onclick={async () => {
+              try {
+                const homeDir = await invoke<string>("get_home_dir").catch(() => "./");
+                await invoke("build_filename_index", { path: homeDir });
+              } catch (e) {
+                console.error("Failed to build filename index:", e);
+              }
+            }}
+            title="Build filename index for instant search"
+          >
+            ⚡ Build Index
+          </button>
+        {/if}
+        
+        <button class="btn-primary" onclick={performSearch}>
+          {searchMode === "filename" ? "⚡" : "🔍"} Search
+        </button>
       </header>
 
       {#if showOperatorHelp}
@@ -1319,11 +1404,71 @@
     border-bottom: 1px solid #e0e0e0;
     display: flex;
     gap: 12px;
+    align-items: center;
   }
 
   :global(body[data-theme="dark"]) .search-header {
     background: #252525;
     border-color: #3a3a3a;
+  }
+
+  /* Search Mode Toggle */
+  .search-mode-toggle {
+    display: flex;
+    background: #f0f0f0;
+    border-radius: 8px;
+    padding: 4px;
+    gap: 2px;
+  }
+
+  :global(body[data-theme="dark"]) .search-mode-toggle {
+    background: #3a3a3a;
+  }
+
+  .mode-btn {
+    background: transparent;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+    color: #666;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .mode-btn:hover {
+    background: rgba(0, 0, 0, 0.05);
+  }
+
+  :global(body[data-theme="dark"]) .mode-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .mode-btn.active {
+    background: #fff;
+    color: #0078d4;
+    font-weight: 600;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+
+  .mode-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .build-index-btn {
+    padding: 8px 12px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  :global(body[data-theme="dark"]) .mode-btn.active {
+    background: #4a4a4a;
+    color: #4fc3f7;
   }
 
   .search-box {
