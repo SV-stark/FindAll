@@ -31,8 +31,24 @@ impl IndexManager {
         let directory = MmapDirectory::open(index_path)
             .map_err(|e| FlashError::Index(format!("Failed to open index directory: {}", e)))?;
 
-        let index = Index::open_or_create(directory, schema)
-            .map_err(|e| FlashError::Index(format!("Failed to create/open index: {}", e)))?;
+        let index = match Index::open_or_create(directory, schema.clone()) {
+            Ok(index) => index,
+            Err(tantivy::TantivyError::SchemaError(msg))
+                if msg.contains("schema does not match") =>
+            {
+                eprintln!("Schema mismatch detected. Recreating index...");
+                // Close directory and remove files
+                std::fs::remove_dir_all(index_path).map_err(|e| FlashError::Io(e))?;
+                std::fs::create_dir_all(index_path).map_err(|e| FlashError::Io(e))?;
+
+                let new_directory = MmapDirectory::open(index_path).map_err(|e| {
+                    FlashError::Index(format!("Failed to recreate index directory: {}", e))
+                })?;
+                Index::open_or_create(new_directory, schema)
+                    .map_err(|e| FlashError::Index(format!("Failed to create new index: {}", e)))?
+            }
+            Err(e) => return Err(FlashError::Index(format!("Failed to open index: {}", e))),
+        };
 
         let writer = IndexWriterManager::new(&index)?;
         let searcher = IndexSearcher::new(&index)?;
