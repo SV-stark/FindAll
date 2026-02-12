@@ -1,6 +1,4 @@
-use crate::error::{FlashError, Result};
 use regex::Regex;
-use std::collections::HashMap;
 
 /// Parsed query with operators and search terms
 #[derive(Debug, Clone)]
@@ -31,7 +29,7 @@ impl ParsedQuery {
         let mut title_filter = None;
         let mut min_size = None;
         let mut max_size = None;
-        let mut fuzzy = true;
+        let fuzzy = true;
 
         // Parse operators
         // ext:pdf, path:docs, title:report, size:>1MB, size:<10MB, exact:"phrase"

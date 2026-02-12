@@ -25,6 +25,9 @@ pub enum FlashError {
 
     #[error("Config error: {0}")]
     Config(String),
+
+    #[error("Zip error: {0}")]
+    Zip(#[from] zip::ZipError),
 }
 
 pub type Result<T> = std::result::Result<T, FlashError>;

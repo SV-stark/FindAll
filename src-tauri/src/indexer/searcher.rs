@@ -41,18 +41,18 @@ impl IndexSearcher {
             .reader_builder()
             .reload_policy(ReloadPolicy::Manual)
             .try_into()
-            .map_err(|e| FlashError::Index(e.to_string()))?;
+            .map_err(|e| FlashError::Search(e.to_string()))?;
 
         // Get field references once to avoid repeated lookups
         let path_field = schema
             .get_field("file_path")
-            .map_err(|_| FlashError::Index("file_path field not found".to_string()))?;
+            .map_err(|_| FlashError::Search("file_path field not found".to_string()))?;
         let title_field = schema
             .get_field("title")
-            .map_err(|_| FlashError::Index("title field not found".to_string()))?;
+            .map_err(|_| FlashError::Search("title field not found".to_string()))?;
         let size_field = schema
             .get_field("size")
-            .map_err(|_| FlashError::Index("size field not found".to_string()))?;
+            .map_err(|_| FlashError::Search("size field not found".to_string()))?;
 
         // Search across content, title, and file_path fields
         let default_fields: Vec<Field> = vec!["content", "title", "file_path"]
@@ -209,8 +209,9 @@ impl IndexSearcher {
         
         let mut total_size = 0u64;
         for segment_reader in searcher.segment_readers() {
+            let store_reader = segment_reader.get_store_reader(1)?;
             for doc_id in 0..segment_reader.num_docs() {
-                if let Ok(doc) = segment_reader.doc::<TantivyDocument>(doc_id) {
+                if let Ok(doc) = store_reader.get(doc_id) {
                     if let Some(value) = doc.get_first(self.size_field) {
                         if let Some(size) = value.as_u64() {
                             total_size += size;

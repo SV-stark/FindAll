@@ -130,12 +130,12 @@ pub fn run_with_args(initial_search: Option<String>, index_dir: Option<String>) 
                 watcher,
                 filename_index,
             ));
-            app.manage(state);
+            app.manage(state.clone());
 
             // Handle command-line arguments
             if let Some(search) = initial_search {
                 // Emit initial search query to frontend
-                let handle = app.handle().clone();
+            let _handle = app.handle().clone();
                 let search_clone = search.clone();
                 std::thread::spawn(move || {
                     std::thread::sleep(std::time::Duration::from_millis(500));

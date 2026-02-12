@@ -66,19 +66,19 @@ impl IndexWriterManager {
 
         let path_field = schema
             .get_field("file_path")
-            .map_err(|_| FlashError::Index("file_path field not found".to_string()))?;
+            .map_err(|_| FlashError::Search("file_path field not found".to_string()))?;
         let content_field = schema
             .get_field("content")
-            .map_err(|_| FlashError::Index("content field not found".to_string()))?;
+            .map_err(|_| FlashError::Search("content field not found".to_string()))?;
         let title_field = schema
             .get_field("title")
-            .map_err(|_| FlashError::Index("title field not found".to_string()))?;
+            .map_err(|_| FlashError::Search("title field not found".to_string()))?;
         let modified_field = schema
             .get_field("modified")
-            .map_err(|_| FlashError::Index("modified field not found".to_string()))?;
+            .map_err(|_| FlashError::Search("modified field not found".to_string()))?;
         let size_field = schema
             .get_field("size")
-            .map_err(|_| FlashError::Index("size field not found".to_string()))?;
+            .map_err(|_| FlashError::Search("size field not found".to_string()))?;
 
         Ok(Self {
             writer: Mutex::new(writer),
@@ -99,7 +99,7 @@ impl IndexWriterManager {
         let writer = self
             .writer
             .lock()
-            .map_err(|_| FlashError::Index("Failed to lock writer".to_string()))?;
+            .map_err(|_| FlashError::Search("Failed to lock writer".to_string()))?;
 
         writer
             .add_document(tantivy_doc)
@@ -117,13 +117,13 @@ impl IndexWriterManager {
         let writer = self
             .writer
             .lock()
-            .map_err(|_| FlashError::Index("Failed to lock writer".to_string()))?;
+            .map_err(|_| FlashError::Search("Failed to lock writer".to_string()))?;
 
         for (doc, modified, size) in docs {
             let tantivy_doc = self.create_tantivy_document(doc, *modified, *size);
             writer
                 .add_document(tantivy_doc)
-                .map_err(|e| FlashError::Index(e.to_string()))?;
+            .map_err(|e| FlashError::Search(e.to_string()))?;
         }
 
         Ok(())
@@ -158,11 +158,11 @@ impl IndexWriterManager {
         let mut writer = self
             .writer
             .lock()
-            .map_err(|_| FlashError::Index("Failed to lock writer".to_string()))?;
+            .map_err(|_| FlashError::Search("Failed to lock writer".to_string()))?;
 
         writer
             .commit()
-            .map_err(|e| FlashError::Index(e.to_string()))?;
+            .map_err(|e| FlashError::Search(e.to_string()))?;
 
         Ok(())
     }

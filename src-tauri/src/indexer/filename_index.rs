@@ -1,7 +1,7 @@
 use crate::error::{FlashError, Result};
 use serde::{Deserialize, Serialize};
 use tantivy::collector::TopDocs;
-use tantivy::query::{QueryParser, RegexQuery};
+use tantivy::query::RegexQuery;
 use tantivy::schema::*;
 use tantivy::{Index, IndexReader, IndexWriter, ReloadPolicy, TantivyDocument, directory::MmapDirectory};
 use std::path::Path;
@@ -40,19 +40,19 @@ impl FilenameIndex {
         let index_path = index_path.join("filenames");
         
         let directory = MmapDirectory::open(&index_path)
-            .map_err(|e| FlashError::Index(format!("Failed to open filename index: {}", e)))?;
+            .map_err(|e| FlashError::Search(format!("Failed to open filename index: {}", e)))?;
         
         let index = Index::open_or_create(directory, schema.clone())
-            .map_err(|e| FlashError::Index(format!("Failed to create filename index: {}", e)))?;
+            .map_err(|e| FlashError::Search(format!("Failed to create filename index: {}", e)))?;
         
         let reader = index
             .reader_builder()
             .reload_policy(ReloadPolicy::OnCommitWithDelay)
             .try_into()
-            .map_err(|e| FlashError::Index(e.to_string()))?;
+            .map_err(|e| FlashError::Search(e.to_string()))?;
         
         let writer = index.writer(50_000_000)
-            .map_err(|e| FlashError::Index(e.to_string()))?;
+            .map_err(|e| FlashError::Search(e.to_string()))?;
         
         Ok(Self {
             index,
@@ -66,7 +66,7 @@ impl FilenameIndex {
     }
 
     pub fn add_file(&self, path: &str, name: &str) -> Result<()> {
-        let mut writer = self.writer.blocking_lock();
+        let writer = self.writer.blocking_lock();
         
         let mut doc = TantivyDocument::default();
         doc.add_text(self.path_field, path);
@@ -78,7 +78,7 @@ impl FilenameIndex {
     }
 
     pub fn commit(&self) -> Result<()> {
-        let mut writer = self.writer.blocking_lock();
+        let writer = self.writer.blocking_lock();
         writer.commit()?;
         Ok(())
     }
@@ -128,7 +128,7 @@ impl FilenameIndex {
     }
 
     pub fn clear(&self) -> Result<()> {
-        let mut writer = self.writer.blocking_lock();
+        let writer = self.writer.blocking_lock();
         writer.delete_all_documents()?;
         writer.commit()?;
         Ok(())

@@ -1,13 +1,13 @@
 use crate::error::{FlashError, Result};
 use crate::parsers::ParsedDocument;
-use std::io::{Read, Seek};
+use std::io::Read;
 use std::path::Path;
 
 pub fn parse_rtf(path: &Path) -> Result<ParsedDocument> {
     let content = std::fs::read_to_string(path)?;
     
     let mut text = String::new();
-    let mut in_control = false;
+    let _in_control = false;
     let mut brace_depth = 0;
     let mut skip_until_brace = false;
     
@@ -217,12 +217,12 @@ pub fn parse_azw(path: &Path) -> Result<ParsedDocument> {
     
     let mut text = String::new();
     let mut current = Vec::new();
-    let mut in_palmdoc = false;
+    let mut _in_palmdoc = false;
     
     // Check for PALM DOC signature
     if content.len() > 68 {
         if &content[0..4] == b"TPZ" || &content[60..68] == b"BOOKMOBI" {
-            in_palmdoc = true;
+            _in_palmdoc = true;
         }
     }
     

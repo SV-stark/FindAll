@@ -1,5 +1,5 @@
 use tauri::{State, Emitter};
-use std::sync::{Arc, Mutex as StdMutex};
+use std::sync::Arc;
 use tokio::sync::Mutex;
 use serde::Serialize;
 use crate::indexer::{IndexManager, searcher::SearchResult, searcher::IndexStatistics, filename_index::FilenameIndex};

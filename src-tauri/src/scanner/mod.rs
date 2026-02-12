@@ -6,7 +6,7 @@ use tokio::sync::{mpsc, Mutex};
 use rayon::prelude::*;
 use ignore::WalkBuilder;
 use tauri::{AppHandle, Emitter};
-use tracing::{error, info, instrument, trace, warn};
+use tracing::{error, info, instrument, warn};
 use crate::error::Result;
 use crate::indexer::IndexManager;
 use crate::metadata::MetadataDb;
@@ -147,8 +147,8 @@ impl Scanner {
             let mut last_commit = Instant::now();
             let mut total_indexed = 0usize;
             let start_time = Instant::now();
-            let mut last_emit_time = Instant::now();
-            let mut current_folder = String::new();
+            let _last_emit_time = Instant::now();
+            let current_folder = String::new();
             
             loop {
                 match tokio::time::timeout(
