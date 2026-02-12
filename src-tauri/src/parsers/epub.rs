@@ -117,20 +117,23 @@ fn extract_epub_title(path: &Path) -> Result<String> {
         .map_err(|e| FlashError::Parse(format!("Failed to read EPUB: {}", e)))?;
 
     // Try to read OPF file for metadata
-    if let Ok(mut container_xml) = archive.by_name("META-INF/container.xml") {
+    let opf_path = if let Ok(mut container_xml) = archive.by_name("META-INF/container.xml") {
         let mut content = String::new();
         if container_xml.read_to_string(&mut content).is_ok() {
-            // Parse container.xml to find OPF path
-            if let Some(opf_path) = extract_opf_path(&content) {
-                drop(container_xml);
-                
-                if let Ok(mut opf_file) = archive.by_name(&opf_path) {
-                    let mut opf_content = String::new();
-                    if opf_file.read_to_string(&mut opf_content).is_ok() {
-                        if let Some(title) = extract_title_from_opf(&opf_content) {
-                            return Ok(title);
-                        }
-                    }
+            extract_opf_path(&content)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    if let Some(path) = opf_path {
+        if let Ok(mut opf_file) = archive.by_name(&path) {
+            let mut opf_content = String::new();
+            if opf_file.read_to_string(&mut opf_content).is_ok() {
+                if let Some(title) = extract_title_from_opf(&opf_content) {
+                    return Ok(title);
                 }
             }
         }
@@ -146,7 +149,6 @@ fn extract_epub_title(path: &Path) -> Result<String> {
 fn extract_opf_path(container_xml: &str) -> Option<String> {
     let mut reader = Reader::from_str(container_xml);
     let mut buf = Vec::with_capacity(512);
-    let mut in_rootfile = false;
 
     loop {
         match reader.read_event_into(&mut buf) {

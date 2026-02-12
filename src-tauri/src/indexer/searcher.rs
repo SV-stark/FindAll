@@ -127,16 +127,9 @@ impl IndexSearcher {
             }
         }
 
-        let final_query: Box<dyn tantivy::query::Query> = if combine.len() == 1 {
-            combine.remove(0).1
-        } else {
-            Box::new(BooleanQuery::new(combine))
-        };
-
-        // Build file extension filter as a boolean query clause (pre-query filtering)
+        // Build file extension filter as a boolean query clause
         if let Some(extensions) = file_extensions {
             if !extensions.is_empty() {
-                let path_field_name = self.schema.get_field_name(self.path_field).to_string();
                 let extension_queries: Vec<_> = extensions
                     .iter()
                     .filter_map(|ext| {
@@ -166,14 +159,12 @@ impl IndexSearcher {
             }
         }
 
-        // Rebuild final query with extension filters included
         let final_query: Box<dyn tantivy::query::Query> = if combine.len() == 1 {
             combine.remove(0).1
         } else {
             Box::new(BooleanQuery::new(combine))
         };
 
-        // No need for inflated search limit - filters are applied at query time
         let top_docs = searcher
             .search(&*final_query, &TopDocs::with_limit(limit))
             .map_err(|e| FlashError::Search(e.to_string()))?;
@@ -203,14 +194,11 @@ impl IndexSearcher {
                 matched_terms: highlight_terms.clone(),
             });
 
-            // Stop once we have enough results
             if results.len() >= limit {
                 break;
             }
         }
 
-        // Trim results to exact limit if we got more
-        results.truncate(limit);
         Ok(results)
     }
 
@@ -219,18 +207,11 @@ impl IndexSearcher {
         let searcher = self.reader.searcher();
         let total_docs = searcher.num_docs() as usize;
         
-        // Get the size field
-        let size_field = self.schema
-            .get_field("size")
-            .map_err(|_| FlashError::Index("size field not found".to_string()))?;
-        
-        // Calculate total size by iterating through all documents
         let mut total_size = 0u64;
         for segment_reader in searcher.segment_readers() {
-            let store_reader = segment_reader.get_store_reader(0)?;
             for doc_id in 0..segment_reader.num_docs() {
-                if let Ok(doc) = store_reader.get(doc_id) {
-                    if let Some(value) = doc.get_first(size_field) {
+                if let Ok(doc) = segment_reader.doc::<TantivyDocument>(doc_id) {
+                    if let Some(value) = doc.get_first(self.size_field) {
                         if let Some(size) = value.as_u64() {
                             total_size += size;
                         }
@@ -242,7 +223,7 @@ impl IndexSearcher {
         Ok(IndexStatistics {
             total_documents: total_docs,
             total_size_bytes: total_size,
-            last_updated: None, // Could be stored in metadata
+            last_updated: None,
         })
     }
 }

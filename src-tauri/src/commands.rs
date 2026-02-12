@@ -1,5 +1,5 @@
-use tauri::State;
-use std::sync::Arc;
+use tauri::{State, Emitter};
+use std::sync::{Arc, Mutex as StdMutex};
 use tokio::sync::Mutex;
 use serde::Serialize;
 use crate::indexer::{IndexManager, searcher::SearchResult, searcher::IndexStatistics, filename_index::FilenameIndex};
@@ -354,6 +354,10 @@ pub async fn search_filenames(
 ) -> Result<Vec<FilenameSearchResult>, String> {
     if let Some(ref filename_index) = state.filename_index {
         filename_index.search(&query, limit)
+            .map(|results| results.into_iter().map(|r| FilenameSearchResult {
+                file_path: r.file_path,
+                file_name: r.file_name,
+            }).collect())
             .map_err(|e| e.to_string())
     } else {
         Err("Filename index not initialized".to_string())
@@ -392,7 +396,7 @@ pub async fn build_filename_index(
     let app_handle = app;
     
     tokio::spawn(async move {
-        if let Some(ref index) = *filename_index {
+        if let Some(index) = filename_index.as_ref() {
             // Clear existing index
             index.clear().ok();
             
@@ -497,7 +501,7 @@ pub fn add_search_history(
     
     if !found {
         // Add new entry
-        history.insert(0, SearchHistoryItem {
+        history.insert(0, crate::settings::SearchHistoryItem {
             query,
             frequency: 1,
             last_used: std::time::SystemTime::now()
@@ -533,7 +537,11 @@ pub fn get_search_history(
     sorted.sort_by(|a, b| b.frequency.cmp(&a.frequency));
     sorted.truncate(limit);
     
-    Ok(sorted)
+    Ok(sorted.into_iter().map(|item| SearchHistoryItem {
+        query: item.query,
+        frequency: item.frequency,
+        last_used: item.last_used,
+    }).collect())
 }
 
 /// Filter results by filename pattern
@@ -550,7 +558,7 @@ pub async fn filter_by_filename(
     let filtered: Vec<SearchResult> = results
         .into_iter()
         .filter(|r| {
-            let filename = r.file_path.split(/[\\/]/).last().unwrap_or("");
+            let filename = r.file_path.split(['\\', '/']).last().unwrap_or("");
             regex.is_match(filename)
         })
         .collect();

@@ -1,4 +1,5 @@
 use crate::error::{FlashError, Result};
+use crate::parsers::ParsedDocument;
 use std::io::{Read, Seek};
 use std::path::Path;
 

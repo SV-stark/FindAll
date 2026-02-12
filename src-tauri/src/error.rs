@@ -9,7 +9,7 @@ pub enum FlashError {
     Parse(String),
 
     #[error("Index error: {0}")]
-    Index(String),
+    Index(#[from] tantivy::TantivyError),
 
     #[error("Database error: {0}")]
     Database(String),

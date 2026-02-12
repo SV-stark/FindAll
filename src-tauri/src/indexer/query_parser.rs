@@ -26,7 +26,6 @@ impl ParsedQuery {
     }
 
     fn parse(input: &str) -> Self {
-        let mut text_parts = Vec::new();
         let mut extension = None;
         let mut path_filter = None;
         let mut title_filter = None;

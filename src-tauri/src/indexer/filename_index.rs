@@ -21,6 +21,7 @@ pub struct FilenameIndex {
     schema: Schema,
     path_field: Field,
     name_field: Field,
+    index_path: std::path::PathBuf,
 }
 
 impl FilenameIndex {
@@ -60,6 +61,7 @@ impl FilenameIndex {
             schema,
             path_field,
             name_field,
+            index_path: index_path.to_path_buf(),
         })
     }
 
@@ -137,18 +139,13 @@ impl FilenameIndex {
         let num_docs = searcher.num_docs() as usize;
         
         // Estimate index size
-        let index_path = self.index.directory().get_path().map(|p| p.to_path_buf());
-        let size = if let Some(path) = index_path {
-            if path.exists() {
-                walkdir::WalkDir::new(&path)
-                    .into_iter()
-                    .filter_map(|e| e.ok())
-                    .filter_map(|e| e.metadata().ok())
-                    .map(|m| m.len())
-                    .sum()
-            } else {
-                0
-            }
+        let size = if self.index_path.exists() {
+            walkdir::WalkDir::new(&self.index_path)
+                .into_iter()
+                .filter_map(|e| e.ok())
+                .filter_map(|e| e.metadata().ok())
+                .map(|m| m.len())
+                .sum()
         } else {
             0
         };

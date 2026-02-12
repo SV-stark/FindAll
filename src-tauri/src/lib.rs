@@ -18,7 +18,7 @@ use commands::{
 };
 use scanner::Scanner;
 use std::sync::Arc;
-use tauri::Manager;
+use tauri::{Manager, Emitter};
 use tracing::{info, warn};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -53,7 +53,7 @@ pub fn run_with_args(initial_search: Option<String>, index_dir: Option<String>) 
 
             let handle = app.handle().clone();
             app.global_shortcut()
-                .on_shortcut(shortcut.parse::<Shortcut>().unwrap(), move |_app, _shortcut| {
+                .on_shortcut(shortcut.parse::<Shortcut>().unwrap(), move |handle, _shortcut, _event| {
                     // Get the main window and show/focus it
                     if let Some(window) = handle.get_webview_window("main") {
                         let _ = window.show();

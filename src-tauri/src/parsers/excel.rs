@@ -57,10 +57,14 @@ fn parse_xls(path: &Path) -> Result<ParsedDocument> {
 }
 
 /// Extract content from any calamine workbook type
-fn extract_excel_content<P: Reader>(
+fn extract_excel_content<P, RS>(
     path: &Path,
     workbook: &mut P,
-) -> Result<ParsedDocument> {
+) -> Result<ParsedDocument> 
+where
+    RS: std::io::Read + std::io::Seek,
+    P: Reader<RS>,
+{
     let mut combined_text = String::with_capacity(1024 * 1024); // Start with 1MB capacity
     let mut total_cells = 0usize;
     let sheet_names = workbook.sheet_names().to_vec();
@@ -107,13 +111,8 @@ fn extract_excel_content<P: Reader>(
         combined_text.push('\n');
     }
     
-    // Try to extract title from properties or use filename
-    let title = workbook
-        .metadata()
-        .title
-        .clone()
-        .filter(|t| !t.trim().is_empty())
-        .or_else(|| path.file_stem().map(|s| s.to_string_lossy().to_string()));
+    // Fallback to filename for title since properties aren't easily available in Metadata
+    let title = path.file_stem().map(|s| s.to_string_lossy().to_string());
     
     Ok(ParsedDocument {
         path: path.to_string_lossy().to_string(),
@@ -131,7 +130,6 @@ fn format_cell_value(cell: &calamine::Data) -> String {
         calamine::Data::Int(i) => i.to_string(),
         calamine::Data::Bool(b) => b.to_string(),
         calamine::Data::DateTime(dt) => dt.to_string(),
-        calamine::Data::Duration(d) => d.to_string(),
         calamine::Data::Error(e) => format!("#ERROR: {:?}", e),
         _ => String::new(),
     }
