@@ -34,6 +34,9 @@ pub struct AppSettings {
     // Performance
     pub indexing_threads: u8,
     pub memory_limit_mb: u32,
+
+    // Pinned files for quick access
+    pub pinned_files: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -164,6 +167,9 @@ impl Default for AppSettings {
             // Performance
             indexing_threads: 4,
             memory_limit_mb: 512,
+
+            // Pinned files
+            pinned_files: vec![],
         }
     }
 }

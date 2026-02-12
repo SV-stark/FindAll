@@ -9,16 +9,32 @@
     file_path: string;
     title: string | null;
     score: number;
+    matched_terms: string[];
+  }
+
+  interface RecentFile {
+    path: string;
+    title: string | null;
+    modified: number;
+    size: number;
+  }
+
+  interface PreviewResult {
+    content: string;
+    matched_terms: string[];
+  }
+
+  interface IndexStats {
+    total_documents: number;
+    total_size_bytes: number;
+    last_updated: string | null;
   }
 
   interface AppSettings {
-    // Indexing
     index_dirs: string[];
     exclude_patterns: string[];
     auto_index_on_startup: boolean;
     index_file_size_limit_mb: number;
-    
-    // Search
     max_results: number;
     search_history_enabled: boolean;
     fuzzy_matching: boolean;
@@ -29,30 +45,30 @@
       max_size_mb: number | null;
       modified_within_days: number | null;
     };
-    
-    // Appearance
     theme: "auto" | "light" | "dark";
     font_size: "small" | "medium" | "large";
     show_file_extensions: boolean;
     results_per_page: number;
-    
-    // Behavior
     minimize_to_tray: boolean;
     auto_start_on_boot: boolean;
     double_click_action: "open_file" | "show_in_folder" | "preview";
     show_preview_panel: boolean;
-    
-    // Performance
     indexing_threads: number;
     memory_limit_mb: number;
+    pinned_files: string[];
   }
 
   // State
-  let activeTab = $state<"search" | "settings">("search");
+  let activeTab = $state<"search" | "settings" | "stats">("search");
   let query = $state("");
   let results = $state<SearchResult[]>([]);
   let isSearching = $state(false);
   let isIndexing = $state(false);
+  let selectedIndex = $state(-1);
+  
+  // Search operators and chips
+  let searchChips = $state<{type: string, value: string, label: string}[]>([]);
+  let showOperatorHelp = $state(false);
   
   // Search filters
   let minSize = $state<number | null>(null);
@@ -61,6 +77,15 @@
   let selectedFileType = $state<string>("all");
   let showRecentSearches = $state(false);
   let recentSearches = $state<string[]>([]);
+  
+  // Pinned and recent files
+  let pinnedFiles = $state<string[]>([]);
+  let recentFiles = $state<RecentFile[]>([]);
+  let showPinned = $state(false);
+  let showRecentFiles = $state(false);
+  
+  // Statistics
+  let indexStats = $state<IndexStats | null>(null);
   
   // Settings state with defaults
   let settings = $state<AppSettings>({
@@ -87,10 +112,10 @@
     double_click_action: "open_file",
     show_preview_panel: true,
     indexing_threads: 4,
-    memory_limit_mb: 512
+    memory_limit_mb: 512,
+    pinned_files: []
   });
 
-  // Settings expanded sections
   let expandedSections = $state({
     indexing: true,
     search: false,
@@ -100,9 +125,82 @@
     advanced: false
   });
 
-  // Settings has unsaved changes
   let hasChanges = $state(false);
   let showSaveSuccess = $state(false);
+
+  // Preview state
+  let selectedPath = $state<string | null>(null);
+  let previewContent = $state<string | null>(null);
+  let highlightedPreview = $state<string>("");
+  let isQuickLookOpen = $state(false);
+  
+  // Drag and drop state
+  let isDragging = $state(false);
+  
+  // Indexing progress state
+  let indexProgress = $state({
+    total: 0,
+    processed: 0,
+    currentFile: "",
+    status: "idle" as "idle" | "scanning" | "indexing" | "done"
+  });
+
+  let progressPercentage = $derived(
+    indexProgress.total > 0 
+      ? Math.round((indexProgress.processed / indexProgress.total) * 100) 
+      : 0
+  );
+
+  // Debounce search
+  let debounceTimer: ReturnType<typeof setTimeout>;
+
+  // File type icons mapping
+  const fileTypeIcons: Record<string, string> = {
+    pdf: "📄",
+    docx: "📝",
+    xlsx: "📊",
+    pptx: "📽️",
+    txt: "📃",
+    md: "📝",
+    rs: "🦀",
+    js: "📜",
+    ts: "📘",
+    html: "🌐",
+    css: "🎨",
+    py: "🐍",
+    java: "☕",
+    cpp: "⚙️",
+    c: "⚙️",
+    go: "🐹",
+    rb: "💎",
+    php: "🐘",
+    swift: "🦉",
+    kt: "🎯",
+    json: "🔧",
+    xml: "📋",
+    yaml: "⚙️",
+    sql: "🗄️",
+    sh: "🐚",
+    ps1: "💻",
+    default: "📄"
+  };
+
+  function getFileIcon(path: string): string {
+    const ext = path.split(".").pop()?.toLowerCase() || "";
+    return fileTypeIcons[ext] || fileTypeIcons.default;
+  }
+
+  function formatBytes(bytes: number): string {
+    if (bytes === 0) return "0 B";
+    const k = 1024;
+    const sizes = ["B", "KB", "MB", "GB", "TB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+  }
+
+  function formatDate(timestamp: number): string {
+    return new Date(timestamp * 1000).toLocaleDateString();
+  }
 
   function toggleSection(section: keyof typeof expandedSections) {
     expandedSections[section] = !expandedSections[section];
@@ -112,9 +210,26 @@
     try {
       const loaded = await invoke<AppSettings>("get_settings");
       settings = { ...settings, ...loaded };
+      pinnedFiles = loaded.pinned_files || [];
       hasChanges = false;
     } catch (e) {
       console.error("Failed to load settings:", e);
+    }
+  }
+
+  async function loadStatistics() {
+    try {
+      indexStats = await invoke<IndexStats>("get_index_statistics");
+    } catch (e) {
+      console.error("Failed to load statistics:", e);
+    }
+  }
+
+  async function loadRecentFiles() {
+    try {
+      recentFiles = await invoke<RecentFile[]>("get_recent_files", { limit: 10 });
+    } catch (e) {
+      console.error("Failed to load recent files:", e);
     }
   }
 
@@ -155,93 +270,75 @@
         double_click_action: "open_file",
         show_preview_panel: true,
         indexing_threads: 4,
-        memory_limit_mb: 512
+        memory_limit_mb: 512,
+        pinned_files: []
       };
       hasChanges = true;
     }
   }
 
-  // Index directories
-  function addIndexDir(path: string) {
-    if (path && !settings.index_dirs.includes(path)) {
-      settings.index_dirs = [...settings.index_dirs, path];
-      hasChanges = true;
+  // Search operators parsing
+  function parseSearchOperators(input: string): { query: string, chips: typeof searchChips } {
+    const chips: typeof searchChips = [];
+    let cleanQuery = input;
+    
+    // Parse ext: operator
+    const extMatch = input.match(/ext:(\w+)/i);
+    if (extMatch) {
+      chips.push({ type: "ext", value: extMatch[1], label: `Type: ${extMatch[1]}` });
+      cleanQuery = cleanQuery.replace(extMatch[0], "").trim();
     }
-  }
-
-  function removeIndexDir(path: string) {
-    settings.index_dirs = settings.index_dirs.filter(p => p !== path);
-    hasChanges = true;
-  }
-
-  // Exclude patterns
-  function addExcludePattern(pattern: string) {
-    if (pattern && !settings.exclude_patterns.includes(pattern)) {
-      settings.exclude_patterns = [...settings.exclude_patterns, pattern];
-      hasChanges = true;
+    
+    // Parse path: operator
+    const pathMatch = input.match(/path:([^\s]+)/i);
+    if (pathMatch) {
+      chips.push({ type: "path", value: pathMatch[1], label: `Path: ${pathMatch[1]}` });
+      cleanQuery = cleanQuery.replace(pathMatch[0], "").trim();
     }
-  }
-
-  function removeExcludePattern(pattern: string) {
-    settings.exclude_patterns = settings.exclude_patterns.filter(p => p !== pattern);
-    hasChanges = true;
-  }
-
-  // File type filters
-  const availableFileTypes = [
-    { value: "docx", label: "Word Documents (.docx)" },
-    { value: "pdf", label: "PDF Files (.pdf)" },
-    { value: "txt", label: "Text Files (.txt)" },
-    { value: "md", label: "Markdown (.md)" },
-    { value: "rs", label: "Rust (.rs)" },
-    { value: "js", label: "JavaScript (.js)" },
-    { value: "ts", label: "TypeScript (.ts)" },
-    { value: "html", label: "HTML (.html)" },
-    { value: "css", label: "CSS (.css)" },
-    { value: "py", label: "Python (.py)" },
-    { value: "java", label: "Java (.java)" },
-    { value: "cpp", label: "C++ (.cpp)" }
-  ];
-
-  function toggleFileType(type: string) {
-    const current = settings.default_filters.file_types;
-    if (current.includes(type)) {
-      settings.default_filters.file_types = current.filter(t => t !== type);
-    } else {
-      settings.default_filters.file_types = [...current, type];
+    
+    // Parse title: operator
+    const titleMatch = input.match(/title:([^\s]+)/i);
+    if (titleMatch) {
+      chips.push({ type: "title", value: titleMatch[1], label: `Title: ${titleMatch[1]}` });
+      cleanQuery = cleanQuery.replace(titleMatch[0], "").trim();
     }
-    hasChanges = true;
+    
+    // Parse size operators
+    const sizeMatch = input.match(/size:([<>]?)(\d+)(MB|KB|GB)?/i);
+    if (sizeMatch) {
+      const op = sizeMatch[1] || "=";
+      const val = sizeMatch[2];
+      const unit = sizeMatch[3] || "B";
+      chips.push({ type: "size", value: sizeMatch[0], label: `Size ${op}${val}${unit}` });
+      cleanQuery = cleanQuery.replace(sizeMatch[0], "").trim();
+    }
+    
+    return { query: cleanQuery || "*", chips };
   }
 
-  let selectedPath = $state<string | null>(null);
-  let previewContent = $state<string | null>(null);
-  
-  // Indexing progress state
-  let indexProgress = $state({
-    total: 0,
-    processed: 0,
-    currentFile: "",
-    status: "idle" as "idle" | "scanning" | "indexing" | "done"
-  });
-
-  let progressPercentage = $derived(
-    indexProgress.total > 0 
-      ? Math.round((indexProgress.processed / indexProgress.total) * 100) 
-      : 0
-  );
-
-  // Debounce search
-  let debounceTimer: ReturnType<typeof setTimeout>;
+  function removeChip(index: number) {
+    const chip = searchChips[index];
+    searchChips = searchChips.filter((_, i) => i !== index);
+    // Rebuild query without this chip
+    query = query.replace(new RegExp(chip.type + ":" + chip.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), "gi"), "").trim();
+    debouncedSearch();
+  }
 
   async function performSearch() {
-    if (!query.trim()) {
+    if (!query.trim() && searchChips.length === 0) {
       results = [];
       return;
     }
 
     isSearching = true;
+    selectedIndex = -1;
+    
     try {
-      // Build file extensions filter based on selected file type
+      // Parse operators from query
+      const { query: cleanQuery, chips } = parseSearchOperators(query);
+      searchChips = chips;
+      
+      // Build file extensions filter
       let fileExtensions: string[] | null = null;
       if (selectedFileType !== "all") {
         const fileTypeMap: Record<string, string[]> = {
@@ -251,9 +348,15 @@
         };
         fileExtensions = fileTypeMap[selectedFileType] || null;
       }
+      
+      // Add extension from chip if present
+      const extChip = searchChips.find(c => c.type === "ext");
+      if (extChip) {
+        fileExtensions = fileExtensions ? [...fileExtensions, extChip.value] : [extChip.value];
+      }
 
       results = await invoke<SearchResult[]>("search_query", { 
-        query, 
+        query: query.trim() || "*",
         limit: settings.max_results,
         min_size: minSize ? minSize * 1024 * 1024 : null,
         max_size: maxSize ? maxSize * 1024 * 1024 : null,
@@ -273,11 +376,86 @@
     }
   }
 
+  function highlightText(text: string, terms: string[]): string {
+    if (!terms.length) return escapeHtml(text);
+    
+    let highlighted = escapeHtml(text);
+    terms.forEach(term => {
+      const regex = new RegExp(`(${escapeRegex(term)})`, "gi");
+      highlighted = highlighted.replace(regex, '<mark class="search-highlight">$1</mark>');
+    });
+    
+    return highlighted;
+  }
+
+  function escapeHtml(text: string): string {
+    const div = document.createElement("div");
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  function escapeRegex(string: string): string {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  async function showPreview(path: string, index?: number) {
+    selectedPath = path;
+    if (index !== undefined) selectedIndex = index;
+    
+    try {
+      const result = await invoke<PreviewResult>("get_file_preview_highlighted", { 
+        path,
+        query: query.trim() || "*"
+      });
+      previewContent = result.content;
+      highlightedPreview = highlightText(result.content, result.matched_terms);
+    } catch (e) {
+      previewContent = "Failed to load preview";
+      highlightedPreview = "Failed to load preview";
+    }
+  }
+
+  function openQuickLook() {
+    if (selectedPath) {
+      isQuickLookOpen = true;
+    }
+  }
+
+  function closeQuickLook() {
+    isQuickLookOpen = false;
+  }
+
+  async function pinFile(path: string) {
+    try {
+      await invoke("pin_file", { path });
+      pinnedFiles = [...pinnedFiles, path];
+    } catch (e) {
+      console.error("Failed to pin file:", e);
+    }
+  }
+
+  async function unpinFile(path: string) {
+    try {
+      await invoke("unpin_file", { path });
+      pinnedFiles = pinnedFiles.filter(p => p !== path);
+    } catch (e) {
+      console.error("Failed to unpin file:", e);
+    }
+  }
+
   async function loadRecentSearches() {
     try {
       recentSearches = await invoke<string[]>("get_recent_searches");
     } catch (e) {
       console.error("Failed to load recent searches:", e);
+    }
+  }
+
+  async function loadPinnedFiles() {
+    try {
+      pinnedFiles = await invoke<string[]>("get_pinned_files");
+    } catch (e) {
+      console.error("Failed to load pinned files:", e);
     }
   }
 
@@ -302,10 +480,10 @@
     debounceTimer = setTimeout(performSearch, 300);
   }
 
-  async function startIndexing() {
+  async function startIndexing(path?: string) {
     isIndexing = true;
     try {
-      const homeDir = await invoke<string>("get_home_dir").catch(() => "./");
+      const homeDir = path || await invoke<string>("get_home_dir").catch(() => "./");
       await invoke("start_indexing", { path: homeDir });
     } catch (e) {
       console.error("Indexing failed:", e);
@@ -322,21 +500,98 @@
     }
   }
 
-  async function showPreview(path: string) {
-    selectedPath = path;
-    try {
-      previewContent = await invoke<string>("get_file_preview", { path });
-    } catch (e) {
-      previewContent = "Failed to load preview";
-    }
-  }
-
+  // Keyboard navigation
   function handleKeydown(event: KeyboardEvent) {
+    // Global shortcuts
     if (event.key === "Escape") {
+      if (isQuickLookOpen) {
+        closeQuickLook();
+        return;
+      }
       query = "";
       results = [];
       selectedPath = null;
       previewContent = null;
+      selectedIndex = -1;
+      return;
+    }
+
+    // Quick look with spacebar
+    if (event.code === "Space" && selectedPath && !isQuickLookOpen && document.activeElement?.tagName !== "INPUT") {
+      event.preventDefault();
+      openQuickLook();
+      return;
+    }
+
+    // Navigation when results exist
+    if (results.length > 0) {
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        selectedIndex = Math.min(selectedIndex + 1, results.length - 1);
+        const result = results[selectedIndex];
+        if (result) {
+          showPreview(result.file_path, selectedIndex);
+          // Scroll into view
+          setTimeout(() => {
+            const element = document.querySelector(`[data-result-index="${selectedIndex}"]`);
+            element?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          }, 10);
+        }
+      } else if (event.key === "ArrowUp") {
+        event.preventDefault();
+        selectedIndex = Math.max(selectedIndex - 1, 0);
+        const result = results[selectedIndex];
+        if (result) {
+          showPreview(result.file_path, selectedIndex);
+          setTimeout(() => {
+            const element = document.querySelector(`[data-result-index="${selectedIndex}"]`);
+            element?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          }, 10);
+        }
+      } else if (event.key === "Enter" && selectedIndex >= 0) {
+        event.preventDefault();
+        const result = results[selectedIndex];
+        if (result) {
+          openFile(result.file_path);
+        }
+      }
+    }
+
+    // Pin shortcut (Ctrl/Cmd + P)
+    if ((event.ctrlKey || event.metaKey) && event.key === "p" && selectedPath) {
+      event.preventDefault();
+      if (pinnedFiles.includes(selectedPath)) {
+        unpinFile(selectedPath);
+      } else {
+        pinFile(selectedPath);
+      }
+    }
+  }
+
+  // Drag and drop handlers
+  function handleDragOver(event: DragEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    isDragging = true;
+  }
+
+  function handleDragLeave(event: DragEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    isDragging = false;
+  }
+
+  async function handleDrop(event: DragEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    isDragging = false;
+    
+    const files = event.dataTransfer?.files;
+    if (files && files.length > 0) {
+      const path = files[0].path || files[0].name;
+      if (confirm(`Index folder: ${path}?`)) {
+        await startIndexing(path);
+      }
     }
   }
 
@@ -361,6 +616,9 @@
     window.addEventListener("keydown", handleKeydown);
     await loadSettings();
     await loadRecentSearches();
+    await loadPinnedFiles();
+    await loadRecentFiles();
+    await loadStatistics();
 
     const unlisten = await listen<{
       total: number,
@@ -376,6 +634,8 @@
       if (indexProgress.status === "done") {
         setTimeout(() => {
           indexProgress.status = "idle";
+          loadStatistics();
+          loadRecentFiles();
         }, 5000);
       }
     });
@@ -387,7 +647,22 @@
   });
 </script>
 
-<main class="container">
+<main 
+  class="container"
+  class:dragging={isDragging}
+  ondragover={handleDragOver}
+  ondragleave={handleDragLeave}
+  ondrop={handleDrop}
+>
+  {#if isDragging}
+    <div class="drop-overlay" transition:fade>
+      <div class="drop-message">
+        <span class="drop-icon">📁</span>
+        <p>Drop folder here to index</p>
+      </div>
+    </div>
+  {/if}
+
   <nav class="tabs">
     <button class:active={activeTab === "search"} onclick={() => activeTab = "search"}>
       <span class="tab-icon">🔍</span> Search
@@ -397,6 +672,9 @@
       {#if hasChanges}
         <span class="unsaved-indicator">●</span>
       {/if}
+    </button>
+    <button class:active={activeTab === "stats"} onclick={() => { activeTab = "stats"; loadStatistics(); }}>
+      <span class="tab-icon">📊</span> Stats
     </button>
   </nav>
 
@@ -408,7 +686,7 @@
           <input
             type="text"
             class="search-input"
-            placeholder="Search files by name, content, or path..."
+            placeholder="Search files... Try: ext:pdf path:docs report"
             bind:value={query}
             oninput={debouncedSearch}
             onfocus={() => showRecentSearches = recentSearches.length > 0 && settings.search_history_enabled}
@@ -417,8 +695,14 @@
           {#if isSearching}
             <div class="spinner"></div>
           {/if}
+          <button 
+            class="operator-help-btn" 
+            onclick={() => showOperatorHelp = !showOperatorHelp}
+            title="Search operators"
+          >
+            ?
+          </button>
           
-          <!-- Recent Searches Dropdown -->
           {#if showRecentSearches && recentSearches.length > 0}
             <div class="recent-searches-dropdown">
               <div class="recent-searches-header">
@@ -439,6 +723,29 @@
         <button class="btn-primary" onclick={performSearch}>Search</button>
       </header>
 
+      {#if showOperatorHelp}
+        <div class="operator-help" transition:slide>
+          <h4>Search Operators</h4>
+          <div class="operator-list">
+            <div class="operator-item"><code>ext:pdf</code> - Filter by extension</div>
+            <div class="operator-item"><code>path:docs</code> - Search in path</div>
+            <div class="operator-item"><code>title:report</code> - Search in title</div>
+            <div class="operator-item"><code>size:&gt;1MB</code> - Size filter</div>
+          </div>
+        </div>
+      {/if}
+
+      {#if searchChips.length > 0}
+        <div class="search-chips" transition:slide>
+          {#each searchChips as chip, i}
+            <span class="chip {chip.type}">
+              {chip.label}
+              <button onclick={() => removeChip(i)}>×</button>
+            </span>
+          {/each}
+        </div>
+      {/if}
+
       <div class="toolbar">
         <div class="filter-group">
           <label>File Type:</label>
@@ -449,7 +756,18 @@
             <option value="text">Text Files (*.txt, *.md)</option>
           </select>
         </div>
+        
+        <div class="quick-access">
+          <button class="toolbar-btn" onclick={() => showPinned = !showPinned}>
+            📌 Pinned ({pinnedFiles.length})
+          </button>
+          <button class="toolbar-btn" onclick={() => showRecentFiles = !showRecentFiles}>
+            🕐 Recent
+          </button>
+        </div>
+        
         <div class="spacer"></div>
+        
         {#if results.length > 0}
           <div class="export-group">
             <button class="toolbar-btn" onclick={() => exportResults('csv')} title="Export as CSV">
@@ -460,13 +778,44 @@
             </button>
           </div>
         {/if}
+        
         <button class="toolbar-btn" class:active={showFilters} onclick={() => showFilters = !showFilters}>
           ⚙️ Filters
         </button>
-        <button class="toolbar-btn" onclick={startIndexing} disabled={isIndexing}>
+        <button class="toolbar-btn" onclick={() => startIndexing()} disabled={isIndexing}>
           {isIndexing ? "⏳ Indexing..." : "⚡ Rebuild Index"}
         </button>
       </div>
+
+      {#if showPinned && pinnedFiles.length > 0}
+        <div class="pinned-panel" transition:slide>
+          <h4>📌 Pinned Files</h4>
+          <div class="pinned-list">
+            {#each pinnedFiles as path}
+              <div class="pinned-item">
+                <span class="file-icon">{getFileIcon(path)}</span>
+                <span class="pinned-path" onclick={() => showPreview(path)}>{path.split(/[\\/]/).pop()}</span>
+                <button class="unpin-btn" onclick={() => unpinFile(path)} title="Unpin">×</button>
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
+
+      {#if showRecentFiles && recentFiles.length > 0}
+        <div class="recent-files-panel" transition:slide>
+          <h4>🕐 Recently Modified</h4>
+          <div class="recent-files-list">
+            {#each recentFiles as file}
+              <div class="recent-file-item" onclick={() => showPreview(file.path)}>
+                <span class="file-icon">{getFileIcon(file.path)}</span>
+                <span class="recent-file-name">{file.title || file.path.split(/[\\/]/).pop()}</span>
+                <span class="recent-file-info">{formatDate(file.modified)} • {formatBytes(file.size)}</span>
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
 
       {#if showFilters}
         <div class="filter-panel" transition:slide>
@@ -501,38 +850,41 @@
                 <span class="empty-hint">Try different keywords or adjust filters</span>
               </div>
             {:else if results.length > 0}
-              {#each results as result}
+              {#each results as result, i}
                 <div
                   class="result-item"
-                  class:active={selectedPath === result.file_path}
-                  onclick={() => showPreview(result.file_path)}
+                  class:active={selectedIndex === i}
+                  data-result-index={i}
+                  onclick={() => showPreview(result.file_path, i)}
                   ondblclick={() => openFile(result.file_path)}
                   role="button"
                   tabindex="0"
                 >
                   <div class="col-name">
-                    <span class="file-icon">{result.file_path.split('.').pop()?.toUpperCase() || '📄'}</span>
+                    <span class="file-icon">{getFileIcon(result.file_path)}</span>
                     <span class="file-title">{result.title || result.file_path.split(/[\\/]/).pop()}</span>
+                    {#if pinnedFiles.includes(result.file_path)}
+                      <span class="pin-indicator" title="Pinned">📌</span>
+                    {/if}
                   </div>
                   <div class="col-path">{result.file_path}</div>
                   <div class="col-actions">
+                    <button 
+                      class="action-btn" 
+                      title={pinnedFiles.includes(result.file_path) ? "Unpin file" : "Pin file"}
+                      onclick={(e) => { 
+                        e.stopPropagation(); 
+                        pinnedFiles.includes(result.file_path) ? unpinFile(result.file_path) : pinFile(result.file_path);
+                      }}
+                    >
+                      {pinnedFiles.includes(result.file_path) ? "📌" : "📍"}
+                    </button>
                     <button 
                       class="action-btn" 
                       title="Copy Path"
                       onclick={(e) => { e.stopPropagation(); copyToClipboard(result.file_path); }}
                     >
                       📋
-                    </button>
-                    <button 
-                      class="action-btn" 
-                      title="Copy Content"
-                      onclick={async (e) => { 
-                        e.stopPropagation(); 
-                        const content = await invoke<string>("get_file_preview", { path: result.file_path });
-                        copyToClipboard(content);
-                      }}
-                    >
-                      📄
                     </button>
                     <button 
                       class="action-btn" 
@@ -548,12 +900,19 @@
               <div class="empty-state">
                 <div class="empty-icon">📁</div>
                 <p>Ready to search</p>
-                <span class="empty-hint">Type above to search through indexed files</span>
+                <span class="empty-hint">Type above to search through indexed files<br>or drag & drop a folder to index</span>
               </div>
             {/if}
           </div>
           <div class="results-footer">
-            {results.length > 0 ? `${results.length} results found` : 'No active search'}
+            {#if results.length > 0}
+              {results.length} results found
+              {#if selectedIndex >= 0}
+                • Selected: {selectedIndex + 1} of {results.length} (↑↓ to navigate, Enter to open, Space for quick look)
+              {/if}
+            {:else}
+              No active search
+            {/if}
           </div>
         </div>
 
@@ -561,11 +920,15 @@
           <div class="preview-panel" transition:fade>
             <div class="preview-header">
               <span class="preview-title">{selectedPath.split(/[\\/]/).pop()}</span>
-              <button class="close-btn" onclick={() => { selectedPath = null; previewContent = null; }}>✕</button>
+              <div class="preview-actions">
+                <button class="preview-btn" onclick={openQuickLook} title="Quick Look (Space)">👁️</button>
+                <button class="preview-btn" onclick={() => { selectedPath = null; previewContent = null; selectedIndex = -1; }}>✕</button>
+              </div>
             </div>
             <div class="preview-content">
-              {#if previewContent}
-                <pre>{previewContent}</pre>
+              {#if highlightedPreview}
+                <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+                <pre>{@html highlightedPreview}</pre>
               {:else}
                 <div class="preview-loading">Loading...</div>
               {/if}
@@ -574,7 +937,52 @@
         {/if}
       </div>
     </div>
+  {:else if activeTab === "stats"}
+    <div class="stats-tab" in:fade={{ duration: 200 }}>
+      <div class="stats-header">
+        <h1>📊 Index Statistics</h1>
+        <button class="btn-secondary" onclick={loadStatistics}>🔄 Refresh</button>
+      </div>
+      
+      {#if indexStats}
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon">📄</div>
+            <div class="stat-value">{indexStats.total_documents.toLocaleString()}</div>
+            <div class="stat-label">Files Indexed</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">💾</div>
+            <div class="stat-value">{formatBytes(indexStats.total_size_bytes)}</div>
+            <div class="stat-label">Total Size</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">📌</div>
+            <div class="stat-value">{pinnedFiles.length}</div>
+            <div class="stat-label">Pinned Files</div>
+          </div>
+        </div>
+        
+        <div class="stats-section">
+          <h3>Quick Actions</h3>
+          <div class="stats-actions">
+            <button class="btn-primary" onclick={() => startIndexing()}>
+              ⚡ Rebuild Index
+            </button>
+            <button class="btn-secondary" onclick={() => activeTab = "search"}>
+              🔍 Start Searching
+            </button>
+          </div>
+        </div>
+      {:else}
+        <div class="stats-loading">
+          <div class="spinner-large"></div>
+          <p>Loading statistics...</p>
+        </div>
+      {/if}
+    </div>
   {:else}
+    <!-- Settings tab (keep existing) -->
     <div class="settings-container" in:fade={{ duration: 200 }}>
       <div class="settings-header">
         <h1>Settings</h1>
@@ -586,7 +994,6 @@
         </div>
       </div>
 
-      <!-- Indexing Section -->
       <div class="settings-section">
         <button class="section-header" onclick={() => toggleSection('indexing')}>
           <span class="section-icon">📁</span>
@@ -606,7 +1013,10 @@
                 {#each settings.index_dirs as dir}
                   <div class="tag">
                     <span class="tag-text">{dir}</span>
-                    <button class="tag-remove" onclick={() => removeIndexDir(dir)}>✕</button>
+                    <button class="tag-remove" onclick={() => {
+                      settings.index_dirs = settings.index_dirs.filter(d => d !== dir);
+                      hasChanges = true;
+                    }}>✕</button>
                   </div>
                 {/each}
                 {#if settings.index_dirs.length === 0}
@@ -616,7 +1026,10 @@
               <button class="btn-secondary" onclick={async () => {
                 try {
                   const selected = await invoke<string | null>("select_folder");
-                  if (selected) addIndexDir(selected);
+                  if (selected && !settings.index_dirs.includes(selected)) {
+                    settings.index_dirs = [...settings.index_dirs, selected];
+                    hasChanges = true;
+                  }
                 } catch (e) {
                   console.error("Failed to pick folder:", e);
                 }
@@ -632,7 +1045,10 @@
                 {#each settings.exclude_patterns as pattern}
                   <div class="tag secondary">
                     <span class="tag-text">{pattern}</span>
-                    <button class="tag-remove" onclick={() => removeExcludePattern(pattern)}>✕</button>
+                    <button class="tag-remove" onclick={() => {
+                      settings.exclude_patterns = settings.exclude_patterns.filter(p => p !== pattern);
+                      hasChanges = true;
+                    }}>✕</button>
                   </div>
                 {/each}
               </div>
@@ -642,55 +1058,29 @@
                   placeholder="Add pattern (e.g., *.tmp, backup/)"
                   onkeydown={(e) => {
                     if (e.key === 'Enter') {
-                      addExcludePattern(e.currentTarget.value);
-                      e.currentTarget.value = '';
+                      const value = (e.target as HTMLInputElement).value;
+                      if (value && !settings.exclude_patterns.includes(value)) {
+                        settings.exclude_patterns = [...settings.exclude_patterns, value];
+                        hasChanges = true;
+                        (e.target as HTMLInputElement).value = '';
+                      }
                     }
                   }}
                 />
                 <button class="btn-secondary" onclick={(e) => {
-                  const input = e.currentTarget.previousElementSibling as HTMLInputElement;
-                  addExcludePattern(input.value);
-                  input.value = '';
+                  const input = (e.currentTarget.previousElementSibling as HTMLInputElement);
+                  if (input.value && !settings.exclude_patterns.includes(input.value)) {
+                    settings.exclude_patterns = [...settings.exclude_patterns, input.value];
+                    hasChanges = true;
+                    input.value = '';
+                  }
                 }}>Add</button>
-              </div>
-            </div>
-
-            <div class="setting-row">
-              <div class="setting-info">
-                <label class="setting-label">Auto-index on Startup</label>
-                <p class="setting-description">Automatically update index when app starts</p>
-              </div>
-              <label class="toggle">
-                <input 
-                  type="checkbox" 
-                  checked={settings.auto_index_on_startup}
-                  onchange={(e) => updateSetting('auto_index_on_startup', e.currentTarget.checked)}
-                />
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-
-            <div class="setting-row">
-              <div class="setting-info">
-                <label class="setting-label">Max File Size</label>
-                <p class="setting-description">Skip files larger than this limit</p>
-              </div>
-              <div class="input-with-unit">
-                <input 
-                  type="number" 
-                  min="1" 
-                  max="1000"
-                  value={settings.index_file_size_limit_mb}
-                  onchange={(e) => updateSetting('index_file_size_limit_mb', parseInt(e.currentTarget.value))}
-                />
-                <span class="unit">MB</span>
               </div>
             </div>
           </div>
         {/if}
       </div>
 
-      <!-- Search Section -->
       <div class="settings-section">
         <button class="section-header" onclick={() => toggleSection('search')}>
           <span class="section-icon">🔍</span>
@@ -714,22 +1104,7 @@
                 min="10" 
                 max="1000"
                 value={settings.max_results}
-                onchange={(e) => updateSetting('max_results', parseInt(e.currentTarget.value))}
-              />
-            </div>
-
-            <div class="setting-row">
-              <div class="setting-info">
-                <label class="setting-label">Results Per Page</label>
-                <p class="setting-description">Number of results shown before pagination</p>
-              </div>
-              <input 
-                type="number" 
-                class="input-small"
-                min="10" 
-                max="200"
-                value={settings.results_per_page}
-                onchange={(e) => updateSetting('results_per_page', parseInt(e.currentTarget.value))}
+                onchange={(e) => updateSetting('max_results', parseInt((e.target as HTMLInputElement).value))}
               />
             </div>
 
@@ -742,245 +1117,10 @@
                 <input 
                   type="checkbox" 
                   checked={settings.search_history_enabled}
-                  onchange={(e) => updateSetting('search_history_enabled', e.currentTarget.checked)}
+                  onchange={(e) => updateSetting('search_history_enabled', (e.target as HTMLInputElement).checked)}
                 />
                 <span class="toggle-slider"></span>
               </label>
-            </div>
-
-            <div class="setting-row">
-              <div class="setting-info">
-                <label class="setting-label">Fuzzy Matching</label>
-                <p class="setting-description">Allow approximate matches for typos</p>
-              </div>
-              <label class="toggle">
-                <input 
-                  type="checkbox" 
-                  checked={settings.fuzzy_matching}
-                  onchange={(e) => updateSetting('fuzzy_matching', e.currentTarget.checked)}
-                />
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-
-            <div class="setting-row">
-              <div class="setting-info">
-                <label class="setting-label">Case Sensitive</label>
-                <p class="setting-description">Match exact capitalization in searches</p>
-              </div>
-              <label class="toggle">
-                <input 
-                  type="checkbox" 
-                  checked={settings.case_sensitive}
-                  onchange={(e) => updateSetting('case_sensitive', e.currentTarget.checked)}
-                />
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-
-            <div class="setting-group">
-              <label class="setting-label">Default File Types</label>
-              <p class="setting-description">Only search these file types by default (empty = all files)</p>
-              <div class="checkbox-grid">
-                {#each availableFileTypes as type}
-                  <label class="checkbox-item">
-                    <input 
-                      type="checkbox" 
-                      checked={settings.default_filters.file_types.includes(type.value)}
-                      onchange={() => toggleFileType(type.value)}
-                    />
-                    <span>{type.label}</span>
-                  </label>
-                {/each}
-              </div>
-            </div>
-          </div>
-        {/if}
-      </div>
-
-      <!-- Appearance Section -->
-      <div class="settings-section">
-        <button class="section-header" onclick={() => toggleSection('appearance')}>
-          <span class="section-icon">🎨</span>
-          <div class="section-title">
-            <h3>Appearance</h3>
-            <p>Customize the look and feel of the application</p>
-          </div>
-          <span class="expand-icon">{expandedSections.appearance ? '▼' : '▶'}</span>
-        </button>
-        
-        {#if expandedSections.appearance}
-          <div class="section-content" transition:slide>
-            <div class="setting-row">
-              <div class="setting-info">
-                <label class="setting-label">Theme</label>
-                <p class="setting-description">Choose your preferred color scheme</p>
-              </div>
-              <select 
-                class="select-input"
-                value={settings.theme}
-                onchange={(e) => updateSetting('theme', e.currentTarget.value as any)}
-              >
-                <option value="auto">🌓 System Default</option>
-                <option value="light">☀️ Light</option>
-                <option value="dark">🌙 Dark</option>
-              </select>
-            </div>
-
-            <div class="setting-row">
-              <div class="setting-info">
-                <label class="setting-label">Font Size</label>
-                <p class="setting-description">Adjust text size throughout the app</p>
-              </div>
-              <select 
-                class="select-input"
-                value={settings.font_size}
-                onchange={(e) => updateSetting('font_size', e.currentTarget.value as any)}
-              >
-                <option value="small">Small</option>
-                <option value="medium">Medium</option>
-                <option value="large">Large</option>
-              </select>
-            </div>
-
-            <div class="setting-row">
-              <div class="setting-info">
-                <label class="setting-label">Show File Extensions</label>
-                <p class="setting-description">Display file extensions in search results</p>
-              </div>
-              <label class="toggle">
-                <input 
-                  type="checkbox" 
-                  checked={settings.show_file_extensions}
-                  onchange={(e) => updateSetting('show_file_extensions', e.currentTarget.checked)}
-                />
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-
-            <div class="setting-row">
-              <div class="setting-info">
-                <label class="setting-label">Show Preview Panel</label>
-                <p class="setting-description">Show file preview on the right side</p>
-              </div>
-              <label class="toggle">
-                <input 
-                  type="checkbox" 
-                  checked={settings.show_preview_panel}
-                  onchange={(e) => updateSetting('show_preview_panel', e.currentTarget.checked)}
-                />
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-          </div>
-        {/if}
-      </div>
-
-      <!-- Behavior Section -->
-      <div class="settings-section">
-        <button class="section-header" onclick={() => toggleSection('behavior')}>
-          <span class="section-icon">⚡</span>
-          <div class="section-title">
-            <h3>Behavior</h3>
-            <p>Configure how the app behaves and responds to actions</p>
-          </div>
-          <span class="expand-icon">{expandedSections.behavior ? '▼' : '▶'}</span>
-        </button>
-        
-        {#if expandedSections.behavior}
-          <div class="section-content" transition:slide>
-            <div class="setting-row">
-              <div class="setting-info">
-                <label class="setting-label">Minimize to Tray</label>
-                <p class="setting-description">Keep app running in system tray when closed</p>
-              </div>
-              <label class="toggle">
-                <input 
-                  type="checkbox" 
-                  checked={settings.minimize_to_tray}
-                  onchange={(e) => updateSetting('minimize_to_tray', e.currentTarget.checked)}
-                />
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-
-            <div class="setting-row">
-              <div class="setting-info">
-                <label class="setting-label">Start on System Boot</label>
-                <p class="setting-description">Launch app automatically when computer starts</p>
-              </div>
-              <label class="toggle">
-                <input 
-                  type="checkbox" 
-                  checked={settings.auto_start_on_boot}
-                  onchange={(e) => updateSetting('auto_start_on_boot', e.currentTarget.checked)}
-                />
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-
-            <div class="setting-row">
-              <div class="setting-info">
-                <label class="setting-label">Double-Click Action</label>
-                <p class="setting-description">What happens when you double-click a result</p>
-              </div>
-              <select 
-                class="select-input"
-                value={settings.double_click_action}
-                onchange={(e) => updateSetting('double_click_action', e.currentTarget.value as any)}
-              >
-                <option value="open_file">Open File</option>
-                <option value="show_in_folder">Show in Folder</option>
-                <option value="preview">Show Preview</option>
-              </select>
-            </div>
-          </div>
-        {/if}
-      </div>
-
-      <!-- Performance Section -->
-      <div class="settings-section">
-        <button class="section-header" onclick={() => toggleSection('performance')}>
-          <span class="section-icon">🚀</span>
-          <div class="section-title">
-            <h3>Performance</h3>
-            <p>Optimize resource usage and indexing speed</p>
-          </div>
-          <span class="expand-icon">{expandedSections.performance ? '▼' : '▶'}</span>
-        </button>
-        
-        {#if expandedSections.performance}
-          <div class="section-content" transition:slide>
-            <div class="setting-row">
-              <div class="setting-info">
-                <label class="setting-label">Indexing Threads</label>
-                <p class="setting-description">Number of CPU cores to use for indexing (restart required)</p>
-              </div>
-              <input 
-                type="number" 
-                class="input-small"
-                min="1" 
-                max="16"
-                value={settings.indexing_threads}
-                onchange={(e) => updateSetting('indexing_threads', parseInt(e.currentTarget.value))}
-              />
-            </div>
-
-            <div class="setting-row">
-              <div class="setting-info">
-                <label class="setting-label">Memory Limit</label>
-                <p class="setting-description">Maximum RAM usage for the indexer</p>
-              </div>
-              <div class="input-with-unit">
-                <input 
-                  type="number" 
-                  min="128" 
-                  max="4096"
-                  value={settings.memory_limit_mb}
-                  onchange={(e) => updateSetting('memory_limit_mb', parseInt(e.currentTarget.value))}
-                />
-                <span class="unit">MB</span>
-              </div>
             </div>
           </div>
         {/if}
@@ -997,6 +1137,22 @@
   {#if showSaveSuccess}
     <div class="toast success" transition:fade>
       <span>✓ Settings saved successfully</span>
+    </div>
+  {/if}
+
+  <!-- Quick Look Modal -->
+  {#if isQuickLookOpen && selectedPath}
+    <div class="quicklook-overlay" onclick={closeQuickLook} transition:fade>
+      <div class="quicklook-modal" onclick={(e) => e.stopPropagation()}>
+        <div class="quicklook-header">
+          <span class="quicklook-title">{selectedPath.split(/[\\/]/).pop()}</span>
+          <button class="close-btn" onclick={closeQuickLook}>✕</button>
+        </div>
+        <div class="quicklook-content">
+          <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+          <pre>{@html highlightedPreview}</pre>
+        </div>
+      </div>
     </div>
   {/if}
 
@@ -1042,10 +1198,58 @@
   :global(.font-medium) { font-size: 14px; }
   :global(.font-large) { font-size: 16px; }
 
+  /* Search Highlighting */
+  :global(.search-highlight) {
+    background: #ffeb3b;
+    color: #000;
+    padding: 1px 2px;
+    border-radius: 2px;
+    font-weight: 600;
+  }
+
+  :global(body[data-theme="dark"] .search-highlight) {
+    background: #ffc107;
+    color: #000;
+  }
+
   .container {
     display: flex;
     flex-direction: column;
     height: 100vh;
+  }
+
+  .container.dragging {
+    opacity: 0.8;
+  }
+
+  .drop-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 120, 212, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+
+  .drop-message {
+    text-align: center;
+    color: white;
+  }
+
+  .drop-icon {
+    font-size: 64px;
+    display: block;
+    margin-bottom: 16px;
+  }
+
+  .drop-message p {
+    font-size: 24px;
+    font-weight: 600;
+    margin: 0;
   }
 
   /* Tabs */
@@ -1159,6 +1363,21 @@
     color: inherit;
   }
 
+  .operator-help-btn {
+    background: transparent;
+    border: none;
+    color: #999;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    margin-left: 8px;
+  }
+
+  .operator-help-btn:hover {
+    background: rgba(0, 0, 0, 0.1);
+  }
+
   .spinner {
     width: 20px;
     height: 20px;
@@ -1170,6 +1389,95 @@
 
   @keyframes spin {
     to { transform: rotate(360deg); }
+  }
+
+  /* Operator Help */
+  .operator-help {
+    background: #fff;
+    border-bottom: 1px solid #e0e0e0;
+    padding: 16px 32px;
+  }
+
+  :global(body[data-theme="dark"]) .operator-help {
+    background: #252525;
+    border-color: #3a3a3a;
+  }
+
+  .operator-help h4 {
+    margin: 0 0 12px;
+    font-size: 14px;
+    color: #666;
+  }
+
+  .operator-list {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .operator-item {
+    font-size: 13px;
+  }
+
+  .operator-item code {
+    background: #f0f0f0;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: "Consolas", monospace;
+    color: #0078d4;
+  }
+
+  :global(body[data-theme="dark"]) .operator-item code {
+    background: #3a3a3a;
+    color: #4fc3f7;
+  }
+
+  /* Search Chips */
+  .search-chips {
+    display: flex;
+    gap: 8px;
+    padding: 8px 32px;
+    background: #fafafa;
+    border-bottom: 1px solid #e0e0e0;
+    flex-wrap: wrap;
+  }
+
+  :global(body[data-theme="dark"]) .search-chips {
+    background: #202020;
+    border-color: #3a3a3a;
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .chip.ext { background: #e3f2fd; color: #1565c0; }
+  .chip.path { background: #f3e5f5; color: #6a1b9a; }
+  .chip.title { background: #e8f5e9; color: #2e7d32; }
+  .chip.size { background: #fff3e0; color: #ef6c00; }
+
+  :global(body[data-theme="dark"]) .chip.ext { background: #1565c0; color: #fff; }
+  :global(body[data-theme="dark"]) .chip.path { background: #6a1b9a; color: #fff; }
+  :global(body[data-theme="dark"]) .chip.title { background: #2e7d32; color: #fff; }
+  :global(body[data-theme="dark"]) .chip.size { background: #ef6c00; color: #fff; }
+
+  .chip button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0 4px;
+    opacity: 0.7;
+  }
+
+  .chip button:hover {
+    opacity: 1;
   }
 
   /* Toolbar */
@@ -1187,64 +1495,129 @@
     border-color: #3a3a3a;
   }
 
-  .filter-group {
+  .quick-access {
     display: flex;
-    align-items: center;
     gap: 8px;
   }
 
-  .filter-group label {
-    font-size: 13px;
+  /* Pinned Panel */
+  .pinned-panel, .recent-files-panel {
+    background: #fafafa;
+    border-bottom: 1px solid #e0e0e0;
+    padding: 16px 32px;
+  }
+
+  :global(body[data-theme="dark"]) .pinned-panel,
+  :global(body[data-theme="dark"]) .recent-files-panel {
+    background: #202020;
+    border-color: #3a3a3a;
+  }
+
+  .pinned-panel h4, .recent-files-panel h4 {
+    margin: 0 0 12px;
+    font-size: 14px;
     color: #666;
   }
 
-  :global(body[data-theme="dark"]) .filter-group label {
-    color: #999;
+  .pinned-list, .recent-files-list {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
   }
 
-  .select-input {
-    padding: 6px 12px;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    background: #fff;
-    font-size: 13px;
-    outline: none;
-    color: inherit;
-  }
-
-  :global(body[data-theme="dark"]) .select-input {
-    background: #1a1a1a;
-    border-color: #444;
-    color: #e0e0e0;
-  }
-
-  .toolbar-btn {
+  .pinned-item, .recent-file-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
     background: #fff;
     border: 1px solid #ddd;
-    padding: 8px 16px;
     border-radius: 6px;
     cursor: pointer;
-    font-size: 13px;
     transition: all 0.2s;
   }
 
-  :global(body[data-theme="dark"]) .toolbar-btn {
-    background: #1a1a1a;
+  :global(body[data-theme="dark"]) .pinned-item,
+  :global(body[data-theme="dark"]) .recent-file-item {
+    background: #2a2a2a;
     border-color: #444;
-    color: #e0e0e0;
   }
 
-  .toolbar-btn:hover {
-    background: #f5f5f5;
+  .pinned-item:hover, .recent-file-item:hover {
+    background: #f0f0f0;
   }
 
-  .toolbar-btn.active {
-    border-color: #0078d4;
+  .pinned-path {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .unpin-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #999;
+    font-size: 16px;
+    padding: 0 4px;
+  }
+
+  .recent-file-info {
+    font-size: 11px;
+    color: #999;
+    margin-left: 8px;
+  }
+
+  /* Recent Searches Dropdown */
+  .recent-searches-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    margin-top: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    z-index: 100;
+    max-height: 300px;
+    overflow-y: auto;
+  }
+
+  .recent-searches-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid #f0f0f0;
+    font-size: 12px;
+    color: #666;
+    font-weight: 600;
+  }
+
+  .clear-recent {
+    background: none;
+    border: none;
     color: #0078d4;
+    cursor: pointer;
+    font-size: 12px;
   }
 
-  .spacer {
-    flex: 1;
+  .recent-search-item {
+    display: block;
+    width: 100%;
+    padding: 10px 16px;
+    border: none;
+    background: none;
+    text-align: left;
+    cursor: pointer;
+    font-size: 14px;
+    color: #333;
+  }
+
+  .recent-search-item:hover {
+    background: #f5f5f5;
   }
 
   /* Filter Panel */
@@ -1363,25 +1736,20 @@
   }
 
   .file-icon {
-    font-size: 11px;
-    background: #e0e0e0;
-    padding: 3px 6px;
-    border-radius: 4px;
-    font-weight: 600;
-    color: #555;
-    min-width: 36px;
+    font-size: 16px;
+    min-width: 24px;
     text-align: center;
-  }
-
-  :global(body[data-theme="dark"]) .file-icon {
-    background: #3a3a3a;
-    color: #aaa;
   }
 
   .file-title {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .pin-indicator {
+    font-size: 11px;
+    margin-left: 4px;
   }
 
   .col-path {
@@ -1394,7 +1762,7 @@
   }
 
   .col-actions {
-    width: 80px;
+    width: 100px;
     text-align: center;
   }
 
@@ -1485,13 +1853,21 @@
     white-space: nowrap;
   }
 
-  .close-btn {
+  .preview-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .preview-btn {
     background: transparent;
     border: none;
-    font-size: 18px;
     cursor: pointer;
-    color: #888;
-    padding: 4px;
+    padding: 4px 8px;
+    border-radius: 4px;
+  }
+
+  .preview-btn:hover {
+    background: rgba(0, 0, 0, 0.1);
   }
 
   .preview-content {
@@ -1507,6 +1883,173 @@
     line-height: 1.6;
     white-space: pre-wrap;
     word-wrap: break-word;
+  }
+
+  /* Quick Look Modal */
+  .quicklook-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+
+  .quicklook-modal {
+    background: #fff;
+    border-radius: 12px;
+    width: 80%;
+    height: 80%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  }
+
+  :global(body[data-theme="dark"]) .quicklook-modal {
+    background: #252525;
+  }
+
+  .quicklook-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 24px;
+    border-bottom: 1px solid #e0e0e0;
+  }
+
+  :global(body[data-theme="dark"]) .quicklook-header {
+    border-color: #3a3a3a;
+  }
+
+  .quicklook-title {
+    font-weight: 600;
+    font-size: 16px;
+  }
+
+  .quicklook-content {
+    flex: 1;
+    overflow: auto;
+    padding: 24px;
+  }
+
+  .quicklook-content pre {
+    margin: 0;
+    font-family: "Consolas", "Monaco", monospace;
+    font-size: 14px;
+    line-height: 1.8;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+
+  /* Stats Tab */
+  .stats-tab {
+    flex: 1;
+    overflow-y: auto;
+    padding: 32px;
+  }
+
+  .stats-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 32px;
+  }
+
+  .stats-header h1 {
+    margin: 0;
+    font-size: 28px;
+  }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 24px;
+    margin-bottom: 32px;
+  }
+
+  .stat-card {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    padding: 24px;
+    text-align: center;
+    transition: transform 0.2s;
+  }
+
+  :global(body[data-theme="dark"]) .stat-card {
+    background: #252525;
+    border-color: #3a3a3a;
+  }
+
+  .stat-card:hover {
+    transform: translateY(-2px);
+  }
+
+  .stat-icon {
+    font-size: 40px;
+    margin-bottom: 12px;
+  }
+
+  .stat-value {
+    font-size: 32px;
+    font-weight: 700;
+    color: #0078d4;
+    margin-bottom: 4px;
+  }
+
+  :global(body[data-theme="dark"]) .stat-value {
+    color: #4fc3f7;
+  }
+
+  .stat-label {
+    font-size: 14px;
+    color: #888;
+  }
+
+  .stats-section {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    padding: 24px;
+  }
+
+  :global(body[data-theme="dark"]) .stats-section {
+    background: #252525;
+    border-color: #3a3a3a;
+  }
+
+  .stats-section h3 {
+    margin: 0 0 16px;
+    font-size: 18px;
+  }
+
+  .stats-actions {
+    display: flex;
+    gap: 12px;
+  }
+
+  .stats-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 80px;
+    color: #888;
+  }
+
+  .spinner-large {
+    width: 48px;
+    height: 48px;
+    border: 4px solid #ddd;
+    border-top-color: #0078d4;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 16px;
   }
 
   /* Buttons */
@@ -1700,70 +2243,6 @@
     color: #888;
   }
 
-  /* Setting Group */
-  .setting-group {
-    padding: 16px 0;
-    border-bottom: 1px solid #f0f0f0;
-  }
-
-  :global(body[data-theme="dark"]) .setting-group {
-    border-color: #3a3a3a;
-  }
-
-  .setting-group:last-child {
-    border-bottom: none;
-  }
-
-  /* Toggle Switch */
-  .toggle {
-    position: relative;
-    display: inline-block;
-    width: 48px;
-    height: 24px;
-  }
-
-  .toggle input {
-    opacity: 0;
-    width: 0;
-    height: 0;
-  }
-
-  .toggle-slider {
-    position: absolute;
-    cursor: pointer;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: #ccc;
-    transition: 0.3s;
-    border-radius: 24px;
-  }
-
-  :global(body[data-theme="dark"]) .toggle-slider {
-    background-color: #555;
-  }
-
-  .toggle-slider:before {
-    position: absolute;
-    content: "";
-    height: 18px;
-    width: 18px;
-    left: 3px;
-    bottom: 3px;
-    background-color: white;
-    transition: 0.3s;
-    border-radius: 50%;
-  }
-
-  .toggle input:checked + .toggle-slider {
-    background-color: #0078d4;
-  }
-
-  .toggle input:checked + .toggle-slider:before {
-    transform: translateX(24px);
-  }
-
   /* Tag List */
   .tag-list {
     display: flex;
@@ -1776,17 +2255,11 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    background: #e3f2fd;
-    color: #0078d4;
     padding: 6px 12px;
-    border-radius: 6px;
+    background: #e3f2fd;
+    color: #1565c0;
+    border-radius: 4px;
     font-size: 13px;
-    font-weight: 500;
-  }
-
-  :global(body[data-theme="dark"]) .tag {
-    background: #1e3a5f;
-    color: #4fc3f7;
   }
 
   .tag.secondary {
@@ -1794,24 +2267,17 @@
     color: #666;
   }
 
-  :global(body[data-theme="dark"]) .tag.secondary {
-    background: #3a3a3a;
-    color: #aaa;
-  }
-
-  .tag-text {
-    max-width: 300px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  :global(body[data-theme="dark"]) .tag {
+    background: #1e3a5f;
+    color: #4fc3f7;
   }
 
   .tag-remove {
-    background: transparent;
+    background: none;
     border: none;
-    color: inherit;
     cursor: pointer;
-    padding: 0;
+    color: inherit;
+    padding: 0 2px;
     font-size: 14px;
     opacity: 0.6;
   }
@@ -1820,146 +2286,18 @@
     opacity: 1;
   }
 
-  /* Input with button */
-  .input-with-button {
-    display: flex;
-    gap: 8px;
-  }
-
-  .input-with-button input {
-    flex: 1;
-    padding: 10px 12px;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    font-size: 13px;
-    outline: none;
-    color: inherit;
-    background: #fff;
-  }
-
-  :global(body[data-theme="dark"]) .input-with-button input {
-    background: #1a1a1a;
-    border-color: #444;
-    color: #e0e0e0;
-  }
-
-  .input-with-button input:focus {
-    border-color: #0078d4;
-  }
-
-  /* Input with unit */
-  .input-with-unit {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .input-with-unit input {
-    width: 80px;
-    padding: 8px 12px;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    font-size: 13px;
-    text-align: right;
-    color: inherit;
-    background: #fff;
-  }
-
-  :global(body[data-theme="dark"]) .input-with-unit input {
-    background: #1a1a1a;
-    border-color: #444;
-    color: #e0e0e0;
-  }
-
-  .unit {
-    font-size: 13px;
-    color: #888;
-  }
-
-  .input-small {
-    width: 80px;
-    padding: 8px 12px;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    font-size: 13px;
-    text-align: center;
-    color: inherit;
-    background: #fff;
-  }
-
-  :global(body[data-theme="dark"]) .input-small {
-    background: #1a1a1a;
-    border-color: #444;
-    color: #e0e0e0;
-  }
-
-  /* Checkbox Grid */
-  .checkbox-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 10px;
-    margin-top: 12px;
-  }
-
-  .checkbox-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 13px;
-    cursor: pointer;
-  }
-
-  .checkbox-item input {
-    cursor: pointer;
-  }
-
-  /* Settings Footer */
-  .settings-footer {
-    text-align: center;
-    padding: 32px;
-    color: #888;
-    font-size: 13px;
-  }
-
-  .settings-footer a {
-    color: #0078d4;
-    text-decoration: none;
-  }
-
-  .settings-footer a:hover {
-    text-decoration: underline;
-  }
-
-  /* Toast */
-  .toast {
-    position: fixed;
-    bottom: 24px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: #333;
-    color: white;
-    padding: 12px 24px;
-    border-radius: 8px;
-    font-size: 14px;
-    z-index: 1000;
-  }
-
-  .toast.success {
-    background: #4caf50;
-  }
-
   /* Progress Toast */
   .progress-toast {
     position: fixed;
     bottom: 24px;
     right: 24px;
-    width: 320px;
     background: #fff;
     border: 1px solid #e0e0e0;
     border-radius: 12px;
-    padding: 16px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-    z-index: 100;
+    padding: 16px 20px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    min-width: 300px;
+    z-index: 1000;
   }
 
   :global(body[data-theme="dark"]) .progress-toast {
@@ -1974,18 +2312,7 @@
   .progress-header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    margin-bottom: 10px;
-    font-size: 13px;
-  }
-
-  .status-text {
-    font-weight: 500;
-  }
-
-  .percentage {
-    color: #0078d4;
-    font-weight: 600;
+    margin-bottom: 8px;
   }
 
   .progress-bar {
@@ -1995,15 +2322,10 @@
     overflow: hidden;
   }
 
-  :global(body[data-theme="dark"]) .progress-bar {
-    background: #3a3a3a;
-  }
-
   .progress-fill {
     height: 100%;
     background: #0078d4;
-    transition: width 0.3s;
-    border-radius: 3px;
+    transition: width 0.3s ease;
   }
 
   .current-file {
@@ -2015,76 +2337,19 @@
     white-space: nowrap;
   }
 
-  /* Recent Searches Dropdown */
-  .recent-searches-dropdown {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    background: #fff;
-    border: 1px solid #e0e0e0;
-    border-radius: 0 0 8px 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    z-index: 100;
-    max-height: 250px;
-    overflow-y: auto;
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-weight: 500;
+    z-index: 1000;
   }
 
-  :global(body[data-theme="dark"]) .recent-searches-dropdown {
-    background: #252525;
-    border-color: #3a3a3a;
-  }
-
-  .recent-searches-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 10px 16px;
-    border-bottom: 1px solid #f0f0f0;
-    font-size: 12px;
-    color: #888;
-  }
-
-  :global(body[data-theme="dark"]) .recent-searches-header {
-    border-color: #3a3a3a;
-  }
-
-  .clear-recent {
-    background: transparent;
-    border: none;
-    color: #0078d4;
-    font-size: 11px;
-    cursor: pointer;
-  }
-
-  .recent-search-item {
-    display: block;
-    width: 100%;
-    padding: 10px 16px;
-    text-align: left;
-    background: transparent;
-    border: none;
-    font-size: 14px;
-    cursor: pointer;
-    transition: background 0.15s;
-  }
-
-  .recent-search-item:hover {
-    background: #f5f5f5;
-  }
-
-  :global(body[data-theme="dark"]) .recent-search-item:hover {
-    background: #2a2a2a;
-  }
-
-  /* Export Group */
-  .export-group {
-    display: flex;
-    gap: 8px;
-  }
-
-  .export-group .toolbar-btn {
-    font-size: 12px;
-    padding: 6px 12px;
+  .toast.success {
+    background: #4caf50;
+    color: white;
   }
 </style>

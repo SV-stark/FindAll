@@ -1,9 +1,10 @@
 pub mod schema;
 pub mod searcher;
 pub mod writer;
+pub mod query_parser;
 
 use self::schema::create_schema;
-use self::searcher::{IndexSearcher, SearchResult};
+use self::searcher::{IndexSearcher, SearchResult, IndexStatistics};
 use self::writer::IndexWriterManager;
 use crate::error::{FlashError, Result};
 use crate::parsers::ParsedDocument;
@@ -81,5 +82,10 @@ impl IndexManager {
     ) -> Result<Vec<SearchResult>> {
         self.searcher
             .search(query, limit, min_size, max_size, file_extensions)
+    }
+
+    /// Get index statistics
+    pub fn get_statistics(&self) -> Result<IndexStatistics> {
+        self.searcher.get_statistics()
     }
 }

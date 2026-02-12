@@ -4,6 +4,7 @@ use std::path::Path;
 
 pub mod docx;
 pub mod epub;
+pub mod excel;
 pub mod odt;
 pub mod pdf;
 pub mod text;
@@ -50,6 +51,13 @@ pub fn parse_file(path: &Path) -> Result<ParsedDocument> {
     }
     if extension_matches(extension, "pdf") {
         return pdf::parse_pdf(path);
+    }
+    
+    // Check Excel formats
+    if extension_matches(extension, "xlsx") 
+        || extension_matches(extension, "xls") 
+        || extension_matches(extension, "xlsb") {
+        return excel::parse_excel(path);
     }
 
     // Check text-based formats using a static lookup

@@ -15,7 +15,7 @@ pub fn create_schema() -> Schema {
                 .set_tokenizer("default")
                 .set_index_option(IndexRecordOption::WithFreqsAndPositions),
         )
-        .set_stored();
+        .set_stored(false);
     schema_builder.add_text_field("content", text_options);
 
     // Title - stored for display, indexed for search

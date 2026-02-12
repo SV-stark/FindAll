@@ -16,12 +16,52 @@ pub struct IndexWriterManager {
 }
 
 impl IndexWriterManager {
+    /// Calculate optimal heap size based on system resources
+    /// Returns heap size in bytes (min 32MB, max 256MB)
+    fn calculate_heap_size() -> usize {
+        // Get system memory info (using sysinfo crate would be better, but this is lightweight)
+        let available_memory = std::env::var("FLASH_SEARCH_MEMORY_MB")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .map(|mb| mb * 1_000_000)
+            .unwrap_or_else(|| {
+                // Default calculation: use 5% of system memory, capped at 256MB
+                // This is a heuristic - in production, use sysinfo to get actual memory
+                let system_memory = if cfg!(target_os = "linux") {
+                    // Try to read from /proc/meminfo on Linux
+                    std::fs::read_to_string("/proc/meminfo")
+                        .ok()
+                        .and_then(|content| {
+                            content.lines()
+                                .find(|line| line.starts_with("MemTotal:"))
+                                .and_then(|line| {
+                                    line.split_whitespace()
+                                        .nth(1)
+                                        .and_then(|s| s.parse::<usize>().ok())
+                                        .map(|kb| kb * 1024) // Convert KB to bytes
+                                })
+                        })
+                        .unwrap_or(8_000_000_000) // Default to 8GB if unknown
+                } else {
+                    8_000_000_000 // Default 8GB for other platforms
+                };
+                
+                let heap = (system_memory / 20).min(256_000_000).max(32_000_000);
+                heap
+            });
+        
+        available_memory.min(256_000_000).max(32_000_000)
+    }
+
     pub fn new(index: &Index) -> Result<Self> {
         let schema = index.schema();
 
-        // Configure with 50MB heap size for low RAM usage
+        // Configure with adaptive heap size based on system resources
+        let heap_size = Self::calculate_heap_size();
+        eprintln!("Tantivy index writer heap size: {} MB", heap_size / 1_000_000);
+        
         let writer = index
-            .writer(50_000_000)
+            .writer(heap_size)
             .map_err(|e| FlashError::Index(e.to_string()))?;
 
         let path_field = schema

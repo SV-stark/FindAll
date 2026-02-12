@@ -2,7 +2,7 @@ use tauri::State;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use serde::Serialize;
-use crate::indexer::{IndexManager, searcher::SearchResult};
+use crate::indexer::{IndexManager, searcher::SearchResult, searcher::IndexStatistics};
 use crate::metadata::MetadataDb;
 use crate::scanner::Scanner;
 use crate::parsers::parse_file;
@@ -262,12 +262,111 @@ pub fn clear_recent_searches(state: State<'_, Arc<AppState>>) -> Result<(), Stri
     Ok(())
 }
 
+/// Get file preview with search term highlighting
+#[tauri::command]
+pub async fn get_file_preview_highlighted(
+    path: String,
+    query: String,
+) -> Result<PreviewResult, String> {
+    use crate::indexer::query_parser::extract_highlight_terms;
+    
+    let path = std::path::PathBuf::from(path);
+    let matched_terms = extract_highlight_terms(&query);
+
+    match parse_file(&path) {
+        Ok(doc) => Ok(PreviewResult {
+            content: doc.content[..std::cmp::min(doc.content.len(), 10000)].to_string(),
+            matched_terms,
+        }),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// Get index statistics
+#[tauri::command]
+pub async fn get_index_statistics(
+    state: State<'_, Arc<AppState>>,
+) -> Result<IndexStatistics, String> {
+    let indexer = state.indexer.lock().await;
+    indexer.get_statistics().map_err(|e| e.to_string())
+}
+
+/// Get recently modified files
+#[tauri::command]
+pub async fn get_recent_files(
+    limit: usize,
+    state: State<'_, Arc<AppState>>,
+) -> Result<Vec<RecentFile>, String> {
+    let files = state.metadata_db.get_recent_files(limit)
+        .map_err(|e| e.to_string())?;
+    
+    Ok(files.into_iter()
+        .map(|(path, title, modified, size)| RecentFile {
+            path,
+            title,
+            modified,
+            size,
+        })
+        .collect())
+}
+
+/// Pin a file for quick access
+#[tauri::command]
+pub fn pin_file(
+    path: String,
+    state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    let mut settings = state.settings_manager.load().map_err(|e| e.to_string())?;
+    
+    if !settings.pinned_files.contains(&path) {
+        settings.pinned_files.push(path);
+        state.settings_manager.save_settings(&settings).map_err(|e| e.to_string())?;
+    }
+    
+    Ok(())
+}
+
+/// Unpin a file
+#[tauri::command]
+pub fn unpin_file(
+    path: String,
+    state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    let mut settings = state.settings_manager.load().map_err(|e| e.to_string())?;
+    settings.pinned_files.retain(|p| p != &path);
+    state.settings_manager.save_settings(&settings).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Get pinned files
+#[tauri::command]
+pub fn get_pinned_files(state: State<'_, Arc<AppState>>) -> Result<Vec<String>, String> {
+    let settings = state.settings_manager.load().map_err(|e| e.to_string())?;
+    Ok(settings.pinned_files)
+}
+
 /// Application state shared across commands
 pub struct AppState {
     pub indexer: Arc<Mutex<IndexManager>>,
     pub metadata_db: Arc<MetadataDb>,
     pub settings_manager: Arc<SettingsManager>,
     pub watcher: std::sync::Mutex<WatcherManager>,
+}
+
+/// Search result with highlighted content
+#[derive(Serialize)]
+pub struct PreviewResult {
+    pub content: String,
+    pub matched_terms: Vec<String>,
+}
+
+/// File information for recent files
+#[derive(Serialize)]
+pub struct RecentFile {
+    pub path: String,
+    pub title: Option<String>,
+    pub modified: u64,
+    pub size: u64,
 }
 
 impl AppState {

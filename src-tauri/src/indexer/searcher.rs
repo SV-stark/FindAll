@@ -11,6 +11,16 @@ pub struct SearchResult {
     pub file_path: String,
     pub title: Option<String>,
     pub score: f32,
+    /// Terms that matched for highlighting
+    pub matched_terms: Vec<String>,
+}
+
+/// Statistics about the search index
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct IndexStatistics {
+    pub total_documents: usize,
+    pub total_size_bytes: u64,
+    pub last_updated: Option<String>,
 }
 
 /// Manages searching the Tantivy index
@@ -71,11 +81,16 @@ impl IndexSearcher {
         max_size: Option<u64>,
         file_extensions: Option<&[String]>,
     ) -> Result<Vec<SearchResult>> {
+        use super::query_parser::{ParsedQuery, extract_highlight_terms};
+        
+        let parsed = ParsedQuery::new(query);
+        let highlight_terms = extract_highlight_terms(query);
+        
         let searcher = self.reader.searcher();
 
         let text_query = self
             .query_parser
-            .parse_query(query)
+            .parse_query(&parsed.text_query)
             .map_err(|e| FlashError::Search(e.to_string()))?;
 
         // Build query with optional filters
@@ -118,18 +133,52 @@ impl IndexSearcher {
             Box::new(BooleanQuery::new(combine))
         };
 
-        // Increase limit if we have file extension filtering to ensure we get enough results
-        let search_limit = if file_extensions.map_or(false, |e| !e.is_empty()) {
-            limit * 3 // Get more results since we'll filter some out
+        // Build file extension filter as a boolean query clause (pre-query filtering)
+        if let Some(extensions) = file_extensions {
+            if !extensions.is_empty() {
+                let path_field_name = self.schema.get_field_name(self.path_field).to_string();
+                let extension_queries: Vec<_> = extensions
+                    .iter()
+                    .filter_map(|ext| {
+                        let ext_lower = ext.to_lowercase();
+                        let ext_with_dot = if ext_lower.starts_with('.') {
+                            ext_lower
+                        } else {
+                            format!(".{}", ext_lower)
+                        };
+                        // Use regex query for extension matching
+                        Some(tantivy::query::RegexQuery::from_pattern(
+                            &format!("{}$", regex::escape(&ext_with_dot)),
+                            self.path_field,
+                        ).ok()?)
+                    })
+                    .collect();
+
+                if !extension_queries.is_empty() {
+                    let extension_bool_query = tantivy::query::BooleanQuery::new(
+                        extension_queries
+                            .into_iter()
+                            .map(|q| (Occur::Should, Box::new(q) as Box<dyn tantivy::query::Query>))
+                            .collect(),
+                    );
+                    combine.push((Occur::Must, Box::new(extension_bool_query)));
+                }
+            }
+        }
+
+        // Rebuild final query with extension filters included
+        let final_query: Box<dyn tantivy::query::Query> = if combine.len() == 1 {
+            combine.remove(0).1
         } else {
-            limit
+            Box::new(BooleanQuery::new(combine))
         };
 
+        // No need for inflated search limit - filters are applied at query time
         let top_docs = searcher
-            .search(&*final_query, &TopDocs::with_limit(search_limit))
+            .search(&*final_query, &TopDocs::with_limit(limit))
             .map_err(|e| FlashError::Search(e.to_string()))?;
 
-        let mut results = Vec::with_capacity(top_docs.len());
+        let mut results = Vec::with_capacity(top_docs.len().min(limit));
 
         for (score, doc_address) in top_docs {
             let retrieved_doc: TantivyDocument = searcher
@@ -142,25 +191,6 @@ impl IndexSearcher {
                 .map(|s: &str| s.to_string())
                 .unwrap_or_default();
 
-            // Apply file extension filter post-query
-            if let Some(extensions) = file_extensions {
-                if !extensions.is_empty() {
-                    let path_lower = file_path.to_lowercase();
-                    let matches_extension = extensions.iter().any(|ext| {
-                        let ext_lower = ext.to_lowercase();
-                        let ext_with_dot = if ext_lower.starts_with('.') {
-                            ext_lower
-                        } else {
-                            format!(".{}", ext_lower)
-                        };
-                        path_lower.ends_with(&ext_with_dot)
-                    });
-                    if !matches_extension {
-                        continue;
-                    }
-                }
-            }
-
             let title = retrieved_doc
                 .get_first(self.title_field)
                 .and_then(|f| f.as_str())
@@ -170,6 +200,7 @@ impl IndexSearcher {
                 file_path,
                 title,
                 score,
+                matched_terms: highlight_terms.clone(),
             });
 
             // Stop once we have enough results
@@ -178,6 +209,40 @@ impl IndexSearcher {
             }
         }
 
+        // Trim results to exact limit if we got more
+        results.truncate(limit);
         Ok(results)
+    }
+
+    /// Get statistics about the index
+    pub fn get_statistics(&self) -> Result<IndexStatistics> {
+        let searcher = self.reader.searcher();
+        let total_docs = searcher.num_docs() as usize;
+        
+        // Get the size field
+        let size_field = self.schema
+            .get_field("size")
+            .map_err(|_| FlashError::Index("size field not found".to_string()))?;
+        
+        // Calculate total size by iterating through all documents
+        let mut total_size = 0u64;
+        for segment_reader in searcher.segment_readers() {
+            let store_reader = segment_reader.get_store_reader(0)?;
+            for doc_id in 0..segment_reader.num_docs() {
+                if let Ok(doc) = store_reader.get(doc_id) {
+                    if let Some(value) = doc.get_first(size_field) {
+                        if let Some(size) = value.as_u64() {
+                            total_size += size;
+                        }
+                    }
+                }
+            }
+        }
+        
+        Ok(IndexStatistics {
+            total_documents: total_docs,
+            total_size_bytes: total_size,
+            last_updated: None, // Could be stored in metadata
+        })
     }
 }

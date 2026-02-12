@@ -1,20 +1,44 @@
-use crate::error::Result;
+use crate::error::{FlashError, Result};
 use crate::parsers::ParsedDocument;
 use std::path::Path;
 
+/// Maximum PDF content size to prevent memory issues
+const MAX_PDF_SIZE: u64 = 500 * 1024 * 1024; // 500MB limit
+
 /// Parse PDF file using pdf-extract crate
-/// Falls back to empty string on failure (don't crash on corrupted PDFs)
+/// Implements proper resource management and error handling
 pub fn parse_pdf(path: &Path) -> Result<ParsedDocument> {
+    // Check file size first to prevent OOM
+    let metadata = std::fs::metadata(path).map_err(|e| {
+        FlashError::Parse(format!("Failed to read PDF metadata {}: {}", path.display(), e))
+    })?;
+
+    if metadata.len() > MAX_PDF_SIZE {
+        return Err(FlashError::Parse(format!(
+            "PDF file too large: {} bytes (max: {})",
+            metadata.len(),
+            MAX_PDF_SIZE
+        )));
+    }
+
+    // Use catch_unwind to prevent panics from crashing the application
     let text = std::panic::catch_unwind(|| pdf_extract::extract_text(path));
 
     let content = match text {
         Ok(Ok(text)) => text,
         Ok(Err(e)) => {
-            eprintln!("Warning: Failed to extract PDF text from {:?}: {}", path, e);
+            eprintln!(
+                "Warning: Failed to extract PDF text from {}: {}",
+                path.display(),
+                e
+            );
             String::new()
         }
         Err(_) => {
-            eprintln!("Warning: PDF extraction panicked for {:?}", path);
+            eprintln!(
+                "Warning: PDF extraction panicked for {}. File may be corrupted or encrypted.",
+                path.display()
+            );
             String::new()
         }
     };
@@ -31,12 +55,21 @@ pub fn parse_pdf(path: &Path) -> Result<ParsedDocument> {
 }
 
 /// Extract title from first non-empty line of content
+/// Filters out lines that are too long (likely not titles)
 fn extract_title_from_content(content: &str) -> Option<String> {
     content
         .lines()
-        .find(|line| !line.trim().is_empty())
-        .map(|line| line.trim().to_string())
-        .filter(|line| line.len() < 200) // Don't use entire paragraphs as title
+        .find(|line| {
+            let trimmed = line.trim();
+            !trimmed.is_empty() && trimmed.len() < 200
+        })
+        .map(|line| {
+            let trimmed = line.trim();
+            // Clean up common PDF artifacts
+            trimmed
+                .replace("\u{0000}", "") // Remove null bytes
+                .replace("\r", "")       // Remove carriage returns
+        })
 }
 
 #[cfg(test)]
@@ -44,7 +77,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_pdf_parsing_placeholder() {
-        // Placeholder for actual test
+    fn test_extract_title_from_content() {
+        let content = "\n\n  Document Title  \n\nBody content here\n";
+        assert_eq!(
+            extract_title_from_content(content),
+            Some("Document Title".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_title_empty() {
+        let content = "   \n\n   \n";
+        assert_eq!(extract_title_from_content(content), None);
+    }
+
+    #[test]
+    fn test_extract_title_too_long() {
+        let content = "a".repeat(300);
+        assert_eq!(extract_title_from_content(&content), None);
     }
 }

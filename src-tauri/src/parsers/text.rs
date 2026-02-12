@@ -56,7 +56,9 @@ fn parse_with_buffer(path: &Path) -> Result<String> {
 
 /// Parse large files using memory mapping (zero-copy, better for large files)
 fn parse_with_mmap(path: &Path) -> Result<String> {
-    let file = File::open(path).map_err(|e| FlashError::Io(e))?;
+    let file = File::open(path).map_err(|e| {
+        FlashError::Parse(format!("Failed to open file {}: {}", path.display(), e))
+    })?;
 
     // Memory map the file
     let mmap = unsafe {
@@ -67,7 +69,7 @@ fn parse_with_mmap(path: &Path) -> Result<String> {
     // Convert to string (this will allocate, but only once)
     // For text files, we assume valid UTF-8
     String::from_utf8(mmap.to_vec())
-        .map_err(|e| FlashError::Parse(format!("Invalid UTF-8 in file: {}", e)))
+        .map_err(|e| FlashError::Parse(format!("Invalid UTF-8 in file {}: {}", path.display(), e)))
 }
 
 /// Extract title from first non-empty line
