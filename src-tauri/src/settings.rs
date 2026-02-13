@@ -15,6 +15,7 @@ pub struct AppSettings {
     // Indexing
     pub index_dirs: Vec<String>,
     pub exclude_patterns: Vec<String>,
+    pub exclude_folders: Vec<String>, // Explicit folder paths to exclude
     pub auto_index_on_startup: bool,
     pub index_file_size_limit_mb: u32,
 
@@ -150,6 +151,10 @@ impl Default for AppSettings {
                 "Thumbs.db".to_string(),
                 ".DS_Store".to_string(),
             ],
+            exclude_folders: vec![
+                "$RECYCLE.BIN".to_string(),
+                "System Volume Information".to_string(),
+            ],
             auto_index_on_startup: true,
             index_file_size_limit_mb: 100,
 
@@ -161,7 +166,7 @@ impl Default for AppSettings {
             default_filters: DefaultFilters::default(),
             recent_searches: Some(vec![]),
             search_history: Some(vec![]),
-            filename_index_enabled: false,
+            filename_index_enabled: true,
 
             // Appearance
             theme: Theme::default(),

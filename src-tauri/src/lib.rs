@@ -2,6 +2,7 @@ pub mod commands;
 pub mod error;
 pub mod indexer;
 pub mod metadata;
+pub mod models;
 pub mod parsers;
 pub mod scanner;
 pub mod settings;
@@ -17,9 +18,36 @@ use commands::{
     start_indexing, build_filename_index, AppState,
 };
 use scanner::Scanner;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{Manager, Emitter};
-use tracing::{info, warn};
+use tracing::{info, warn, error};
+
+/// Get all available drives on Windows
+#[cfg(target_os = "windows")]
+fn get_available_drives() -> Vec<PathBuf> {
+    let mut drives = Vec::new();
+    
+    // Check drive letters A-Z
+    for letter in b'A'..=b'Z' {
+        let drive_path = PathBuf::from(format!("{}:\\", letter as char));
+        if drive_path.exists() {
+            drives.push(drive_path);
+        }
+    }
+    
+    drives
+}
+
+/// Get default search paths (home directory on non-Windows)
+#[cfg(not(target_os = "windows"))]
+fn get_available_drives() -> Vec<PathBuf> {
+    if let Some(home) = dirs::home_dir() {
+        vec![home]
+    } else {
+        vec![PathBuf::from(".")]
+    }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -103,23 +131,25 @@ pub fn run_with_args(initial_search: Option<String>, index_dir: Option<String>) 
             );
 
             let initial_settings = settings_manager.load().unwrap_or_default();
-            watcher.update_watch_list(initial_settings.index_dirs).ok();
-
-            // Initialize filename index (fast filename-only search)
-            let filename_index = if initial_settings.filename_index_enabled {
-                match indexer::filename_index::FilenameIndex::open(&app_data_dir.join("filename_index")) {
-                    Ok(idx) => {
-                        info!("Filename index opened successfully");
-                        Some(Arc::new(idx))
-                    }
-                    Err(e) => {
-                        warn!("Failed to open filename index: {}", e);
-                        None
-                    }
+            
+            // Auto-index on startup: scan all drives if no index dirs configured
+            // This gives a "works out of the box" experience like AnyTXT
+            let should_auto_index = initial_settings.index_dirs.is_empty() && initial_settings.auto_index_on_startup;
+            
+            // Update watcher with index dirs (this moves index_dirs)
+            watcher.update_watch_list(initial_settings.index_dirs.clone()).ok();
+            
+            // Initialize filename index (fast filename-only search) - enabled by default
+            // The open method will create the index if it doesn't exist
+            let filename_index = match indexer::filename_index::FilenameIndex::open(&app_data_dir.join("filename_index")) {
+                Ok(idx) => {
+                    info!("Filename index opened successfully");
+                    Some(Arc::new(idx))
                 }
-            } else {
-                info!("Filename index disabled in settings");
-                None
+                Err(e) => {
+                    warn!("Failed to open/create filename index: {}", e);
+                    None
+                }
             };
 
             // Create and manage app state
@@ -131,6 +161,36 @@ pub fn run_with_args(initial_search: Option<String>, index_dir: Option<String>) 
                 filename_index,
             ));
             app.manage(state.clone());
+
+            // Auto-index all drives on first startup
+            if should_auto_index {
+                let app_handle = app.handle().clone();
+                let indexer = state.indexer.clone();
+                let metadata_db = state.metadata_db.clone();
+                let settings = state.settings_manager.load().unwrap_or_default();
+                
+                // Get all available drives on Windows
+                tokio::spawn(async move {
+                    let drives = get_available_drives();
+                    info!(?drives, "Auto-indexing available drives");
+                    
+                    for drive in drives {
+                        let scanner = Scanner::new(
+                            indexer.clone(),
+                            metadata_db.clone(),
+                            app_handle.clone()
+                        );
+                        
+                        // Combine exclude_patterns with exclude_folders
+                        let mut exclude_patterns = settings.exclude_patterns.clone();
+                        exclude_patterns.extend(settings.exclude_folders.clone());
+                        
+                        if let Err(e) = scanner.scan_directory(drive, exclude_patterns).await {
+                            error!(error = %e, "Failed to index drive");
+                        }
+                    }
+                });
+            }
 
             // Handle command-line arguments
             if let Some(search) = initial_search {
@@ -153,9 +213,13 @@ pub fn run_with_args(initial_search: Option<String>, index_dir: Option<String>) 
                 let metadata_db = state.metadata_db.clone();
                 let settings = state.settings_manager.load().unwrap_or_default();
                 
+                // Combine exclude_patterns with exclude_folders
+                let mut exclude_patterns = settings.exclude_patterns;
+                exclude_patterns.extend(settings.exclude_folders);
+                
                 tokio::spawn(async move {
                     let scanner = Scanner::new(indexer, metadata_db, app_handle);
-                    let _ = scanner.scan_directory(std::path::PathBuf::from(dir_clone), settings.exclude_patterns).await;
+                    let _ = scanner.scan_directory(std::path::PathBuf::from(dir_clone), exclude_patterns).await;
                 });
             }
 

@@ -31,7 +31,7 @@ const CHUNK_SIZE: usize = 1000;
 /// Maximum time to wait before committing a partial batch
 const BATCH_TIMEOUT_MS: u64 = 5000;
 /// Progress update frequency (update every N files)
-const PROGRESS_UPDATE_INTERVAL: usize = 10;
+const PROGRESS_UPDATE_INTERVAL: usize = 1;
 
 /// Message sent through channel for indexing
 #[derive(Debug)]
@@ -68,6 +68,17 @@ impl Scanner {
     pub async fn scan_directory(&self, root: PathBuf, exclude_patterns: Vec<String>) -> Result<()> {
         info!("Starting directory scan");
         
+        // Emit initial scanning status
+        let _ = self.app_handle.emit("indexing-progress", ProgressEvent {
+            total: 0,
+            processed: 0,
+            current_file: "Scanning directories...".to_string(),
+            status: "scanning".to_string(),
+            files_per_second: 0.0,
+            eta_seconds: 0,
+            current_folder: root.display().to_string(),
+        });
+        
         // Build walker with default and custom exclusions
         let mut builder = WalkBuilder::new(&root);
         builder.hidden(false);
@@ -92,16 +103,41 @@ impl Scanner {
         let overrides = override_builder.build().expect("Failed to build overrides");
         builder.overrides(overrides);
 
-        // Collect all files first
+        // Collect all files first with progress updates during scanning
         let walker = builder.build();
-        let files: Vec<PathBuf> = walker
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().map(|ft| ft.is_file()).unwrap_or(false))
-            .map(|e| e.path().to_path_buf())
-            .collect();
+        let mut files: Vec<PathBuf> = Vec::new();
+        let mut scanned_count = 0usize;
+        
+        // First pass: collect files with periodic progress updates
+        for entry in walker {
+            match entry {
+                Ok(e) => {
+                    if e.file_type().map(|ft| ft.is_file()).unwrap_or(false) {
+                        files.push(e.path().to_path_buf());
+                        scanned_count += 1;
+                        
+                        // Emit scanning progress every 1000 files
+                        if scanned_count % 1000 == 0 {
+                            let _ = self.app_handle.emit("indexing-progress", ProgressEvent {
+                                total: scanned_count,
+                                processed: 0,
+                                current_file: format!("Found {} files...", scanned_count),
+                                status: "scanning".to_string(),
+                                files_per_second: 0.0,
+                                eta_seconds: 0,
+                                current_folder: root.display().to_string(),
+                            });
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!("Error walking directory: {}", e);
+                }
+            }
+        }
         
         let total_files = files.len();
-        info!(total_files = total_files, "Found files to process");
+        info!(total_files = total_files, scanned = scanned_count, "Found files to process");
         
         if total_files == 0 {
             warn!("No files found to index");
@@ -120,7 +156,7 @@ impl Scanner {
         let _ = self.app_handle.emit("indexing-progress", ProgressEvent {
             total: total_files,
             processed: 0,
-            current_file: "Starting...".to_string(),
+            current_file: format!("Found {} files, starting indexing...", total_files),
             status: "indexing".to_string(),
             files_per_second: 0.0,
             eta_seconds: 0,
