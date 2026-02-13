@@ -147,7 +147,6 @@ impl Scanner {
             let mut last_commit = Instant::now();
             let mut total_indexed = 0usize;
             let start_time = Instant::now();
-            let _last_emit_time = Instant::now();
             let current_folder = String::new();
             
             loop {
@@ -223,7 +222,6 @@ impl Scanner {
                                 current_folder: current_folder.clone(),
                             });
                             last_progress_clone.store(processed + skipped, Ordering::Relaxed);
-                            last_emit_time = Instant::now();
                         }
                     }
                 }

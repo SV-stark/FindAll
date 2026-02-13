@@ -9,7 +9,7 @@ pub enum FlashError {
     Parse(String),
 
     #[error("Index error: {0}")]
-    Index(#[from] tantivy::TantivyError),
+    Index(String),
 
     #[error("Database error: {0}")]
     Database(String),
@@ -27,7 +27,7 @@ pub enum FlashError {
     Config(String),
 
     #[error("Zip error: {0}")]
-    Zip(#[from] zip::ZipError),
+    Zip(String),
 }
 
 pub type Result<T> = std::result::Result<T, FlashError>;

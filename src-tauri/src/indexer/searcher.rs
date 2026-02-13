@@ -81,11 +81,11 @@ impl IndexSearcher {
         max_size: Option<u64>,
         file_extensions: Option<&[String]>,
     ) -> Result<Vec<SearchResult>> {
-        use super::query_parser::{ParsedQuery, extract_highlight_terms};
-        
+        use super::query_parser::{extract_highlight_terms, ParsedQuery};
+
         let parsed = ParsedQuery::new(query);
         let highlight_terms = extract_highlight_terms(query);
-        
+
         let searcher = self.reader.searcher();
 
         let text_query = self
@@ -140,10 +140,13 @@ impl IndexSearcher {
                             format!(".{}", ext_lower)
                         };
                         // Use regex query for extension matching
-                        Some(tantivy::query::RegexQuery::from_pattern(
-                            &format!("{}$", regex::escape(&ext_with_dot)),
-                            self.path_field,
-                        ).ok()?)
+                        Some(
+                            tantivy::query::RegexQuery::from_pattern(
+                                &format!("{}$", regex::escape(&ext_with_dot)),
+                                self.path_field,
+                            )
+                            .ok()?,
+                        )
                     })
                     .collect();
 
@@ -206,12 +209,12 @@ impl IndexSearcher {
     pub fn get_statistics(&self) -> Result<IndexStatistics> {
         let searcher = self.reader.searcher();
         let total_docs = searcher.num_docs() as usize;
-        
+
         let mut total_size = 0u64;
         for segment_reader in searcher.segment_readers() {
             let store_reader = segment_reader.get_store_reader(1)?;
             for doc_id in 0..segment_reader.num_docs() {
-                if let Ok(doc) = store_reader.get(doc_id) {
+                if let Ok(doc) = store_reader.get::<TantivyDocument>(doc_id) {
                     if let Some(value) = doc.get_first(self.size_field) {
                         if let Some(size) = value.as_u64() {
                             total_size += size;
@@ -220,7 +223,7 @@ impl IndexSearcher {
                 }
             }
         }
-        
+
         Ok(IndexStatistics {
             total_documents: total_docs,
             total_size_bytes: total_size,

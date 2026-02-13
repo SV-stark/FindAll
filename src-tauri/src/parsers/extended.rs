@@ -5,18 +5,18 @@ use std::path::Path;
 
 pub fn parse_rtf(path: &Path) -> Result<ParsedDocument> {
     let content = std::fs::read_to_string(path)?;
-    
+
     let mut text = String::new();
     let _in_control = false;
     let mut brace_depth = 0;
     let mut skip_until_brace = false;
-    
+
     let bytes = content.as_bytes();
     let mut i = 0;
-    
+
     while i < bytes.len() {
         let b = bytes[i];
-        
+
         if skip_until_brace {
             if b == b'{' {
                 brace_depth += 1;
@@ -29,7 +29,7 @@ pub fn parse_rtf(path: &Path) -> Result<ParsedDocument> {
             i += 1;
             continue;
         }
-        
+
         match b {
             b'\\' => {
                 if i + 1 < bytes.len() {
@@ -38,7 +38,7 @@ pub fn parse_rtf(path: &Path) -> Result<ParsedDocument> {
                         b'\'' => {
                             // RTF hex escape
                             if i + 3 < bytes.len() {
-                                if let Ok(hex_str) = std::str::from_utf8(&bytes[i+2..i+4]) {
+                                if let Ok(hex_str) = std::str::from_utf8(&bytes[i + 2..i + 4]) {
                                     if let Ok(byte) = u8::from_str_radix(hex_str, 16) {
                                         text.push(byte as char);
                                     }
@@ -64,8 +64,8 @@ pub fn parse_rtf(path: &Path) -> Result<ParsedDocument> {
                                 j += 1;
                             }
                             if j > i + 1 {
-                                let control = std::str::from_utf8(&bytes[i+1..j]).unwrap_or("");
-                                
+                                let control = std::str::from_utf8(&bytes[i + 1..j]).unwrap_or("");
+
                                 // Handle special control words
                                 match control {
                                     "par" | "line" => text.push(' '),
@@ -104,10 +104,10 @@ pub fn parse_rtf(path: &Path) -> Result<ParsedDocument> {
             }
         }
     }
-    
+
     // Clean up whitespace
     let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    
+
     Ok(ParsedDocument {
         path: path.to_string_lossy().to_string(),
         content: text,
@@ -117,17 +117,20 @@ pub fn parse_rtf(path: &Path) -> Result<ParsedDocument> {
 
 pub fn parse_eml(path: &Path) -> Result<ParsedDocument> {
     let content = std::fs::read_to_string(path)?;
-    
+
     let mut title = String::new();
     let mut text = String::new();
     let mut in_body = false;
-    
+
     for line in content.lines() {
         let line_lower = line.to_lowercase();
-        
+
         if line_lower.starts_with("subject:") {
             title = line[8..].trim().to_string();
-        } else if line_lower.starts_with("from:") || line_lower.starts_with("to:") || line_lower.starts_with("date:") {
+        } else if line_lower.starts_with("from:")
+            || line_lower.starts_with("to:")
+            || line_lower.starts_with("date:")
+        {
             text.push_str(line);
             text.push(' ');
         } else if line_lower.is_empty() {
@@ -137,7 +140,7 @@ pub fn parse_eml(path: &Path) -> Result<ParsedDocument> {
             text.push(' ');
         }
     }
-    
+
     Ok(ParsedDocument {
         path: path.to_string_lossy().to_string(),
         content: text.trim().to_string(),
@@ -150,12 +153,12 @@ pub fn parse_msg(path: &Path) -> Result<ParsedDocument> {
     // For now, fall back to basic text extraction
     // Full MSG parsing would require the msg crate
     let content = std::fs::read(path)?;
-    
+
     // Try to extract printable ASCII strings
     let mut text = String::new();
     let mut in_string = false;
     let mut current = String::new();
-    
+
     for byte in content {
         if byte.is_ascii_graphic() || byte == b' ' || byte == b'\n' {
             current.push(byte as char);
@@ -170,10 +173,14 @@ pub fn parse_msg(path: &Path) -> Result<ParsedDocument> {
             in_string = false;
         }
     }
-    
+
     Ok(ParsedDocument {
         path: path.to_string_lossy().to_string(),
-        content: text.split_whitespace().take(5000).collect::<Vec<_>>().join(" "),
+        content: text
+            .split_whitespace()
+            .take(5000)
+            .collect::<Vec<_>>()
+            .join(" "),
         title: None,
     })
 }
@@ -182,11 +189,11 @@ pub fn parse_chm(path: &Path) -> Result<ParsedDocument> {
     // CHM files are MS Compiled HTML Help
     // For now, return a placeholder - full CHM parsing requires the chm crate
     let content = std::fs::read(path)?;
-    
+
     // Extract strings from the binary
     let mut text = String::new();
     let mut current = Vec::new();
-    
+
     for byte in content {
         if byte.is_ascii_graphic() || byte == b' ' {
             current.push(byte);
@@ -202,10 +209,14 @@ pub fn parse_chm(path: &Path) -> Result<ParsedDocument> {
             current.clear();
         }
     }
-    
+
     Ok(ParsedDocument {
         path: path.to_string_lossy().to_string(),
-        content: text.split_whitespace().take(5000).collect::<Vec<_>>().join(" "),
+        content: text
+            .split_whitespace()
+            .take(5000)
+            .collect::<Vec<_>>()
+            .join(" "),
         title: None,
     })
 }
@@ -214,25 +225,28 @@ pub fn parse_azw(path: &Path) -> Result<ParsedDocument> {
     // AZW is Amazon's Kindle format - similar to MOBI
     // Try to extract text from the raw data
     let content = std::fs::read(path)?;
-    
+
     let mut text = String::new();
     let mut current = Vec::new();
     let mut _in_palmdoc = false;
-    
+
     // Check for PALM DOC signature
     if content.len() > 68 {
         if &content[0..4] == b"TPZ" || &content[60..68] == b"BOOKMOBI" {
             _in_palmdoc = true;
         }
     }
-    
+
     // Extract strings
     for byte in content {
         if byte.is_ascii_graphic() || byte == b' ' || byte == b'\n' {
             current.push(byte);
         } else if current.len() > 5 {
             if let Ok(s) = String::from_utf8(current.clone()) {
-                if s.len() > 5 && s.chars().all(|c| c.is_alphanumeric() || c.is_whitespace() || c == '.' || c == ',') {
+                if s.len() > 5
+                    && s.chars()
+                        .all(|c| c.is_alphanumeric() || c.is_whitespace() || c == '.' || c == ',')
+                {
                     text.push_str(&s);
                     text.push(' ');
                 }
@@ -242,44 +256,61 @@ pub fn parse_azw(path: &Path) -> Result<ParsedDocument> {
             current.clear();
         }
     }
-    
+
     Ok(ParsedDocument {
         path: path.to_string_lossy().to_string(),
-        content: text.split_whitespace().take(10000).collect::<Vec<_>>().join(" "),
+        content: text
+            .split_whitespace()
+            .take(10000)
+            .collect::<Vec<_>>()
+            .join(" "),
         title: None,
     })
 }
 
 pub fn parse_zip_content(path: &Path) -> Result<ParsedDocument> {
-    use zip::ZipArchive;
     use std::io::BufReader;
-    
+    use zip::ZipArchive;
+
     let file = std::fs::File::open(path)?;
     let reader = BufReader::new(file);
-    let mut archive = ZipArchive::new(reader)?;
-    
+    let mut archive = ZipArchive::new(reader).map_err(|e| FlashError::Zip(e.to_string()))?;
+
     let mut all_text = String::new();
-    
+
     for i in 0..archive.len() {
         if let Ok(mut file) = archive.by_index(i) {
             if !file.is_dir() {
                 let name = file.name().to_lowercase();
-                
+
                 // Only extract text-like files
-                if name.ends_with(".txt") || name.ends_with(".md") || 
-                   name.ends_with(".json") || name.ends_with(".xml") ||
-                   name.ends_with(".html") || name.ends_with(".htm") ||
-                   name.ends_with(".js") || name.ends_with(".ts") ||
-                   name.ends_with(".rs") || name.ends_with(".py") ||
-                   name.ends_with(".java") || name.ends_with(".c") ||
-                   name.ends_with(".cpp") || name.ends_with(".h") ||
-                   name.ends_with(".hpp") || name.ends_with(".cs") ||
-                   name.ends_with(".go") || name.ends_with(".rb") ||
-                   name.ends_with(".php") || name.ends_with(".sql") ||
-                   name.ends_with(".yaml") || name.ends_with(".yml") ||
-                   name.ends_with(".toml") || name.ends_with(".ini") ||
-                   name.ends_with(".cfg") || name.ends_with(".conf") {
-                    
+                if name.ends_with(".txt")
+                    || name.ends_with(".md")
+                    || name.ends_with(".json")
+                    || name.ends_with(".xml")
+                    || name.ends_with(".html")
+                    || name.ends_with(".htm")
+                    || name.ends_with(".js")
+                    || name.ends_with(".ts")
+                    || name.ends_with(".rs")
+                    || name.ends_with(".py")
+                    || name.ends_with(".java")
+                    || name.ends_with(".c")
+                    || name.ends_with(".cpp")
+                    || name.ends_with(".h")
+                    || name.ends_with(".hpp")
+                    || name.ends_with(".cs")
+                    || name.ends_with(".go")
+                    || name.ends_with(".rb")
+                    || name.ends_with(".php")
+                    || name.ends_with(".sql")
+                    || name.ends_with(".yaml")
+                    || name.ends_with(".yml")
+                    || name.ends_with(".toml")
+                    || name.ends_with(".ini")
+                    || name.ends_with(".cfg")
+                    || name.ends_with(".conf")
+                {
                     let mut content = String::new();
                     if file.read_to_string(&mut content).is_ok() {
                         all_text.push_str(&content);
@@ -289,11 +320,13 @@ pub fn parse_zip_content(path: &Path) -> Result<ParsedDocument> {
             }
         }
     }
-    
+
     if all_text.is_empty() {
-        return Err(FlashError::UnsupportedFormat("No text files found in archive".to_string()));
+        return Err(FlashError::UnsupportedFormat(
+            "No text files found in archive".to_string(),
+        ));
     }
-    
+
     Ok(ParsedDocument {
         path: path.to_string_lossy().to_string(),
         content: all_text,
@@ -305,7 +338,7 @@ pub fn parse_7z_content(path: &Path) -> Result<ParsedDocument> {
     // 7z parsing requires the sevenz-rust crate
     // For now, return basic info
     let metadata = std::fs::metadata(path)?;
-    
+
     Ok(ParsedDocument {
         path: path.to_string_lossy().to_string(),
         content: format!("7z archive: {} bytes", metadata.len()),
@@ -317,7 +350,7 @@ pub fn parse_rar_content(path: &Path) -> Result<ParsedDocument> {
     // RAR parsing requires the unrar crate
     // For now, return basic info
     let metadata = std::fs::metadata(path)?;
-    
+
     Ok(ParsedDocument {
         path: path.to_string_lossy().to_string(),
         content: format!("RAR archive: {} bytes", metadata.len()),
