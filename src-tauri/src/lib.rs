@@ -22,18 +22,15 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{Manager, Emitter};
 use tracing::{info, warn, error};
-use std::path::Path;
 
 pub fn get_app_data_dir() -> PathBuf {
+    #[cfg(target_os = "windows")]
+    let mut path = dirs::config_dir().expect("Failed to get config directory");
+    
+    #[cfg(not(target_os = "windows"))]
     let mut path = dirs::data_dir().unwrap_or_else(|| {
         dirs::home_dir().map(|h| h.join(".flash-search")).unwrap_or_else(|| PathBuf::from("."))
     });
-    
-    #[cfg(target_os = "windows")]
-    {
-        // On Windows, Tauri puts data in Roaming/identifier
-        path = dirs::config_dir().expect("Failed to get config directory");
-    }
     
     path.push("com.hp.flash-search");
     path

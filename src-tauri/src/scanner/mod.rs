@@ -171,7 +171,6 @@ impl Scanner {
         let total_clone = total_files;
         let processed_clone = processed_count.clone();
         let skipped_clone = skipped_count.clone();
-        let last_progress_clone = last_emitted_progress.clone();
         
         let (tx, mut rx) = mpsc::channel::<IndexTask>(CHUNK_SIZE);
         

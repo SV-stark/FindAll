@@ -13,7 +13,6 @@ use crate::metadata::MetadataDb;
 use crate::settings::SettingsManager;
 use crate::watcher::WatcherManager;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 
 pub struct AppState {
     pub indexer: Arc<IndexManager>,

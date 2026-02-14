@@ -3,6 +3,7 @@ use crate::parsers::memory_map;
 use crate::parsers::ParsedDocument;
 use quick_xml::events::Event;
 use quick_xml::Reader;
+use std::io::Read;
 use std::path::Path;
 use zip::ZipArchive;
 
@@ -112,8 +113,8 @@ fn extract_epub_title(path: &Path) -> Result<String> {
         None
     };
 
-    if let Some(path) = op_path {
-        if let Ok(mut opf_file) = archive.by_name(&path) {
+    if let Some(opf_path) = op_path {
+        if let Ok(mut opf_file) = archive.by_name(&opf_path) {
             let mut opf_content = String::new();
             if opf_file.read_to_string(&mut opf_content).is_ok() {
                 if let Some(title) = extract_title_from_opf(&opf_content) {
