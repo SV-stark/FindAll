@@ -59,11 +59,12 @@ pub fn parse_file(path: &Path) -> Result<ParsedDocument> {
     if extension_matches(extension, "pdf") {
         return pdf::parse_pdf(path);
     }
-    
+
     // Check Excel formats
     if extension_matches(extension, "xlsx")
         || extension_matches(extension, "xls")
-        || extension_matches(extension, "xlsb") {
+        || extension_matches(extension, "xlsb")
+    {
         return excel::parse_excel(path);
     }
 
@@ -86,9 +87,10 @@ pub fn parse_file(path: &Path) -> Result<ParsedDocument> {
     }
 
     // Check Kindle/AZW formats
-    if extension_matches(extension, "azw") 
+    if extension_matches(extension, "azw")
         || extension_matches(extension, "azw3")
-        || extension_matches(extension, "mobi") {
+        || extension_matches(extension, "mobi")
+    {
         return extended::parse_azw(path);
     }
 

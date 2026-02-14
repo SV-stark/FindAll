@@ -10,7 +10,11 @@ const MAX_PDF_SIZE: u64 = 500 * 1024 * 1024; // 500MB limit
 pub fn parse_pdf(path: &Path) -> Result<ParsedDocument> {
     // Check file size first to prevent OOM
     let metadata = std::fs::metadata(path).map_err(|e| {
-        FlashError::Parse(format!("Failed to read PDF metadata {}: {}", path.display(), e))
+        FlashError::Parse(format!(
+            "Failed to read PDF metadata {}: {}",
+            path.display(),
+            e
+        ))
     })?;
 
     if metadata.len() > MAX_PDF_SIZE {
@@ -68,7 +72,7 @@ fn extract_title_from_content(content: &str) -> Option<String> {
             // Clean up common PDF artifacts
             trimmed
                 .replace("\u{0000}", "") // Remove null bytes
-                .replace("\r", "")       // Remove carriage returns
+                .replace("\r", "") // Remove carriage returns
         })
 }
 

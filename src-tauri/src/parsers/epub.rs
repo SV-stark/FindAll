@@ -15,7 +15,11 @@ const MAX_TOTAL_TEXT_SIZE: usize = 200 * 1024 * 1024; // 200MB
 /// Parse EPUB file by extracting text from all HTML/XHTML components within the ZIP
 pub fn parse_epub(path: &Path) -> Result<ParsedDocument> {
     let file = File::open(path).map_err(|e| {
-        FlashError::Parse(format!("Failed to open EPUB file {}: {}", path.display(), e))
+        FlashError::Parse(format!(
+            "Failed to open EPUB file {}: {}",
+            path.display(),
+            e
+        ))
     })?;
 
     let reader = BufReader::new(file);
@@ -45,7 +49,7 @@ pub fn parse_epub(path: &Path) -> Result<ParsedDocument> {
 
                     // Pre-allocate string with known capacity
                     let mut content = String::with_capacity(inner_file.size() as usize);
-                    
+
                     match inner_file.read_to_string(&mut content) {
                         Ok(_) => {
                             // Check total size limit
@@ -87,7 +91,7 @@ pub fn parse_epub(path: &Path) -> Result<ParsedDocument> {
 fn extract_text_from_html(html: &str, output: &mut String) {
     let mut reader = Reader::from_str(html);
     reader.trim_text(true);
-    
+
     let mut buf = Vec::with_capacity(1024);
 
     loop {

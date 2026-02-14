@@ -56,9 +56,8 @@ fn parse_with_buffer(path: &Path) -> Result<String> {
 
 /// Parse large files using memory mapping (zero-copy, better for large files)
 fn parse_with_mmap(path: &Path) -> Result<String> {
-    let file = File::open(path).map_err(|e| {
-        FlashError::Parse(format!("Failed to open file {}: {}", path.display(), e))
-    })?;
+    let file = File::open(path)
+        .map_err(|e| FlashError::Parse(format!("Failed to open file {}: {}", path.display(), e)))?;
 
     // Memory map the file
     let mmap = unsafe {

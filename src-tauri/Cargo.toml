@@ -61,7 +61,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Document Parsing
-litchi = { git = "https://github.com/DevExzh/litchi.git" }
+litchi = { git = "https://github.com/DevExzh/litchi.git", features = ["odf", "rtf"] }
 calamine = "0.24"
 
 [dev-dependencies]
