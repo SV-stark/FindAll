@@ -1,166 +1,209 @@
-use crate::error::{FlashError, Result};
+use crate::error::Result;
+use nucleo_matcher::pattern::{CaseMatching, Pattern};
+use nucleo_matcher::Config;
+use nucleo_matcher::Matcher;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::Arc;
-use tantivy::collector::TopDocs;
-use tantivy::query::RegexQuery;
-use tantivy::schema::*;
-use tantivy::{
-    directory::MmapDirectory, Index, IndexReader, IndexWriter, ReloadPolicy, TantivyDocument,
-};
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct FilenameResult {
+pub struct FilenameEntry {
+    pub path: String,
+    pub name: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct FilenameSearchResult {
     pub file_path: String,
     pub file_name: String,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct FilenameIndexStats {
+    pub total_files: usize,
+    pub index_size_bytes: u64,
+}
+
 pub struct FilenameIndex {
-    index: Index,
-    reader: IndexReader,
-    writer: Arc<Mutex<IndexWriter>>,
-    schema: Schema,
-    path_field: Field,
-    name_field: Field,
-    index_path: std::path::PathBuf,
+    entries: Arc<RwLock<Vec<FilenameEntry>>>,
+    data_path: std::path::PathBuf,
 }
 
 impl FilenameIndex {
-    pub fn open(index_path: &Path) -> Result<Self> {
-        let mut schema_builder = Schema::builder();
+    pub fn open(data_path: &Path) -> Result<Self> {
+        let data_path = data_path.to_path_buf();
 
-        let path_field = schema_builder.add_text_field("path", STRING | STORED);
-        let name_field = schema_builder.add_text_field("name", TEXT | STORED);
-
-        let schema = schema_builder.build();
-
-        let index_path = index_path.join("filenames");
-        if !index_path.exists() {
-            std::fs::create_dir_all(&index_path)?;
-        }
-
-        let directory = MmapDirectory::open(&index_path)
-            .map_err(|e| FlashError::index(format!("Failed to open filename index: {}", e)))?;
-
-        let index = Index::open_or_create(directory, schema.clone())
-            .map_err(|e| FlashError::index(format!("Failed to create filename index: {}", e)))?;
-
-        let reader = index
-            .reader_builder()
-            .reload_policy(ReloadPolicy::OnCommitWithDelay)
-            .try_into()
-            .map_err(|e| FlashError::index(format!("Failed to create index reader: {}", e)))?;
-
-        let writer = index
-            .writer(50_000_000)
-            .map_err(|e| FlashError::index(format!("Failed to create index writer: {}", e)))?;
+        let entries = if data_path.exists() {
+            match std::fs::read_to_string(data_path.join("filenames.json")) {
+                Ok(content) => match serde_json::from_str::<Vec<FilenameEntry>>(&content) {
+                    Ok(entries) => {
+                        tracing::info!("Loaded {} filenames from disk", entries.len());
+                        entries
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to parse filename index: {}", e);
+                        Vec::new()
+                    }
+                },
+                Err(_) => Vec::new(),
+            }
+        } else {
+            Vec::new()
+        };
 
         Ok(Self {
-            index,
-            reader,
-            writer: Arc::new(Mutex::new(writer)),
-            schema,
-            path_field,
-            name_field,
-            index_path: index_path.to_path_buf(),
+            entries: Arc::new(RwLock::new(entries)),
+            data_path,
         })
     }
 
     pub fn add_file(&self, path: &str, name: &str) -> Result<()> {
-        let writer = self.writer.blocking_lock();
+        let entry = FilenameEntry {
+            path: path.to_string(),
+            name: name.to_string(),
+        };
 
-        let mut doc = TantivyDocument::default();
-        doc.add_text(self.path_field, path);
-        doc.add_text(self.name_field, name);
+        let entries = self.entries.clone();
 
-        writer
-            .add_document(doc)
-            .map_err(|e| FlashError::index(format!("Failed to add document: {}", e)))?;
+        if let Ok(mut guard) = entries.try_write() {
+            guard.push(entry);
+
+            if guard.len() % 1000 == 0 {
+                let data = guard.clone();
+                let data_path = self.data_path.clone();
+                std::thread::spawn(move || {
+                    Self::save_to_disk(&data, &data_path);
+                });
+            }
+        }
 
         Ok(())
     }
 
     pub fn commit(&self) -> Result<()> {
-        let mut writer = self.writer.blocking_lock();
-        writer
-            .commit()
-            .map_err(|e| FlashError::index(format!("Failed to commit: {}", e)))?;
+        let entries = self.entries.clone();
+
+        if let Some(guard) = entries.try_read().ok() {
+            let data_path = self.data_path.clone();
+            let data: Vec<_> = guard
+                .iter()
+                .map(|e| FilenameEntry {
+                    path: e.path.clone(),
+                    name: e.name.clone(),
+                })
+                .collect();
+            std::thread::spawn(move || {
+                Self::save_to_disk(&data, &data_path);
+            });
+        }
+
         Ok(())
     }
 
-    pub fn search(&self, query: &str, limit: usize) -> Result<Vec<FilenameResult>> {
-        // Reload reader to see latest changes
-        self.reader
-            .reload()
-            .map_err(|e| FlashError::index(format!("Failed to reload reader: {}", e)))?;
+    fn save_to_disk(entries: &[FilenameEntry], data_path: &std::path::PathBuf) {
+        if let Ok(json) = serde_json::to_string(entries) {
+            let _ = std::fs::write(data_path.join("filenames.json"), json);
+        }
+    }
 
-        let searcher = self.reader.searcher();
+    pub fn search(&self, query: &str, limit: usize) -> Result<Vec<FilenameSearchResult>> {
+        let entries = self.entries.clone();
 
-        // Use regex query for filename matching
-        let regex_query =
-            RegexQuery::from_pattern(&format!("(?i){}", regex::escape(query)), self.name_field)
-                .map_err(|e| FlashError::search(query, format!("Invalid regex: {}", e)))?;
+        let entries = match entries.try_read() {
+            Some(guard) => guard.clone(),
+            None => return Ok(Vec::new()),
+        };
 
-        let top_docs = searcher
-            .search(&regex_query, &TopDocs::with_limit(limit))
-            .map_err(|e| FlashError::search(query, e.to_string()))?;
+        if entries.is_empty() {
+            return Ok(Vec::new());
+        }
 
-        let mut results = Vec::new();
+        let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
 
-        for (_score, doc_address) in top_docs {
-            let doc: TantivyDocument = searcher.doc(doc_address).map_err(|e| {
-                FlashError::search(query, format!("Failed to retrieve document: {}", e))
-            })?;
+        let mut matcher = Matcher::new(Config::DEFAULT.match_paths());
+        let pattern = Pattern::parse(query, CaseMatching::Ignore);
 
-            let path = doc
-                .get_first(self.path_field)
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .unwrap_or_default();
+        let matches: Vec<_> = pattern.match_list(&names, &mut matcher);
 
-            let name = doc
-                .get_first(self.name_field)
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .unwrap_or_default();
+        let mut results = Vec::with_capacity(matches.len().min(limit));
 
-            results.push(FilenameResult {
-                file_path: path,
-                file_name: name,
-            });
+        for (idx, (_score, _matched)) in matches.into_iter().enumerate() {
+            if idx >= limit {
+                break;
+            }
+
+            if let Some(entry) = entries.get(idx) {
+                results.push(FilenameSearchResult {
+                    file_path: entry.path.clone(),
+                    file_name: entry.name.clone(),
+                });
+            }
         }
 
         Ok(results)
     }
 
     pub fn clear(&self) -> Result<()> {
-        let mut writer = self.writer.blocking_lock();
-        writer
-            .delete_all_documents()
-            .map_err(|e| FlashError::index(format!("Failed to clear index: {}", e)))?;
-        writer
-            .commit()
-            .map_err(|e| FlashError::index(format!("Failed to commit clear: {}", e)))?;
+        let entries = self.entries.clone();
+
+        if let Some(mut guard) = entries.try_write() {
+            guard.clear();
+            let data_path = self.data_path.clone();
+            std::thread::spawn(move || {
+                let _ = std::fs::remove_file(data_path.join("filenames.json"));
+            });
+        }
+
         Ok(())
     }
 
-    pub fn get_stats(&self) -> Result<(usize, u64)> {
-        let searcher = self.reader.searcher();
-        let num_docs = searcher.num_docs() as usize;
+    pub fn get_stats(&self) -> Result<FilenameIndexStats> {
+        let entries = self.entries.clone();
 
-        // Estimate index size
-        let size = if self.index_path.exists() {
-            walkdir::WalkDir::new(&self.index_path)
-                .into_iter()
-                .filter_map(|e| e.ok())
-                .filter_map(|e| e.metadata().ok())
-                .map(|m| m.len())
-                .sum()
-        } else {
-            0
+        let entries = match entries.try_read() {
+            Some(guard) => guard,
+            None => {
+                return Ok(FilenameIndexStats {
+                    total_files: 0,
+                    index_size_bytes: 0,
+                })
+            }
         };
 
-        Ok((num_docs, size))
+        let size: u64 = entries
+            .iter()
+            .map(|e| e.path.len() as u64 + e.name.len() as u64 + 32)
+            .sum();
+
+        Ok(FilenameIndexStats {
+            total_files: entries.len(),
+            index_size_bytes: size,
+        })
+    }
+
+    pub fn rebuild_index(&self, paths: Vec<(String, String)>) -> Result<()> {
+        let entries = self.entries.clone();
+        let data_path = self.data_path.clone();
+
+        if let Some(mut guard) = entries.try_write() {
+            *guard = paths
+                .into_iter()
+                .map(|(path, name)| FilenameEntry { path, name })
+                .collect();
+
+            let data: Vec<_> = guard
+                .iter()
+                .map(|e| FilenameEntry {
+                    path: e.path.clone(),
+                    name: e.name.clone(),
+                })
+                .collect();
+            std::thread::spawn(move || {
+                Self::save_to_disk(&data, &data_path);
+            });
+        }
+
+        Ok(())
     }
 }

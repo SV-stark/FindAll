@@ -1,16 +1,17 @@
 use crate::error::{FlashError, Result};
+use compact_str::CompactString;
 use redb::{Database, ReadableTable, RedbValue, TableDefinition, TypeName};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::SystemTime;
 
 const FILES_TABLE: TableDefinition<&str, FileMetadata> = TableDefinition::new("files");
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileMetadata {
-    pub path: String,
+    pub path: CompactString,
     pub modified: u64,          // Unix timestamp
     pub size: u64,              // File size in bytes
     pub content_hash: [u8; 32], // Blake3 hash for content deduplication
@@ -57,23 +58,24 @@ pub struct MetadataDb {
 impl MetadataDb {
     /// Open or create the metadata database
     pub fn open(db_path: &Path) -> Result<Self> {
-        let db = Arc::new(
-            Database::create(db_path).map_err(|e| FlashError::database("database_operation", "files_table", e.to_string()))?
-        );
+        let db = Arc::new(Database::create(db_path).map_err(|e| {
+            FlashError::database("database_operation", "files_table", e.to_string())
+        })?);
 
         // Create table if it doesn't exist
-        let txn = db
-            .begin_write()
-            .map_err(|e| FlashError::database("database_operation", "files_table", e.to_string()))?;
+        let txn = db.begin_write().map_err(|e| {
+            FlashError::database("database_operation", "files_table", e.to_string())
+        })?;
         {
-            let _table = txn
-                .open_table(FILES_TABLE)
-                .map_err(|e| FlashError::database("database_operation", "files_table", e.to_string()))?;
+            let _table = txn.open_table(FILES_TABLE).map_err(|e| {
+                FlashError::database("database_operation", "files_table", e.to_string())
+            })?;
         }
-        txn.commit()
-            .map_err(|e| FlashError::database("database_operation", "files_table", e.to_string()))?;
+        txn.commit().map_err(|e| {
+            FlashError::database("database_operation", "files_table", e.to_string())
+        })?;
 
-        Ok(Self { 
+        Ok(Self {
             db,
             metrics: Arc::new(ConnectionMetrics::default()),
         })
@@ -99,14 +101,13 @@ impl MetadataDb {
 
     /// Check if file needs reindexing based on modification time and hash
     pub fn needs_reindex(&self, path: &Path, modified: u64, size: u64) -> Result<bool> {
-        let txn = self
-            .db
-            .begin_read()
-            .map_err(|e| FlashError::database("database_operation", "files_table", e.to_string()))?;
+        let txn = self.db.begin_read().map_err(|e| {
+            FlashError::database("database_operation", "files_table", e.to_string())
+        })?;
 
-        let table = txn
-            .open_table(FILES_TABLE)
-            .map_err(|e| FlashError::database("database_operation", "files_table", e.to_string()))?;
+        let table = txn.open_table(FILES_TABLE).map_err(|e| {
+            FlashError::database("database_operation", "files_table", e.to_string())
+        })?;
 
         let path_str = path.to_str().unwrap_or("");
 
@@ -138,15 +139,14 @@ impl MetadataDb {
         size: u64,
         content_hash: [u8; 32],
     ) -> Result<()> {
-        let txn = self
-            .db
-            .begin_write()
-            .map_err(|e| FlashError::database("database_operation", "files_table", e.to_string()))?;
+        let txn = self.db.begin_write().map_err(|e| {
+            FlashError::database("database_operation", "files_table", e.to_string())
+        })?;
 
         {
-            let mut table = txn
-                .open_table(FILES_TABLE)
-                .map_err(|e| FlashError::database("database_operation", "files_table", e.to_string()))?;
+            let mut table = txn.open_table(FILES_TABLE).map_err(|e| {
+                FlashError::database("database_operation", "files_table", e.to_string())
+            })?;
 
             let metadata = FileMetadata {
                 path: path.to_string_lossy().to_string(),
@@ -161,25 +161,27 @@ impl MetadataDb {
 
             table
                 .insert(path.to_str().unwrap_or(""), metadata)
-                .map_err(|e| FlashError::database("database_operation", "files_table", e.to_string()))?;
+                .map_err(|e| {
+                    FlashError::database("database_operation", "files_table", e.to_string())
+                })?;
         }
 
-        txn.commit()
-            .map_err(|e| FlashError::database("database_operation", "files_table", e.to_string()))?;
+        txn.commit().map_err(|e| {
+            FlashError::database("database_operation", "files_table", e.to_string())
+        })?;
 
         Ok(())
     }
 
     /// Get metadata for a specific file
     pub fn get_metadata(&self, path: &Path) -> Result<Option<FileMetadata>> {
-        let txn = self
-            .db
-            .begin_read()
-            .map_err(|e| FlashError::database("database_operation", "files_table", e.to_string()))?;
+        let txn = self.db.begin_read().map_err(|e| {
+            FlashError::database("database_operation", "files_table", e.to_string())
+        })?;
 
-        let table = txn
-            .open_table(FILES_TABLE)
-            .map_err(|e| FlashError::database("database_operation", "files_table", e.to_string()))?;
+        let table = txn.open_table(FILES_TABLE).map_err(|e| {
+            FlashError::database("database_operation", "files_table", e.to_string())
+        })?;
 
         let result = match table
             .get(path.to_str().unwrap_or(""))
@@ -202,10 +204,9 @@ impl MetadataDb {
             return Ok(0);
         }
 
-        let txn = self
-            .db
-            .begin_write()
-            .map_err(|e| FlashError::database("database_operation", "files_table", e.to_string()))?;
+        let txn = self.db.begin_write().map_err(|e| {
+            FlashError::database("database_operation", "files_table", e.to_string())
+        })?;
 
         let indexed_at = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -215,9 +216,9 @@ impl MetadataDb {
         let mut total_bytes_written = 0u64;
 
         {
-            let mut table = txn
-                .open_table(FILES_TABLE)
-                .map_err(|e| FlashError::database("database_operation", "files_table", e.to_string()))?;
+            let mut table = txn.open_table(FILES_TABLE).map_err(|e| {
+                FlashError::database("database_operation", "files_table", e.to_string())
+            })?;
 
             for (path, modified, size, content_hash) in entries {
                 let metadata = FileMetadata {
@@ -231,18 +232,23 @@ impl MetadataDb {
                 total_bytes_written += std::mem::size_of::<FileMetadata>() as u64;
                 total_bytes_written += path.len() as u64;
 
-                table
-                    .insert(path.as_str(), metadata)
-                    .map_err(|e| FlashError::database("database_operation", "files_table", e.to_string()))?;
+                table.insert(path.as_str(), metadata).map_err(|e| {
+                    FlashError::database("database_operation", "files_table", e.to_string())
+                })?;
             }
         }
 
-        txn.commit()
-            .map_err(|e| FlashError::database("database_operation", "files_table", e.to_string()))?;
+        txn.commit().map_err(|e| {
+            FlashError::database("database_operation", "files_table", e.to_string())
+        })?;
 
         // Update metrics
-        self.metrics.write_operations.fetch_add(1, Ordering::Relaxed);
-        self.metrics.bytes_written.fetch_add(total_bytes_written, Ordering::Relaxed);
+        self.metrics
+            .write_operations
+            .fetch_add(1, Ordering::Relaxed);
+        self.metrics
+            .bytes_written
+            .fetch_add(total_bytes_written, Ordering::Relaxed);
 
         Ok(entries.len())
     }
@@ -257,14 +263,13 @@ impl MetadataDb {
             return Ok(vec![]);
         }
 
-        let txn = self
-            .db
-            .begin_read()
-            .map_err(|e| FlashError::database("database_operation", "files_table", e.to_string()))?;
+        let txn = self.db.begin_read().map_err(|e| {
+            FlashError::database("database_operation", "files_table", e.to_string())
+        })?;
 
-        let table = txn
-            .open_table(FILES_TABLE)
-            .map_err(|e| FlashError::database("database_operation", "files_table", e.to_string()))?;
+        let table = txn.open_table(FILES_TABLE).map_err(|e| {
+            FlashError::database("database_operation", "files_table", e.to_string())
+        })?;
 
         let results: Vec<bool> = entries
             .iter()
@@ -284,15 +289,17 @@ impl MetadataDb {
     }
 
     /// Get recently modified files sorted by modification time
-    pub fn get_recent_files(&self, limit: usize) -> Result<Vec<(String, Option<String>, u64, u64)>> {
-        let txn = self
-            .db
-            .begin_read()
-            .map_err(|e| FlashError::database("database_operation", "files_table", e.to_string()))?;
+    pub fn get_recent_files(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<(String, Option<String>, u64, u64)>> {
+        let txn = self.db.begin_read().map_err(|e| {
+            FlashError::database("database_operation", "files_table", e.to_string())
+        })?;
 
-        let table = txn
-            .open_table(FILES_TABLE)
-            .map_err(|e| FlashError::database("database_operation", "files_table", e.to_string()))?;
+        let table = txn.open_table(FILES_TABLE).map_err(|e| {
+            FlashError::database("database_operation", "files_table", e.to_string())
+        })?;
 
         let mut files: Vec<(String, u64, u64)> = table
             .iter()
