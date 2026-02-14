@@ -87,8 +87,8 @@ impl IndexManager {
     }
 
     /// Invalidate search cache (call after index updates)
-    pub async fn invalidate_cache(&self) {
-        self.searcher.invalidate_cache().await;
+    pub fn invalidate_cache(&self) {
+        self.searcher.invalidate_cache();
     }
 
     /// Get index statistics

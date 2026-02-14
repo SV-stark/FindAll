@@ -43,6 +43,14 @@ zip = { version = "0.6", default-features = false, features = ["deflate"] }
 quick-xml = "0.31"
 pdf-extract = "0.7"
 
+# Performance Libraries
+moka = { version = "0.12", features = ["sync"] }
+phf = "0.11"
+memchr = "2.5"
+nucleo = "0.2"
+compact_str = "0.6"
+zerocopy = { version = "0.7", features = ["derive"] }
+
 # Utilities
 anyhow = "1.0"
 thiserror = "1.0"
@@ -54,7 +62,6 @@ tauri-plugin-dialog = "2"
 tauri-plugin-global-shortcut = "2"
 arboard = "3.4"
 regex = "1"
-lru = "0.12"
 
 # Performance & Observability
 mimalloc = { version = "0.1", default-features = false }

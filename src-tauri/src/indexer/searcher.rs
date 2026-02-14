@@ -1,13 +1,12 @@
 use crate::error::{FlashError, Result};
+use moka::sync::Cache;
 use serde::{Deserialize, Serialize};
 use std::ops::Bound;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tantivy::collector::TopDocs;
 use tantivy::query::{BooleanQuery, FuzzyTermQuery, Occur, QueryParser, RangeQuery};
 use tantivy::schema::{Field, Schema, Term, Value};
 use tantivy::{Index, IndexReader, ReloadPolicy, TantivyDocument};
-use tokio::sync::RwLock;
 
 /// Maximum number of cached query results
 const MAX_CACHE_SIZE: usize = 100;
@@ -48,42 +47,34 @@ pub(crate) struct CacheKey {
     extensions: Option<Vec<String>>,
 }
 
-/// LRU-style query result cache
+/// LRU-style query result cache using moka + ahash
 pub struct QueryCache {
-    cache: Arc<RwLock<lru::LruCache<CacheKey, CachedResult>>>,
+    cache: Cache<CacheKey, CachedResult>,
 }
 
 impl QueryCache {
     pub fn new() -> Self {
         Self {
-            cache: Arc::new(RwLock::new(lru::LruCache::new(
-                std::num::NonZeroUsize::new(MAX_CACHE_SIZE).unwrap(),
-            ))),
+            cache: Cache::builder()
+                .max_capacity(MAX_CACHE_SIZE as u64)
+                .time_to_live(Duration::from_secs(CACHE_TTL_SECS))
+                .build(),
         }
     }
 
-    pub(crate) async fn get(&self, key: &CacheKey) -> Option<Vec<SearchResult>> {
-        let mut cache = self.cache.write().await;
-        cache.get(key).cloned().and_then(|cached| {
-            if cached.timestamp.elapsed() < Duration::from_secs(CACHE_TTL_SECS) {
-                Some(cached.results)
-            } else {
-                None
-            }
-        })
+    pub(crate) fn get(&self, key: &CacheKey) -> Option<Vec<SearchResult>> {
+        self.cache.get(key).map(|cached| cached.results)
     }
 
-    pub(crate) async fn insert(&self, key: CacheKey, results: Vec<SearchResult>) {
-        let mut cache = self.cache.write().await;
-        cache.put(key, CachedResult {
+    pub(crate) fn insert(&self, key: CacheKey, results: Vec<SearchResult>) {
+        self.cache.insert(key, CachedResult {
             results,
             timestamp: Instant::now(),
         });
     }
 
-    pub async fn invalidate(&self) {
-        let mut cache = self.cache.write().await;
-        cache.clear();
+    pub fn invalidate(&self) {
+        self.cache.invalidate_all();
     }
 }
 
@@ -175,7 +166,7 @@ impl IndexSearcher {
         };
 
         // Check cache first
-        if let Some(cached) = self.cache.get(&cache_key).await {
+        if let Some(cached) = self.cache.get(&cache_key) {
             return Ok(cached);
         }
 
@@ -297,7 +288,7 @@ impl IndexSearcher {
         }
 
         // Cache the results
-        self.cache.insert(cache_key, results.clone()).await;
+        self.cache.insert(cache_key, results.clone());
 
         Ok(results)
     }
@@ -378,8 +369,8 @@ impl IndexSearcher {
     }
 
     /// Invalidate the search cache (call after index updates)
-    pub async fn invalidate_cache(&self) {
-        self.cache.invalidate().await;
+    pub fn invalidate_cache(&self) {
+        self.cache.invalidate();
     }
 
     /// Get statistics about the index

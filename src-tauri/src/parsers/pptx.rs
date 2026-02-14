@@ -7,19 +7,17 @@ const MAX_TEXT_LENGTH: usize = 50_000_000;
 
 pub fn parse_pptx(path: &Path) -> Result<ParsedDocument> {
     let pres = Presentation::open(path).map_err(|e| {
-        FlashError::parse(path, format!(
-            "Failed to open presentation {}: {}",
-            path.display(),
-            e
-        ))
+        FlashError::parse(
+            path,
+            format!("Failed to open presentation {}: {}", path.display(), e),
+        )
     })?;
 
     let text = pres.text().map_err(|e| {
-        FlashError::parse(path, format!(
-            "Failed to extract text from {}: {}",
-            path.display(),
-            e
-        ))
+        FlashError::parse(
+            path,
+            format!("Failed to extract text from {}: {}", path.display(), e),
+        )
     })?;
 
     let content = if text.len() > MAX_TEXT_LENGTH {

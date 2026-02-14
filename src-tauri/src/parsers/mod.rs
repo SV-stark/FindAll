@@ -1,4 +1,5 @@
 use crate::error::{FlashError, Result};
+use phf::phf_map;
 use std::ffi::OsStr;
 use std::path::Path;
 
@@ -18,9 +19,175 @@ pub struct ParsedDocument {
     pub title: Option<String>,
 }
 
+static DOCX_EXTENSIONS: phf::Map<&'static str, ()> = phf_map! {
+    "docx" => (),
+    "doc" => (),
+};
+
+static PPTX_EXTENSIONS: phf::Map<&'static str, ()> = phf_map! {
+    "pptx" => (),
+    "ppt" => (),
+};
+
+static ODF_EXTENSIONS: phf::Map<&'static str, ()> = phf_map! {
+    "odt" => (),
+    "odp" => (),
+    "ods" => (),
+};
+
+static TEXT_EXTENSIONS: phf::Map<&'static str, ()> = phf_map! {
+    "txt" => (),
+    "md" => (),
+    "js" => (),
+    "ts" => (),
+    "json" => (),
+    "html" => (),
+    "css" => (),
+    "xml" => (),
+    "rs" => (),
+    "toml" => (),
+    "py" => (),
+    "java" => (),
+    "kt" => (),
+    "c" => (),
+    "cpp" => (),
+    "h" => (),
+    "hpp" => (),
+    "go" => (),
+    "rb" => (),
+    "php" => (),
+    "swift" => (),
+    "dart" => (),
+    "yaml" => (),
+    "yml" => (),
+    "ini" => (),
+    "conf" => (),
+    "env" => (),
+    "sh" => (),
+    "bat" => (),
+    "ps1" => (),
+    "sql" => (),
+    "r" => (),
+    "log" => (),
+    "svelte" => (),
+    "vue" => (),
+    "scss" => (),
+    "less" => (),
+    "svg" => (),
+    "ics" => (),
+    "vcf" => (),
+    "cmake" => (),
+    "gradle" => (),
+    "properties" => (),
+    "proto" => (),
+    "dockerfile" => (),
+    "cs" => (),
+    "jsx" => (),
+    "tsx" => (),
+    "asm" => (),
+    "s" => (),
+    "m" => (),
+    "pl" => (),
+    "lua" => (),
+    "ex" => (),
+    "exs" => (),
+    "erl" => (),
+    "clj" => (),
+    "fs" => (),
+    "fsx" => (),
+    "vb" => (),
+    "pas" => (),
+    "d" => (),
+    "zig" => (),
+    "nim" => (),
+    "hlsl" => (),
+    "glsl" => (),
+    "makefile" => (),
+    "csv" => (),
+    "tsv" => (),
+    "dat" => (),
+    "tex" => (),
+    "latex" => (),
+    "rst" => (),
+    "adoc" => (),
+    "asciidoc" => (),
+    "gitignore" => (),
+    "gitattributes" => (),
+    "editorconfig" => (),
+    "prettierrc" => (),
+    "eslintrc" => (),
+    "babelrc" => (),
+    "webpack" => (),
+    "nginx" => (),
+    "apache" => (),
+    "htaccess" => (),
+    "fish" => (),
+    "zsh" => (),
+    "csh" => (),
+    "awk" => (),
+    "sed" => (),
+    "vim" => (),
+    "vimrc" => (),
+    "gitconfig" => (),
+};
+
+static OTHER_EXTENSIONS: phf::Map<&'static str, ParserType> = phf_map! {
+    "epub" => ParserType::Epub,
+    "pdf" => ParserType::Pdf,
+    "xlsx" => ParserType::Excel,
+    "xls" => ParserType::Excel,
+    "xlsb" => ParserType::Excel,
+    "rtf" => ParserType::Rtf,
+    "eml" => ParserType::Eml,
+    "msg" => ParserType::Msg,
+    "chm" => ParserType::Chm,
+    "azw" => ParserType::Azw,
+    "azw3" => ParserType::Azw,
+    "mobi" => ParserType::Azw,
+    "zip" => ParserType::Zip,
+    "7z" => ParserType::SevenZ,
+    "rar" => ParserType::Rar,
+};
+
+#[derive(Clone, Copy)]
+enum ParserType {
+    Docx,
+    Pptx,
+    Odf,
+    Epub,
+    Pdf,
+    Excel,
+    Rtf,
+    Eml,
+    Msg,
+    Chm,
+    Azw,
+    Zip,
+    SevenZ,
+    Rar,
+    Text,
+}
+
+impl ParserType {
+    fn from_extension(ext: &str) -> Option<Self> {
+        let ext_lower = ext.to_lowercase();
+        if DOCX_EXTENSIONS.contains_key(&ext_lower) {
+            Some(ParserType::Docx)
+        } else if PPTX_EXTENSIONS.contains_key(&ext_lower) {
+            Some(ParserType::Pptx)
+        } else if ODF_EXTENSIONS.contains_key(&ext_lower) {
+            Some(ParserType::Odf)
+        } else if TEXT_EXTENSIONS.contains_key(&ext_lower) {
+            Some(ParserType::Text)
+        } else {
+            OTHER_EXTENSIONS.get(&ext_lower).copied()
+        }
+    }
+}
+
 /// Parse file without allocating - uses byte comparison
+#[inline]
 fn extension_matches(ext: &OsStr, target: &str) -> bool {
-    // Case-insensitive comparison without allocation
     if let Some(ext_bytes) = ext.to_str().map(|s| s.as_bytes()) {
         if ext_bytes.len() != target.len() {
             return false;
@@ -35,236 +202,34 @@ fn extension_matches(ext: &OsStr, target: &str) -> bool {
 }
 
 /// Detect file type and route to appropriate parser
-/// Optimized to avoid string allocations
+/// Uses phf for O(1) static lookup
 pub fn parse_file(path: &Path) -> Result<ParsedDocument> {
     let extension = path.extension().unwrap_or_default();
 
-    // Check DOCX first (most common office format)
-    if extension_matches(extension, "docx") || extension_matches(extension, "doc") {
-        return docx::parse_docx(path);
+    if let Some(ext_str) = extension.to_str() {
+        let ext_lower = ext_str.to_lowercase();
+        match ParserType::from_extension(&ext_lower) {
+            Some(ParserType::Docx) => return docx::parse_docx(path),
+            Some(ParserType::Pptx) => return pptx::parse_pptx(path),
+            Some(ParserType::Odf) => return odf::parse_odf(path),
+            Some(ParserType::Epub) => return epub::parse_epub(path),
+            Some(ParserType::Pdf) => return pdf::parse_pdf(path),
+            Some(ParserType::Excel) => return excel::parse_excel(path),
+            Some(ParserType::Rtf) => return extended::parse_rtf(path),
+            Some(ParserType::Eml) => return extended::parse_eml(path),
+            Some(ParserType::Msg) => return extended::parse_msg(path),
+            Some(ParserType::Chm) => return extended::parse_chm(path),
+            Some(ParserType::Azw) => return extended::parse_azw(path),
+            Some(ParserType::Zip) => return extended::parse_zip_content(path),
+            Some(ParserType::SevenZ) => return extended::parse_7z_content(path),
+            Some(ParserType::Rar) => return extended::parse_rar_content(path),
+            Some(ParserType::Text) => return text::parse_text(path),
+            None => {}
+        }
     }
 
-    // Check PowerPoint formats
-    if extension_matches(extension, "pptx") || extension_matches(extension, "ppt") {
-        return pptx::parse_pptx(path);
-    }
-
-    // Check other office formats
-    if extension_matches(extension, "odt")
-        || extension_matches(extension, "odp")
-        || extension_matches(extension, "ods")
-    {
-        return odf::parse_odf(path);
-    }
-    if extension_matches(extension, "epub") {
-        return epub::parse_epub(path);
-    }
-    if extension_matches(extension, "pdf") {
-        return pdf::parse_pdf(path);
-    }
-
-    // Check Excel formats
-    if extension_matches(extension, "xlsx")
-        || extension_matches(extension, "xls")
-        || extension_matches(extension, "xlsb")
-    {
-        return excel::parse_excel(path);
-    }
-
-    // Check RTF format
-    if extension_matches(extension, "rtf") {
-        return extended::parse_rtf(path);
-    }
-
-    // Check email formats
-    if extension_matches(extension, "eml") {
-        return extended::parse_eml(path);
-    }
-    if extension_matches(extension, "msg") {
-        return extended::parse_msg(path);
-    }
-
-    // Check CHM format
-    if extension_matches(extension, "chm") {
-        return extended::parse_chm(path);
-    }
-
-    // Check Kindle/AZW formats
-    if extension_matches(extension, "azw")
-        || extension_matches(extension, "azw3")
-        || extension_matches(extension, "mobi")
-    {
-        return extended::parse_azw(path);
-    }
-
-    // Check archive formats
-    if extension_matches(extension, "zip") {
-        return extended::parse_zip_content(path);
-    }
-    if extension_matches(extension, "7z") {
-        return extended::parse_7z_content(path);
-    }
-    if extension_matches(extension, "rar") {
-        return extended::parse_rar_content(path);
-    }
-
-    // Check text-based formats using a static lookup
-    if is_text_format(extension) {
-        return text::parse_text(path);
-    }
-
-    // If we got here, the format is not supported
     let ext_str = extension.to_string_lossy().to_string();
     Err(FlashError::unsupported_format(ext_str.clone(), ext_str))
-}
-
-/// Check if extension is a supported text format
-/// Uses a static array for O(1) lookup with minimal comparisons
-#[inline]
-fn is_text_format(ext: &OsStr) -> bool {
-    // Common text extensions - grouped by frequency for cache efficiency
-    const TEXT_EXTENSIONS: &[&[u8]] = &[
-        b"txt",
-        b"md",
-        // Code files - web
-        b"js",
-        b"ts",
-        b"json",
-        b"html",
-        b"css",
-        b"xml",
-        // Rust ecosystem
-        b"rs",
-        b"toml",
-        // Python
-        b"py",
-        // Java ecosystem
-        b"java",
-        b"kt",
-        // C/C++
-        b"c",
-        b"cpp",
-        b"h",
-        b"hpp",
-        // Go
-        b"go",
-        // Ruby/PHP
-        b"rb",
-        b"php",
-        // Swift/Dart
-        b"swift",
-        b"dart",
-        // Config/data
-        b"yaml",
-        b"yml",
-        b"ini",
-        b"conf",
-        b"env",
-        // Shell scripts
-        b"sh",
-        b"bat",
-        b"ps1",
-        // SQL and data
-        b"sql",
-        b"r",
-        b"log",
-        // Web frameworks
-        b"svelte",
-        b"vue",
-        // Stylesheets
-        b"scss",
-        b"less",
-        // Other formats
-        b"svg",
-        b"ics",
-        b"vcf",
-        b"cmake",
-        b"gradle",
-        b"properties",
-        b"proto",
-        b"dockerfile",
-        // More code files
-        b"cs",
-        b"jsx",
-        b"tsx",
-        b"vue",
-        b"jsx",
-        b"sx",
-        b"asm",
-        b"s",
-        b"m",
-        b"pl",
-        b"lua",
-        b"ex",
-        b"exs",
-        b"erl",
-        b"clj",
-        b"fs",
-        b"fsx",
-        b"vb",
-        b"pas",
-        b"d",
-        b"zig",
-        b"nim",
-        b"hlsl",
-        b"glsl",
-        b"cmake",
-        b"makefile",
-        // Data formats
-        b"csv",
-        b"tsv",
-        b"dat",
-        b"msgpack",
-        b"cbor",
-        b"toml",
-        // Documents
-        b"tex",
-        b"latex",
-        b"rst",
-        b"adoc",
-        b"asciidoc",
-        // Config
-        b"gitignore",
-        b"gitattributes",
-        b"editorconfig",
-        b"prettierrc",
-        b"eslintrc",
-        b"babelrc",
-        b"webpack",
-        b"nginx",
-        b"apache",
-        b"htaccess",
-        // Shell/other
-        b"fish",
-        b"zsh",
-        b"csh",
-        b"awk",
-        b"sed",
-        b"vim",
-        b"vimrc",
-        b"gitconfig",
-        b"env",
-        b"properties",
-    ];
-
-    if let Some(ext_bytes) = ext.to_str().map(|s| s.as_bytes()) {
-        // Linear search with case-insensitive comparison
-        // This is fast enough for ~40 extensions and doesn't require sorting
-        for target in TEXT_EXTENSIONS {
-            if ext_bytes.len() == target.len() {
-                let matches = ext_bytes
-                    .iter()
-                    .zip(target.iter())
-                    .all(|(a, b)| a.eq_ignore_ascii_case(b));
-                if matches {
-                    return true;
-                }
-            }
-        }
-        false
-    } else {
-        false
-    }
 }
 
 #[cfg(test)]
@@ -281,19 +246,32 @@ mod tests {
     }
 
     #[test]
-    fn test_is_text_format() {
-        assert!(is_text_format(OsStr::new("txt")));
-        assert!(is_text_format(OsStr::new("TXT")));
-        assert!(is_text_format(OsStr::new("rs")));
-        assert!(is_text_format(OsStr::new("js")));
-        assert!(!is_text_format(OsStr::new("exe")));
-        assert!(!is_text_format(OsStr::new("docx")));
+    fn test_parser_type_from_extension() {
+        assert!(matches!(
+            ParserType::from_extension("txt"),
+            Some(ParserType::Text)
+        ));
+        assert!(matches!(
+            ParserType::from_extension("TXT"),
+            Some(ParserType::Text)
+        ));
+        assert!(matches!(
+            ParserType::from_extension("rs"),
+            Some(ParserType::Text)
+        ));
+        assert!(matches!(
+            ParserType::from_extension("js"),
+            Some(ParserType::Text)
+        ));
+        assert!(matches!(
+            ParserType::from_extension("docx"),
+            Some(ParserType::Docx)
+        ));
+        assert!(matches!(ParserType::from_extension("exe"), None));
     }
 
     #[test]
     fn test_parse_file_txt() {
-        // This will be implemented with test fixtures
         let path = PathBuf::from("tests/fixtures/sample.txt");
-        // Test implementation here
     }
 }

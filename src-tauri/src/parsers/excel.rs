@@ -19,10 +19,10 @@ pub fn parse_excel(path: &Path) -> Result<ParsedDocument> {
         return Ok(result);
     }
 
-    Err(FlashError::parse(path, format!(
-        "Failed to parse Excel file: {}",
-        path.display()
-    )))
+    Err(FlashError::parse(
+        path,
+        format!("Failed to parse Excel file: {}", path.display()),
+    ))
 }
 
 fn parse_xlsx(path: &Path) -> Result<ParsedDocument> {
@@ -40,8 +40,8 @@ fn parse_xlsb(path: &Path) -> Result<ParsedDocument> {
 }
 
 fn parse_xls(path: &Path) -> Result<ParsedDocument> {
-    let mut workbook: Xls<_> =
-        open_workbook(path).map_err(|e| FlashError::parse(path, format!("Failed to open XLS: {}", e)))?;
+    let mut workbook: Xls<_> = open_workbook(path)
+        .map_err(|e| FlashError::parse(path, format!("Failed to open XLS: {}", e)))?;
 
     extract_excel_content(path, &mut workbook)
 }

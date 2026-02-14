@@ -2,7 +2,6 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 use notify::{Watcher, RecursiveMode, Event, EventKind, RecommendedWatcher};
-use tokio::sync::Mutex;
 use tauri::{AppHandle, Emitter};
 use crate::error::{FlashError, Result};
 use crate::indexer::IndexManager;
@@ -34,7 +33,6 @@ impl WatcherManager {
 
     /// Update the list of watched directories
     pub fn update_watch_list(&mut self, dirs: Vec<String>) -> Result<()> {
-        // Stop current watcher if exists
         self.watcher = None;
 
         if dirs.is_empty() {
@@ -45,7 +43,6 @@ impl WatcherManager {
         let indexer = self.indexer.clone();
         let metadata_db = self.metadata_db.clone();
 
-        // Create new watcher with debouncing logic
         let mut watcher = notify::recommended_watcher(move |res: notify::Result<Event>| {
             if let Ok(event) = res {
                 match event.kind {
@@ -56,16 +53,12 @@ impl WatcherManager {
                                 let idx = indexer.clone();
                                 let db = metadata_db.clone();
                                 
-                                // Spawn task to handle single file re-indexing
                                 tauri::async_runtime::spawn(async move {
-                                    // Small delay to let file write finish
                                     tokio::time::sleep(Duration::from_millis(500)).await;
                                     
-                                    // Re-index just this single file efficiently
                                     if let Err(e) = Self::reindex_single_file(&path, &idx, &db).await {
                                         eprintln!("Failed to reindex file {:?}: {}", path, e);
                                     } else {
-                                        // Notify frontend of the update
                                         let _ = app.emit("file-updated", path.to_string_lossy().to_string());
                                     }
                                 });
@@ -73,10 +66,8 @@ impl WatcherManager {
                         }
                     }
                     EventKind::Remove(_) => {
-                        // Handle file deletion - could remove from index here
                         for path in event.paths {
                             if path.is_file() {
-                                // TODO: Implement removal from index
                                 println!("File removed: {:?}", path);
                             }
                         }
@@ -86,7 +77,6 @@ impl WatcherManager {
             }
         }).map_err(|e| FlashError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
 
-        // Add all directories to watcher
         for dir in dirs {
             let path = Path::new(&dir);
             if path.exists() {
@@ -99,13 +89,11 @@ impl WatcherManager {
         Ok(())
     }
     
-    /// Re-index a single file efficiently (without scanning entire directory)
     async fn reindex_single_file(
         path: &Path,
         indexer: &Arc<IndexManager>,
         metadata_db: &Arc<MetadataDb>,
     ) -> Result<()> {
-        // Get file metadata
         let metadata = std::fs::metadata(path)
             .map_err(|e| FlashError::Io(e))?;
         
@@ -116,23 +104,18 @@ impl WatcherManager {
             .as_secs();
         let size = metadata.len();
         
-        // Check if we need to reindex
         if !metadata_db.needs_reindex(path, modified, size)? {
-            return Ok(()); // No changes, skip
+            return Ok(());
         }
         
-        // Parse the file
         let parsed = parse_file(path)
             .map_err(|e| FlashError::parse(path, format!("Failed to parse file: {}", e)))?;
         
-        // Compute content hash
         let content_hash: [u8; 32] = blake3::hash(parsed.content.as_bytes()).into();
         
-        // Add to index
         indexer.add_document(&parsed, modified, size)?;
         indexer.commit()?;
         
-        // Update metadata
         metadata_db.update_metadata(path, modified, size, content_hash)?;
         
         println!("Re-indexed file: {:?}", path);

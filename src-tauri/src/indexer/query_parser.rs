@@ -1,3 +1,4 @@
+use memchr::memchr;
 use regex::Regex;
 
 /// Parsed query with operators and search terms
@@ -159,12 +160,38 @@ impl ParsedQuery {
 /// Extract search terms for highlighting from a query
 pub fn extract_highlight_terms(query: &str) -> Vec<String> {
     let parsed = ParsedQuery::new(query);
-    let mut terms: Vec<String> = parsed
-        .text_query
-        .split_whitespace()
-        .map(|s| s.to_lowercase())
-        .filter(|s| !s.is_empty() && s != "*")
-        .collect();
+
+    let mut terms = Vec::new();
+    let bytes = parsed.text_query.as_bytes();
+    let mut last_end = 0;
+
+    let mut iter = memchr(b' ', bytes);
+    while let Some(pos) = iter {
+        let term = &bytes[last_end..pos];
+        if !term.is_empty() {
+            let term_str = String::from_utf8_lossy(term).to_lowercase();
+            if !term_str.is_empty() && term_str != "*" {
+                terms.push(term_str);
+            }
+        }
+        last_end = pos + 1;
+        iter = memchr(b' ', &bytes[last_end..]);
+    }
+
+    // Handle last segment
+    if last_end < bytes.len() {
+        let term = &bytes[last_end..];
+        if !term.is_empty() {
+            let term_str = String::from_utf8_lossy(term).to_lowercase();
+            if !term_str.is_empty() && term_str != "*" {
+                terms.push(term_str);
+            }
+        }
+    }
+
+    if terms.is_empty() && parsed.text_query == "*" {
+        terms.push("*".to_string());
+    }
 
     // Also add title filter terms
     if let Some(title) = parsed.title_filter {
