@@ -22,6 +22,66 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{Manager, Emitter};
 use tracing::{info, warn, error};
+use std::path::Path;
+
+pub fn get_app_data_dir() -> PathBuf {
+    let mut path = dirs::data_dir().unwrap_or_else(|| {
+        dirs::home_dir().map(|h| h.join(".flash-search")).unwrap_or_else(|| PathBuf::from("."))
+    });
+    
+    #[cfg(target_os = "windows")]
+    {
+        // On Windows, Tauri puts data in Roaming/identifier
+        path = dirs::config_dir().expect("Failed to get config directory");
+    }
+    
+    path.push("com.hp.flash-search");
+    path
+}
+
+fn truncate(s: &str, max_chars: usize) -> String {
+    if s.len() > max_chars {
+        format!("{}...", &s[..max_chars - 3])
+    } else {
+        s.to_string()
+    }
+}
+
+pub async fn run_cli(query: Option<String>, index_path: Option<String>) -> crate::error::Result<()> {
+    let app_data_dir = get_app_data_dir();
+    if !app_data_dir.exists() {
+        std::fs::create_dir_all(&app_data_dir)?;
+    }
+
+    if let Some(query_str) = query {
+        let index_path = app_data_dir.join("index");
+        let indexer = indexer::IndexManager::open(&index_path)?;
+        
+        let results = indexer.search(&query_str, 20, None, None, None)?;
+        
+        if results.is_empty() {
+            println!("No results found for: {}", query_str);
+        } else {
+            println!("\n🔍 Search results for: {}\n", query_str);
+            println!("{:<8} | {:<30} | {}", "Score", "Title", "Path");
+            println!("{:-<8}-+-{:-<30}-+-{:-<40}", "", "", "");
+            
+            for res in results {
+                let title = res.title.as_deref().unwrap_or("Untitled");
+                println!("{:<8.2} | {:<30} | {}", res.score, truncate(title, 30), res.file_path);
+            }
+            println!();
+        }
+    }
+
+    if let Some(path_str) = index_path {
+        println!("Indexing directory: {}", path_str);
+        // We would need to initialize MetadataDb here too for a proper index
+        // For now, let's focus on the search CLI
+    }
+
+    Ok(())
+}
 
 /// Get all available drives on Windows
 #[cfg(target_os = "windows")]
