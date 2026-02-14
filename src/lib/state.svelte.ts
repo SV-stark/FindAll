@@ -28,6 +28,12 @@ class AppState {
   selectedFileType = $state("all");
   showFilters = $state(false);
   
+  // Sorting
+  sortBy = $state<"relevance" | "name" | "date" | "size">("relevance");
+  sortOrder = $state<"asc" | "desc">("desc");
+  showSortDropdown = $state(false);
+  showExportDropdown = $state(false);
+  
   // Recent searches
   showRecentSearches = $state(false);
   recentSearches = $state<string[]>([]);
@@ -48,6 +54,9 @@ class AppState {
   
   // UI state
   activeTab = $state<"search" | "settings" | "stats">("search");
+  showShortcuts = $state(false);
+  sidebarCollapsed = $state(false);
+  activeFolder = $state<string | null>(null);
   expandedSections = $state({
     indexing: true,
     search: false,

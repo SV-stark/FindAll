@@ -2,6 +2,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { fade, slide } from "svelte/transition";
   import { appState } from '$lib/state.svelte';
+  import Icon from './Icon.svelte';
 
   function toggleSection(section: string) {
     appState.toggleSection(section as any);
@@ -54,12 +55,16 @@
 
   <div class="settings-section">
     <button class="section-header" onclick={() => toggleSection('indexing')}>
-      <span class="section-icon">📁</span>
+      <span class="section-icon">
+        <Icon icon="folder" size={20} color="var(--primary)" />
+      </span>
       <div class="section-title">
         <h3>Indexing</h3>
         <p>Configure which folders to index and exclusion patterns</p>
       </div>
-      <span class="expand-icon">{appState.expandedSections.indexing ? '▼' : '▶'}</span>
+      <span class="expand-icon">
+        <Icon icon={appState.expandedSections.indexing ? "chevron-down" : "chevron-right"} size={16} />
+      </span>
     </button>
     
     {#if appState.expandedSections.indexing}
@@ -144,12 +149,16 @@
 
   <div class="settings-section">
     <button class="section-header" onclick={() => toggleSection('search')}>
-      <span class="section-icon">🔍</span>
+      <span class="section-icon">
+        <Icon icon="magnifying-glass" size={20} color="var(--primary)" />
+      </span>
       <div class="section-title">
         <h3>Search</h3>
         <p>Configure search behavior and default filters</p>
       </div>
-      <span class="expand-icon">{appState.expandedSections.search ? '▼' : '▶'}</span>
+      <span class="expand-icon">
+        <Icon icon={appState.expandedSections.search ? "chevron-down" : "chevron-right"} size={16} />
+      </span>
     </button>
     
     {#if appState.expandedSections.search}
