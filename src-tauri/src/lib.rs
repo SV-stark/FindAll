@@ -57,7 +57,7 @@ pub async fn run_cli(query: Option<String>, index_path: Option<String>) -> crate
         let index_path = app_data_dir.join("index");
         let indexer = indexer::IndexManager::open(&index_path)?;
         
-        let results = indexer.search(&query_str, 20, None, None, None)?;
+        let results = indexer.search(&query_str, 20, None, None, None).await?;
         
         if results.is_empty() {
             println!("No results found for: {}", query_str);
@@ -181,7 +181,7 @@ pub fn run_with_args(initial_search: Option<String>, index_dir: Option<String>) 
             info!("Metadata database opened successfully");
 
             let metadata_db_shared = Arc::new(metadata_db);
-            let indexer_shared = Arc::new(tokio::sync::Mutex::new(indexer));
+            let indexer_shared = Arc::new(indexer);
 
             // Initialize watcher
             let mut watcher = watcher::WatcherManager::new(

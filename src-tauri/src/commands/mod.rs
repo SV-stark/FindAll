@@ -1,22 +1,22 @@
-mod search;
 mod indexing;
+mod search;
 mod settings;
 mod system;
 
-pub use search::*;
 pub use indexing::*;
+pub use search::*;
 pub use settings::*;
 pub use system::*;
 
-use std::sync::Arc;
-use tokio::sync::Mutex;
-use crate::indexer::{IndexManager, filename_index::FilenameIndex};
+use crate::indexer::{filename_index::FilenameIndex, IndexManager};
 use crate::metadata::MetadataDb;
 use crate::settings::SettingsManager;
 use crate::watcher::WatcherManager;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 pub struct AppState {
-    pub indexer: Arc<Mutex<IndexManager>>,
+    pub indexer: Arc<IndexManager>,
     pub metadata_db: Arc<MetadataDb>,
     pub settings_manager: Arc<SettingsManager>,
     pub watcher: std::sync::Mutex<WatcherManager>,
@@ -25,7 +25,7 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(
-        indexer: Arc<Mutex<IndexManager>>, 
+        indexer: Arc<IndexManager>,
         metadata_db: Arc<MetadataDb>,
         settings_manager: SettingsManager,
         watcher: WatcherManager,

@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::mpsc;
 use rayon::prelude::*;
 use ignore::WalkBuilder;
 use tauri::{AppHandle, Emitter};
@@ -30,8 +30,6 @@ const BATCH_SIZE: usize = 50;
 const CHUNK_SIZE: usize = 1000;
 /// Maximum time to wait before committing a partial batch
 const BATCH_TIMEOUT_MS: u64 = 5000;
-/// Progress update frequency (update every N files)
-const PROGRESS_UPDATE_INTERVAL: usize = 1;
 
 /// Message sent through channel for indexing
 #[derive(Debug)]
@@ -44,14 +42,14 @@ struct IndexTask {
 
 /// Scans directories and indexes files efficiently using chunked processing
 pub struct Scanner {
-    indexer: Arc<Mutex<IndexManager>>,
+    indexer: Arc<IndexManager>,
     metadata_db: Arc<MetadataDb>,
     app_handle: AppHandle,
 }
 
 impl Scanner {
     pub fn new(
-        indexer: Arc<Mutex<IndexManager>>,
+        indexer: Arc<IndexManager>,
         metadata_db: Arc<MetadataDb>,
         app_handle: AppHandle,
     ) -> Self {
@@ -184,12 +182,15 @@ impl Scanner {
             let mut total_indexed = 0usize;
             let start_time = Instant::now();
             let current_folder = String::new();
+            let mut last_progress_emit = Instant::now();
             
             loop {
-                match tokio::time::timeout(
+                let rx_result = tokio::time::timeout(
                     Duration::from_millis(100), 
                     rx.recv()
-                ).await {
+                ).await;
+
+                match rx_result {
                     Ok(Some(task)) => {
                         metadata_batch.push((
                             task.doc.path.clone(),
@@ -228,38 +229,38 @@ impl Scanner {
                             batch.clear();
                             metadata_batch.clear();
                         }
-                        
-                        let processed = processed_clone.load(Ordering::Relaxed);
-                        let skipped = skipped_clone.load(Ordering::Relaxed);
-                        let last_emitted = last_progress_clone.load(Ordering::Relaxed);
-                        
-                        if processed + skipped >= last_emitted + PROGRESS_UPDATE_INTERVAL {
-                            let elapsed = start_time.elapsed().as_secs_f64();
-                            let files_per_second = if elapsed > 0.0 {
-                                (processed + skipped) as f64 / elapsed
-                            } else {
-                                0.0
-                            };
-                            
-                            let remaining = total_clone - processed - skipped;
-                            let eta_seconds = if files_per_second > 0.0 {
-                                (remaining as f64 / files_per_second) as u64
-                            } else {
-                                0
-                            };
-                            
-                            let _ = app_handle.emit("indexing-progress", ProgressEvent {
-                                total: total_clone,
-                                processed: processed + skipped,
-                                current_file: format!("{} files processed", processed + skipped),
-                                status: "indexing".to_string(),
-                                files_per_second,
-                                eta_seconds,
-                                current_folder: current_folder.clone(),
-                            });
-                            last_progress_clone.store(processed + skipped, Ordering::Relaxed);
-                        }
                     }
+                }
+
+                // Emit progress periodically (every 500ms)
+                if last_progress_emit.elapsed() >= Duration::from_millis(500) {
+                    let processed = processed_clone.load(Ordering::Relaxed);
+                    let skipped = skipped_clone.load(Ordering::Relaxed);
+                    
+                    let elapsed = start_time.elapsed().as_secs_f64();
+                    let files_per_second = if elapsed > 0.0 {
+                        (processed + skipped) as f64 / elapsed
+                    } else {
+                        0.0
+                    };
+                    
+                    let remaining = total_clone.saturating_sub(processed + skipped);
+                    let eta_seconds = if files_per_second > 0.0 {
+                        (remaining as f64 / files_per_second) as u64
+                    } else {
+                        0
+                    };
+                    
+                    let _ = app_handle.emit("indexing-progress", ProgressEvent {
+                        total: total_clone,
+                        processed: processed + skipped,
+                        current_file: format!("{} files processed", processed + skipped),
+                        status: "indexing".to_string(),
+                        files_per_second,
+                        eta_seconds,
+                        current_folder: current_folder.clone(),
+                    });
+                    last_progress_emit = Instant::now();
                 }
             }
             
@@ -329,9 +330,8 @@ impl Scanner {
         Ok(())
     }
     
-    #[instrument(skip(indexer, metadata_db, batch, metadata_batch), fields(batch_size = batch.len()))]
     async fn commit_batch(
-        indexer: &Arc<Mutex<IndexManager>>,
+        indexer: &Arc<IndexManager>,
         metadata_db: &Arc<MetadataDb>,
         batch: &mut Vec<IndexTask>,
         metadata_batch: &mut Vec<(String, u64, u64, [u8; 32])>,
@@ -341,7 +341,6 @@ impl Scanner {
         }
         
         let batch_len = batch.len();
-        let indexer = indexer.lock().await;
         
         for task in batch.iter() {
             if let Err(e) = indexer.add_document(&task.doc, task.modified, task.size) {

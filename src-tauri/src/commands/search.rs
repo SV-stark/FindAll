@@ -15,9 +15,8 @@ pub async fn search_query(
     max_size: Option<u64>,
     file_extensions: Option<Vec<String>>,
 ) -> Result<Vec<SearchResult>, String> {
-    let indexer = state.indexer.lock().await;
-
-    indexer.search(&query, limit, min_size, max_size, file_extensions.as_deref())
+    state.indexer.search(&query, limit, min_size, max_size, file_extensions.as_deref())
+        .await
         .map_err(|e| e.to_string())
 }
 

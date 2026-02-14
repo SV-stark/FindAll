@@ -51,8 +51,7 @@ pub async fn get_index_status(
 pub async fn get_index_statistics(
     state: State<'_, Arc<AppState>>,
 ) -> Result<IndexStatistics, String> {
-    let indexer = state.indexer.lock().await;
-    indexer.get_statistics().map_err(|e| e.to_string())
+    state.indexer.get_statistics().map_err(|e| e.to_string())
 }
 
 /// Get recently modified files

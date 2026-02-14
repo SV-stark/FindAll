@@ -72,8 +72,8 @@ impl IndexManager {
         self.writer.commit()
     }
 
-    /// Search the index
-    pub fn search(
+    /// Search the index (async with caching)
+    pub async fn search(
         &self,
         query: &str,
         limit: usize,
@@ -83,6 +83,12 @@ impl IndexManager {
     ) -> Result<Vec<SearchResult>> {
         self.searcher
             .search(query, limit, min_size, max_size, file_extensions)
+            .await
+    }
+
+    /// Invalidate search cache (call after index updates)
+    pub async fn invalidate_cache(&self) {
+        self.searcher.invalidate_cache().await;
     }
 
     /// Get index statistics

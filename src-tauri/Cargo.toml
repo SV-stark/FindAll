@@ -54,6 +54,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-global-shortcut = "2"
 arboard = "3.4"
 regex = "1"
+lru = "0.12"
 
 # Performance & Observability
 mimalloc = { version = "0.1", default-features = false }

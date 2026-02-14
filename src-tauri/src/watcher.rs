@@ -14,14 +14,14 @@ use blake3;
 pub struct WatcherManager {
     watcher: Option<RecommendedWatcher>,
     app_handle: AppHandle,
-    indexer: Arc<Mutex<IndexManager>>,
+    indexer: Arc<IndexManager>,
     metadata_db: Arc<MetadataDb>,
 }
 
 impl WatcherManager {
     pub fn new(
         app_handle: AppHandle,
-        indexer: Arc<Mutex<IndexManager>>,
+        indexer: Arc<IndexManager>,
         metadata_db: Arc<MetadataDb>,
     ) -> Self {
         Self {
@@ -102,7 +102,7 @@ impl WatcherManager {
     /// Re-index a single file efficiently (without scanning entire directory)
     async fn reindex_single_file(
         path: &Path,
-        indexer: &Arc<Mutex<IndexManager>>,
+        indexer: &Arc<IndexManager>,
         metadata_db: &Arc<MetadataDb>,
     ) -> Result<()> {
         // Get file metadata
@@ -129,9 +129,8 @@ impl WatcherManager {
         let content_hash: [u8; 32] = blake3::hash(parsed.content.as_bytes()).into();
         
         // Add to index
-        let indexer_guard = indexer.lock().await;
-        indexer_guard.add_document(&parsed, modified, size)?;
-        indexer_guard.commit()?;
+        indexer.add_document(&parsed, modified, size)?;
+        indexer.commit()?;
         
         // Update metadata
         metadata_db.update_metadata(path, modified, size, content_hash)?;

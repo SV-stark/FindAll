@@ -280,11 +280,11 @@ class AppState {
       }
     } catch (e) {
       console.error("Search failed:", e);
-      if (this.searchVersion === currentVersion) {
+      if (currentVersion === this.searchVersion) {
         this.results = [];
       }
     } finally {
-      if (this.searchVersion === currentVersion) {
+      if (currentVersion === this.searchVersion) {
         this.isSearching = false;
       }
     }

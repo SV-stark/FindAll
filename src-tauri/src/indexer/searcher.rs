@@ -1,10 +1,18 @@
 use crate::error::{FlashError, Result};
 use serde::{Deserialize, Serialize};
 use std::ops::Bound;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tantivy::collector::TopDocs;
-use tantivy::query::{BooleanQuery, Occur, QueryParser, RangeQuery};
+use tantivy::query::{BooleanQuery, FuzzyTermQuery, Occur, QueryParser, RangeQuery};
 use tantivy::schema::{Field, Schema, Term, Value};
 use tantivy::{Index, IndexReader, ReloadPolicy, TantivyDocument};
+use tokio::sync::RwLock;
+
+/// Maximum number of cached query results
+const MAX_CACHE_SIZE: usize = 100;
+/// Cache TTL in seconds
+const CACHE_TTL_SECS: u64 = 30;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SearchResult {
@@ -23,6 +31,68 @@ pub struct IndexStatistics {
     pub last_updated: Option<String>,
 }
 
+/// Cached search result with timestamp
+#[derive(Clone)]
+struct CachedResult {
+    results: Vec<SearchResult>,
+    timestamp: Instant,
+}
+
+/// Cache key for search queries
+#[derive(Clone, Debug, Hash, Eq, PartialEq)]
+pub(crate) struct CacheKey {
+    query: String,
+    limit: usize,
+    min_size: Option<u64>,
+    max_size: Option<u64>,
+    extensions: Option<Vec<String>>,
+}
+
+/// LRU-style query result cache
+pub struct QueryCache {
+    cache: Arc<RwLock<lru::LruCache<CacheKey, CachedResult>>>,
+}
+
+impl QueryCache {
+    pub fn new() -> Self {
+        Self {
+            cache: Arc::new(RwLock::new(lru::LruCache::new(
+                std::num::NonZeroUsize::new(MAX_CACHE_SIZE).unwrap(),
+            ))),
+        }
+    }
+
+    pub(crate) async fn get(&self, key: &CacheKey) -> Option<Vec<SearchResult>> {
+        let mut cache = self.cache.write().await;
+        cache.get(key).cloned().and_then(|cached| {
+            if cached.timestamp.elapsed() < Duration::from_secs(CACHE_TTL_SECS) {
+                Some(cached.results)
+            } else {
+                None
+            }
+        })
+    }
+
+    pub(crate) async fn insert(&self, key: CacheKey, results: Vec<SearchResult>) {
+        let mut cache = self.cache.write().await;
+        cache.put(key, CachedResult {
+            results,
+            timestamp: Instant::now(),
+        });
+    }
+
+    pub async fn invalidate(&self) {
+        let mut cache = self.cache.write().await;
+        cache.clear();
+    }
+}
+
+impl Default for QueryCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Manages searching the Tantivy index
 pub struct IndexSearcher {
     reader: IndexReader,
@@ -31,17 +101,24 @@ pub struct IndexSearcher {
     path_field: Field,
     title_field: Field,
     size_field: Field,
+    content_field: Field,
+    cache: QueryCache,
 }
 
 impl IndexSearcher {
     pub fn new(index: &Index) -> Result<Self> {
         let schema = index.schema();
 
+        // Pre-warm the reader by loading index into memory on startup
+        // This ensures first search is fast (no initial load latency)
         let reader = index
             .reader_builder()
-            .reload_policy(ReloadPolicy::Manual)
+            .reload_policy(ReloadPolicy::OnCommitWithDelay)
             .try_into()
             .map_err(|e| FlashError::search("create_index_reader", e.to_string()))?;
+
+        // Pre-warm: load the index reader
+        reader.reload().ok();
 
         // Get field references once to avoid repeated lookups
         let path_field = schema
@@ -53,6 +130,9 @@ impl IndexSearcher {
         let size_field = schema
             .get_field("size")
             .map_err(|_| FlashError::index_field("size", "Field not found in schema"))?;
+        let content_field = schema
+            .get_field("content")
+            .map_err(|_| FlashError::index_field("content", "Field not found in schema"))?;
 
         // Search across content, title, and file_path fields
         let default_fields: Vec<Field> = vec!["content", "title", "file_path"]
@@ -69,11 +149,13 @@ impl IndexSearcher {
             path_field,
             title_field,
             size_field,
+            content_field,
+            cache: QueryCache::new(),
         })
     }
 
     /// Search the index and return top results with optional filters
-    pub fn search(
+    pub async fn search(
         &self,
         query: &str,
         limit: usize,
@@ -83,15 +165,27 @@ impl IndexSearcher {
     ) -> Result<Vec<SearchResult>> {
         use super::query_parser::{extract_highlight_terms, ParsedQuery};
 
+        // Create cache key
+        let cache_key = CacheKey {
+            query: query.to_string(),
+            limit,
+            min_size,
+            max_size,
+            extensions: file_extensions.map(|e| e.to_vec()),
+        };
+
+        // Check cache first
+        if let Some(cached) = self.cache.get(&cache_key).await {
+            return Ok(cached);
+        }
+
         let parsed = ParsedQuery::new(query);
         let highlight_terms = extract_highlight_terms(query);
 
         let searcher = self.reader.searcher();
 
-        let text_query = self
-            .query_parser
-            .parse_query(&parsed.text_query)
-            .map_err(|e| FlashError::search(&parsed.text_query, e.to_string()))?;
+        // Build the main query - use fuzzy search for better typo tolerance
+        let text_query = self.build_fuzzy_query(&parsed.text_query)?;
 
         // Build query with optional filters
         let mut combine: Vec<(Occur, Box<dyn tantivy::query::Query>)> =
@@ -202,7 +296,90 @@ impl IndexSearcher {
             }
         }
 
+        // Cache the results
+        self.cache.insert(cache_key, results.clone()).await;
+
         Ok(results)
+    }
+
+    /// Build a fuzzy query for better typo tolerance
+    fn build_fuzzy_query(&self, text_query: &str) -> Result<Box<dyn tantivy::query::Query>> {
+        // Check if it's a phrase query (contains quoted strings)
+        let phrase_regex = regex::Regex::new(r#""([^"]+)""#).unwrap();
+        
+        if phrase_regex.is_match(text_query) {
+            // For phrase queries, use the query parser with phrase support
+            return Ok(Box::new(
+                self.query_parser
+                    .parse_query(text_query)
+                    .map_err(|e| FlashError::search(text_query, e.to_string()))?,
+            ));
+        }
+
+        // For regular queries, build a fuzzy query with OR for each term
+        let terms: Vec<&str> = text_query.split_whitespace().collect();
+        
+        if terms.is_empty() || (terms.len() == 1 && terms[0] == "*") {
+            // Match all
+            return Ok(Box::new(
+                tantivy::query::AllQuery
+            ));
+        }
+
+        if terms.len() == 1 {
+            // Single term - try exact first, then fuzzy
+            let term_text = terms[0];
+            let term = Term::from_field_text(self.content_field, term_text);
+            
+            // Try exact match first (higher priority)
+            let exact = tantivy::query::TermQuery::new(
+                term,
+                tantivy::schema::IndexRecordOption::Basic,
+            );
+            
+            // Add fuzzy variant with edit distance of 2
+            let fuzzy_term = Term::from_field_text(self.content_field, term_text);
+            let fuzzy = FuzzyTermQuery::new(fuzzy_term, 2, true);
+            
+            // Combine with OR (exact first)
+            let combined = BooleanQuery::new(vec![
+                (Occur::Should, Box::new(exact)),
+                (Occur::Should, Box::new(fuzzy)),
+            ]);
+            
+            Ok(Box::new(combined))
+        } else {
+            // Multiple terms - build fuzzy query for each with AND logic
+            let mut subqueries: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::new();
+            
+            for term_text in terms {
+                let term = Term::from_field_text(self.content_field, term_text);
+                
+                // Exact term query
+                let exact = tantivy::query::TermQuery::new(
+                    term.clone(),
+                    tantivy::schema::IndexRecordOption::Basic,
+                );
+                
+                // Fuzzy variant
+                let fuzzy = FuzzyTermQuery::new(term, 2, true);
+                
+                // Combine exact and fuzzy for this term
+                let term_query = BooleanQuery::new(vec![
+                    (Occur::Should, Box::new(exact)),
+                    (Occur::Should, Box::new(fuzzy)),
+                ]);
+                
+                subqueries.push((Occur::Must, Box::new(term_query)));
+            }
+            
+            Ok(Box::new(BooleanQuery::new(subqueries)))
+        }
+    }
+
+    /// Invalidate the search cache (call after index updates)
+    pub async fn invalidate_cache(&self) {
+        self.cache.invalidate().await;
     }
 
     /// Get statistics about the index
@@ -210,19 +387,9 @@ impl IndexSearcher {
         let searcher = self.reader.searcher();
         let total_docs = searcher.num_docs() as usize;
 
-        let mut total_size = 0u64;
-        for segment_reader in searcher.segment_readers() {
-            let store_reader = segment_reader.get_store_reader(1)?;
-            for doc_id in 0..segment_reader.num_docs() {
-                if let Ok(doc) = store_reader.get::<TantivyDocument>(doc_id) {
-                    if let Some(value) = doc.get_first(self.size_field) {
-                        if let Some(size) = value.as_u64() {
-                            total_size += size;
-                        }
-                    }
-                }
-            }
-        }
+        // Note: Calculating total size by iterating over all documents is O(N) and slow.
+        // We should track this separately or get it from the file system.
+        let total_size = 0;
 
         Ok(IndexStatistics {
             total_documents: total_docs,
