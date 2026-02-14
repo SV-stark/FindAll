@@ -60,7 +60,8 @@ mimalloc = { version = "0.1", default-features = false }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-# Additional Document Parsing
+# Document Parsing
+litchi = "0.0.1"
 calamine = "0.24"
 
 [dev-dependencies]

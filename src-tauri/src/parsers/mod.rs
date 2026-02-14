@@ -8,6 +8,7 @@ pub mod excel;
 pub mod extended;
 pub mod odt;
 pub mod pdf;
+pub mod pptx;
 pub mod text;
 
 #[derive(Debug, Clone)]
@@ -39,8 +40,13 @@ pub fn parse_file(path: &Path) -> Result<ParsedDocument> {
     let extension = path.extension().unwrap_or_default();
 
     // Check DOCX first (most common office format)
-    if extension_matches(extension, "docx") {
+    if extension_matches(extension, "docx") || extension_matches(extension, "doc") {
         return docx::parse_docx(path);
+    }
+
+    // Check PowerPoint formats
+    if extension_matches(extension, "pptx") || extension_matches(extension, "ppt") {
+        return pptx::parse_pptx(path);
     }
 
     // Check other office formats
@@ -55,8 +61,8 @@ pub fn parse_file(path: &Path) -> Result<ParsedDocument> {
     }
     
     // Check Excel formats
-    if extension_matches(extension, "xlsx") 
-        || extension_matches(extension, "xls") 
+    if extension_matches(extension, "xlsx")
+        || extension_matches(extension, "xls")
         || extension_matches(extension, "xlsb") {
         return excel::parse_excel(path);
     }
