@@ -24,7 +24,7 @@ pub async fn start_indexing(
         exclude_patterns.push(folder);
     }
 
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         let scanner = Scanner::new(indexer, metadata_db, app);
 
         if let Err(e) = scanner.scan_directory(path, exclude_patterns).await {
@@ -88,7 +88,7 @@ pub async fn build_filename_index(
     let filename_index = state.filename_index.clone();
     let app_handle = app;
     
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         if let Some(index) = filename_index.as_ref() {
             index.clear().ok();
             

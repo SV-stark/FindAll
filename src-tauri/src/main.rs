@@ -8,7 +8,8 @@ use mimalloc::MiMalloc;
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     // Parse command line arguments
     let args: Vec<String> = std::env::args().collect();
     

@@ -57,7 +57,7 @@ impl WatcherManager {
                                 let db = metadata_db.clone();
                                 
                                 // Spawn task to handle single file re-indexing
-                                tokio::spawn(async move {
+                                tauri::async_runtime::spawn(async move {
                                     // Small delay to let file write finish
                                     tokio::time::sleep(Duration::from_millis(500)).await;
                                     

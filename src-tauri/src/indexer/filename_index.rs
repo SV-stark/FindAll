@@ -35,11 +35,10 @@ impl FilenameIndex {
 
         let schema = schema_builder.build();
 
-        if !index_path.exists() {
-            std::fs::create_dir_all(index_path)?;
-        }
-
         let index_path = index_path.join("filenames");
+        if !index_path.exists() {
+            std::fs::create_dir_all(&index_path)?;
+        }
 
         let directory = MmapDirectory::open(&index_path)
             .map_err(|e| FlashError::index(format!("Failed to open filename index: {}", e)))?;

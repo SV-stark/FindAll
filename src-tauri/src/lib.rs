@@ -170,7 +170,7 @@ pub fn run_with_args(initial_search: Option<String>, index_dir: Option<String>) 
                 let settings = state.settings_manager.load().unwrap_or_default();
                 
                 // Get all available drives on Windows
-                tokio::spawn(async move {
+                tauri::async_runtime::spawn(async move {
                     let drives = get_available_drives();
                     info!(?drives, "Auto-indexing available drives");
                     
@@ -217,7 +217,7 @@ pub fn run_with_args(initial_search: Option<String>, index_dir: Option<String>) 
                 let mut exclude_patterns = settings.exclude_patterns;
                 exclude_patterns.extend(settings.exclude_folders);
                 
-                tokio::spawn(async move {
+                tauri::async_runtime::spawn(async move {
                     let scanner = Scanner::new(indexer, metadata_db, app_handle);
                     let _ = scanner.scan_directory(std::path::PathBuf::from(dir_clone), exclude_patterns).await;
                 });
