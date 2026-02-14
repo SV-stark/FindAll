@@ -5,7 +5,7 @@ use nucleo_matcher::Matcher;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use std::sync::RwLock;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FilenameEntry {
@@ -66,7 +66,7 @@ impl FilenameIndex {
 
         let entries = self.entries.clone();
 
-        if let Ok(mut guard) = entries.try_write() {
+        if let Ok(mut guard) = entries.write() {
             guard.push(entry);
 
             if guard.len() % 1000 == 0 {
@@ -84,7 +84,7 @@ impl FilenameIndex {
     pub fn commit(&self) -> Result<()> {
         let entries = self.entries.clone();
 
-        if let Some(guard) = entries.try_read().ok() {
+        if let Ok(guard) = entries.read() {
             let data_path = self.data_path.clone();
             let data: Vec<_> = guard
                 .iter()
@@ -110,9 +110,9 @@ impl FilenameIndex {
     pub fn search(&self, query: &str, limit: usize) -> Result<Vec<FilenameSearchResult>> {
         let entries = self.entries.clone();
 
-        let entries = match entries.try_read() {
-            Some(guard) => guard.clone(),
-            None => return Ok(Vec::new()),
+        let entries = match entries.read() {
+            Ok(guard) => guard.clone(),
+            Err(_) => return Ok(Vec::new()),
         };
 
         if entries.is_empty() {
@@ -147,7 +147,7 @@ impl FilenameIndex {
     pub fn clear(&self) -> Result<()> {
         let entries = self.entries.clone();
 
-        if let Some(mut guard) = entries.try_write() {
+        if let Ok(mut guard) = entries.write() {
             guard.clear();
             let data_path = self.data_path.clone();
             std::thread::spawn(move || {
@@ -161,9 +161,9 @@ impl FilenameIndex {
     pub fn get_stats(&self) -> Result<FilenameIndexStats> {
         let entries = self.entries.clone();
 
-        let entries = match entries.try_read() {
-            Some(guard) => guard,
-            None => {
+        let entries = match entries.read() {
+            Ok(guard) => guard,
+            Err(_) => {
                 return Ok(FilenameIndexStats {
                     total_files: 0,
                     index_size_bytes: 0,
@@ -186,7 +186,7 @@ impl FilenameIndex {
         let entries = self.entries.clone();
         let data_path = self.data_path.clone();
 
-        if let Some(mut guard) = entries.try_write() {
+        if let Ok(mut guard) = entries.write() {
             *guard = paths
                 .into_iter()
                 .map(|(path, name)| FilenameEntry { path, name })

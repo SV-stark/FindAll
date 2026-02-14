@@ -1,17 +1,23 @@
 use crate::error::{FlashError, Result};
+use crate::parsers::memory_map;
 use crate::parsers::ParsedDocument;
+use phf::phf_set;
 use std::io::Read;
 use std::path::Path;
 
+static TEXT_EXTENSIONS: phf::Set<&'static str> = phf_set![
+    "txt", "md", "json", "xml", "html", "htm", "js", "ts", "rs", "py", "java", "c", "cpp", "h",
+    "hpp", "cs", "go", "rb", "php", "sql", "yaml", "yml", "toml", "ini", "cfg", "conf",
+];
+
 pub fn parse_rtf(path: &Path) -> Result<ParsedDocument> {
-    let content = std::fs::read_to_string(path)?;
+    let bytes = memory_map::read_file(path)?;
+    let bytes = bytes.as_slice();
 
     let mut text = String::new();
-    let _in_control = false;
     let mut brace_depth = 0;
     let mut skip_until_brace = false;
 
-    let bytes = content.as_bytes();
     let mut i = 0;
 
     while i < bytes.len() {
@@ -36,7 +42,6 @@ pub fn parse_rtf(path: &Path) -> Result<ParsedDocument> {
                     let next = bytes[i + 1];
                     match next {
                         b'\'' => {
-                            // RTF hex escape
                             if i + 3 < bytes.len() {
                                 if let Ok(hex_str) = std::str::from_utf8(&bytes[i + 2..i + 4]) {
                                     if let Ok(byte) = u8::from_str_radix(hex_str, 16) {
@@ -58,7 +63,6 @@ pub fn parse_rtf(path: &Path) -> Result<ParsedDocument> {
                             continue;
                         }
                         _ => {
-                            // Control word - skip it
                             let mut j = i + 1;
                             while j < bytes.len() && bytes[j].is_ascii_alphabetic() {
                                 j += 1;
@@ -66,12 +70,10 @@ pub fn parse_rtf(path: &Path) -> Result<ParsedDocument> {
                             if j > i + 1 {
                                 let control = std::str::from_utf8(&bytes[i + 1..j]).unwrap_or("");
 
-                                // Handle special control words
                                 match control {
                                     "par" | "line" => text.push(' '),
                                     "tab" => text.push('\t'),
                                     "emph" | "b" | "i" | "u" | "strike" | "fs" => {
-                                        // Skip content until next control word or brace
                                         skip_until_brace = true;
                                         brace_depth = 0;
                                     }
@@ -105,7 +107,6 @@ pub fn parse_rtf(path: &Path) -> Result<ParsedDocument> {
         }
     }
 
-    // Clean up whitespace
     let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
 
     Ok(ParsedDocument {
@@ -116,7 +117,7 @@ pub fn parse_rtf(path: &Path) -> Result<ParsedDocument> {
 }
 
 pub fn parse_eml(path: &Path) -> Result<ParsedDocument> {
-    let content = std::fs::read_to_string(path)?;
+    let content = memory_map::read_file_as_string(path)?;
 
     let mut title = String::new();
     let mut text = String::new();
@@ -149,12 +150,8 @@ pub fn parse_eml(path: &Path) -> Result<ParsedDocument> {
 }
 
 pub fn parse_msg(path: &Path) -> Result<ParsedDocument> {
-    // MSG files are compound files - try to extract text
-    // For now, fall back to basic text extraction
-    // Full MSG parsing would require the msg crate
-    let content = std::fs::read(path)?;
+    let content = memory_map::read_file(path)?;
 
-    // Try to extract printable ASCII strings
     let mut text = String::new();
     let mut in_string = false;
     let mut current = String::new();
@@ -186,11 +183,8 @@ pub fn parse_msg(path: &Path) -> Result<ParsedDocument> {
 }
 
 pub fn parse_chm(path: &Path) -> Result<ParsedDocument> {
-    // CHM files are MS Compiled HTML Help
-    // For now, return a placeholder - full CHM parsing requires the chm crate
-    let content = std::fs::read(path)?;
+    let content = memory_map::read_file(path)?;
 
-    // Extract strings from the binary
     let mut text = String::new();
     let mut current = Vec::new();
 
@@ -222,22 +216,17 @@ pub fn parse_chm(path: &Path) -> Result<ParsedDocument> {
 }
 
 pub fn parse_azw(path: &Path) -> Result<ParsedDocument> {
-    // AZW is Amazon's Kindle format - similar to MOBI
-    // Try to extract text from the raw data
-    let content = std::fs::read(path)?;
+    let content = memory_map::read_file(path)?;
 
     let mut text = String::new();
     let mut current = Vec::new();
-    let mut _in_palmdoc = false;
 
-    // Check for PALM DOC signature
     if content.len() > 68 {
         if &content[0..4] == b"TPZ" || &content[60..68] == b"BOOKMOBI" {
-            _in_palmdoc = true;
+            // Kindle format detected
         }
     }
 
-    // Extract strings
     for byte in content {
         if byte.is_ascii_graphic() || byte == b' ' || byte == b'\n' {
             current.push(byte);
@@ -269,12 +258,11 @@ pub fn parse_azw(path: &Path) -> Result<ParsedDocument> {
 }
 
 pub fn parse_zip_content(path: &Path) -> Result<ParsedDocument> {
-    use std::io::BufReader;
     use zip::ZipArchive;
 
-    let file = std::fs::File::open(path)?;
-    let reader = BufReader::new(file);
-    let mut archive = ZipArchive::new(reader)
+    let bytes = memory_map::read_file(path)?;
+    let cursor = std::io::Cursor::new(bytes);
+    let mut archive = ZipArchive::new(cursor)
         .map_err(|e| FlashError::archive("ZIP", "open_archive", e.to_string()))?;
 
     let mut all_text = String::new();
@@ -284,38 +272,13 @@ pub fn parse_zip_content(path: &Path) -> Result<ParsedDocument> {
             if !file.is_dir() {
                 let name = file.name().to_lowercase();
 
-                // Only extract text-like files
-                if name.ends_with(".txt")
-                    || name.ends_with(".md")
-                    || name.ends_with(".json")
-                    || name.ends_with(".xml")
-                    || name.ends_with(".html")
-                    || name.ends_with(".htm")
-                    || name.ends_with(".js")
-                    || name.ends_with(".ts")
-                    || name.ends_with(".rs")
-                    || name.ends_with(".py")
-                    || name.ends_with(".java")
-                    || name.ends_with(".c")
-                    || name.ends_with(".cpp")
-                    || name.ends_with(".h")
-                    || name.ends_with(".hpp")
-                    || name.ends_with(".cs")
-                    || name.ends_with(".go")
-                    || name.ends_with(".rb")
-                    || name.ends_with(".php")
-                    || name.ends_with(".sql")
-                    || name.ends_with(".yaml")
-                    || name.ends_with(".yml")
-                    || name.ends_with(".toml")
-                    || name.ends_with(".ini")
-                    || name.ends_with(".cfg")
-                    || name.ends_with(".conf")
-                {
-                    let mut content = String::new();
-                    if file.read_to_string(&mut content).is_ok() {
-                        all_text.push_str(&content);
-                        all_text.push_str("\n\n");
+                if let Some(ext) = name.rsplit('.').next() {
+                    if TEXT_EXTENSIONS.contains(ext) {
+                        let mut content = String::new();
+                        if file.read_to_string(&mut content).is_ok() {
+                            all_text.push_str(&content);
+                            all_text.push_str("\n\n");
+                        }
                     }
                 }
             }
@@ -337,25 +300,21 @@ pub fn parse_zip_content(path: &Path) -> Result<ParsedDocument> {
 }
 
 pub fn parse_7z_content(path: &Path) -> Result<ParsedDocument> {
-    // 7z parsing requires the sevenz-rust crate
-    // For now, return basic info
-    let metadata = std::fs::metadata(path)?;
+    let metadata = memory_map::get_file_size(path)?;
 
     Ok(ParsedDocument {
         path: path.to_string_lossy().to_string(),
-        content: format!("7z archive: {} bytes", metadata.len()),
+        content: format!("7z archive: {} bytes", metadata),
         title: None,
     })
 }
 
 pub fn parse_rar_content(path: &Path) -> Result<ParsedDocument> {
-    // RAR parsing requires the unrar crate
-    // For now, return basic info
-    let metadata = std::fs::metadata(path)?;
+    let metadata = memory_map::get_file_size(path)?;
 
     Ok(ParsedDocument {
         path: path.to_string_lossy().to_string(),
-        content: format!("RAR archive: {} bytes", metadata.len()),
+        content: format!("RAR archive: {} bytes", metadata),
         title: None,
     })
 }

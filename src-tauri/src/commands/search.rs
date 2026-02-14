@@ -78,8 +78,12 @@ pub async fn get_filename_index_stats(
     state: State<'_, Arc<AppState>>,
 ) -> Result<FilenameIndexStats, String> {
     if let Some(ref filename_index) = state.filename_index {
-        filename_index.get_stats()
-            .map_err(|e| e.to_string())
+        let stats = filename_index.get_stats()
+            .map_err(|e| e.to_string())?;
+        Ok(FilenameIndexStats {
+            total_files: stats.total_files,
+            index_size_bytes: stats.index_size_bytes,
+        })
     } else {
         Err("Filename index not initialized".to_string())
     }

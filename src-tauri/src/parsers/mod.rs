@@ -7,6 +7,7 @@ pub mod docx;
 pub mod epub;
 pub mod excel;
 pub mod extended;
+pub mod memory_map;
 pub mod odf;
 pub mod pdf;
 pub mod pptx;

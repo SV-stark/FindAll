@@ -149,7 +149,7 @@ impl MetadataDb {
             })?;
 
             let metadata = FileMetadata {
-                path: path.to_string_lossy().to_string(),
+                path: path.to_string_lossy().to_string().into(),
                 modified,
                 size,
                 content_hash,
@@ -222,7 +222,7 @@ impl MetadataDb {
 
             for (path, modified, size, content_hash) in entries {
                 let metadata = FileMetadata {
-                    path: path.clone(),
+                    path: path.clone().into(),
                     modified: *modified,
                     size: *size,
                     content_hash: *content_hash,

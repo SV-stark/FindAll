@@ -49,7 +49,7 @@ phf = "0.11"
 memchr = "2.5"
 nucleo = "0.2"
 nucleo-matcher = "0.2"
-compact_str = "0.6"
+compact_str = { version = "0.6", features = ["serde"] }
 zerocopy = { version = "0.7", features = ["derive"] }
 
 # Utilities
