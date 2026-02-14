@@ -32,7 +32,8 @@ impl IndexWriterManager {
                     std::fs::read_to_string("/proc/meminfo")
                         .ok()
                         .and_then(|content| {
-                            content.lines()
+                            content
+                                .lines()
                                 .find(|line| line.starts_with("MemTotal:"))
                                 .and_then(|line| {
                                     line.split_whitespace()
@@ -45,11 +46,11 @@ impl IndexWriterManager {
                 } else {
                     8_000_000_000 // Default 8GB for other platforms
                 };
-                
+
                 let heap = (system_memory / 20).min(256_000_000).max(32_000_000);
                 heap
             });
-        
+
         available_memory.min(256_000_000).max(32_000_000)
     }
 
@@ -58,27 +59,30 @@ impl IndexWriterManager {
 
         // Configure with adaptive heap size based on system resources
         let heap_size = Self::calculate_heap_size();
-        eprintln!("Tantivy index writer heap size: {} MB", heap_size / 1_000_000);
-        
+        eprintln!(
+            "Tantivy index writer heap size: {} MB",
+            heap_size / 1_000_000
+        );
+
         let writer = index
             .writer(heap_size)
-            .map_err(|e| FlashError::Index(e.to_string()))?;
+            .map_err(|e| FlashError::index(format!("Failed to create index writer: {}", e)))?;
 
         let path_field = schema
             .get_field("file_path")
-            .map_err(|_| FlashError::Search("file_path field not found".to_string()))?;
+            .map_err(|_| FlashError::index_field("file_path", "Field not found in schema"))?;
         let content_field = schema
             .get_field("content")
-            .map_err(|_| FlashError::Search("content field not found".to_string()))?;
+            .map_err(|_| FlashError::index_field("content", "Field not found in schema"))?;
         let title_field = schema
             .get_field("title")
-            .map_err(|_| FlashError::Search("title field not found".to_string()))?;
+            .map_err(|_| FlashError::index_field("title", "Field not found in schema"))?;
         let modified_field = schema
             .get_field("modified")
-            .map_err(|_| FlashError::Search("modified field not found".to_string()))?;
+            .map_err(|_| FlashError::index_field("modified", "Field not found in schema"))?;
         let size_field = schema
             .get_field("size")
-            .map_err(|_| FlashError::Search("size field not found".to_string()))?;
+            .map_err(|_| FlashError::index_field("size", "Field not found in schema"))?;
 
         Ok(Self {
             writer: Mutex::new(writer),
@@ -99,11 +103,11 @@ impl IndexWriterManager {
         let writer = self
             .writer
             .lock()
-            .map_err(|_| FlashError::Search("Failed to lock writer".to_string()))?;
+            .map_err(|_| FlashError::poisoned_lock("IndexWriter"))?;
 
         writer
             .add_document(tantivy_doc)
-            .map_err(|e| FlashError::Index(e.to_string()))?;
+            .map_err(|e| FlashError::index(format!("Failed to add document: {}", e)))?;
 
         Ok(())
     }
@@ -117,13 +121,13 @@ impl IndexWriterManager {
         let writer = self
             .writer
             .lock()
-            .map_err(|_| FlashError::Search("Failed to lock writer".to_string()))?;
+            .map_err(|_| FlashError::poisoned_lock("IndexWriter"))?;
 
         for (doc, modified, size) in docs {
             let tantivy_doc = self.create_tantivy_document(doc, *modified, *size);
             writer
                 .add_document(tantivy_doc)
-            .map_err(|e| FlashError::Search(e.to_string()))?;
+                .map_err(|e| FlashError::index(format!("Failed to add document: {}", e)))?;
         }
 
         Ok(())
@@ -158,11 +162,11 @@ impl IndexWriterManager {
         let mut writer = self
             .writer
             .lock()
-            .map_err(|_| FlashError::Search("Failed to lock writer".to_string()))?;
+            .map_err(|_| FlashError::poisoned_lock("IndexWriter"))?;
 
         writer
             .commit()
-            .map_err(|e| FlashError::Search(e.to_string()))?;
+            .map_err(|e| FlashError::index(format!("Failed to commit index: {}", e)))?;
 
         Ok(())
     }

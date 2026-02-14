@@ -6,17 +6,12 @@ use std::path::Path;
 const MAX_TEXT_LENGTH: usize = 100 * 1024 * 1024;
 
 pub fn parse_docx(path: &Path) -> Result<ParsedDocument> {
-    let doc = Document::open(path).map_err(|e| {
-        FlashError::Parse(format!("Failed to open document {}: {}", path.display(), e))
-    })?;
+    let doc = Document::open(path)
+        .map_err(|e| FlashError::parse(path, format!("Failed to open document: {}", e)))?;
 
-    let text = doc.text().map_err(|e| {
-        FlashError::Parse(format!(
-            "Failed to extract text from {}: {}",
-            path.display(),
-            e
-        ))
-    })?;
+    let text = doc
+        .text()
+        .map_err(|e| FlashError::parse(path, format!("Failed to extract text: {}", e)))?;
 
     let content = if text.len() > MAX_TEXT_LENGTH {
         text[..MAX_TEXT_LENGTH].to_string()

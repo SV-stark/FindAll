@@ -1,11 +1,11 @@
+pub mod filename_index;
+pub mod query_parser;
 pub mod schema;
 pub mod searcher;
 pub mod writer;
-pub mod query_parser;
-pub mod filename_index;
 
 use self::schema::create_schema;
-use self::searcher::{IndexSearcher, SearchResult, IndexStatistics};
+use self::searcher::{IndexSearcher, IndexStatistics, SearchResult};
 use self::writer::IndexWriterManager;
 use crate::error::{FlashError, Result};
 use crate::parsers::ParsedDocument;
@@ -31,7 +31,7 @@ impl IndexManager {
 
         // Use memory-mapped directory for efficient I/O
         let directory = MmapDirectory::open(index_path)
-            .map_err(|e| FlashError::Search(format!("Failed to open index directory: {}", e)))?;
+            .map_err(|e| FlashError::index(format!("Failed to open index directory: {}", e)))?;
 
         let index = match Index::open_or_create(directory, schema.clone()) {
             Ok(index) => index,
@@ -44,12 +44,12 @@ impl IndexManager {
                 std::fs::create_dir_all(index_path).map_err(|e| FlashError::Io(e))?;
 
                 let new_directory = MmapDirectory::open(index_path).map_err(|e| {
-                    FlashError::Search(format!("Failed to recreate index directory: {}", e))
+                    FlashError::index(format!("Failed to recreate index directory: {}", e))
                 })?;
                 Index::open_or_create(new_directory, schema)
-                    .map_err(|e| FlashError::Search(format!("Failed to create new index: {}", e)))?
+                    .map_err(|e| FlashError::index(format!("Failed to create new index: {}", e)))?
             }
-            Err(e) => return Err(FlashError::Search(format!("Failed to open index: {}", e))),
+            Err(e) => return Err(FlashError::index(format!("Failed to open index: {}", e))),
         };
 
         let writer = IndexWriterManager::new(&index)?;

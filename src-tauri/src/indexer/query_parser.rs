@@ -34,18 +34,24 @@ impl ParsedQuery {
         // Parse operators
         // ext:pdf, path:docs, title:report, size:>1MB, size:<10MB, exact:"phrase"
         let operator_regex = Regex::new(
-            r#"(?i)(ext|path|title|size):(?:([<>]?)(\d+(?:\.\d+)?)(MB|KB|GB|B)?|"([^"]*)"|(\S+))"#
-        ).unwrap();
+            r#"(?i)(ext|path|title|size):(?:([<>]?)(\d+(?:\.\d+)?)(MB|KB|GB|B)?|"([^"]*)"|(\S+))"#,
+        )
+        .unwrap();
 
         let mut remaining = input.to_string();
 
         // Process all operators
         for cap in operator_regex.captures_iter(input) {
-            let operator = cap.get(1).map(|m| m.as_str().to_lowercase()).unwrap_or_default();
-            let value = cap.get(5).map(|m| m.as_str().to_string()) // Quoted value
+            let operator = cap
+                .get(1)
+                .map(|m| m.as_str().to_lowercase())
+                .unwrap_or_default();
+            let value = cap
+                .get(5)
+                .map(|m| m.as_str().to_string()) // Quoted value
                 .or_else(|| cap.get(6).map(|m| m.as_str().to_string())) // Unquoted value
                 .unwrap_or_default();
-            
+
             match operator.as_str() {
                 "ext" => {
                     extension = Some(value.trim_start_matches('.').to_lowercase());
@@ -65,7 +71,8 @@ impl ParsedQuery {
                         let op = op.as_str();
                         if let Some(num_str) = cap.get(3) {
                             if let Ok(num) = num_str.as_str().parse::<f64>() {
-                                let multiplier = cap.get(4)
+                                let multiplier = cap
+                                    .get(4)
                                     .map(|m| match m.as_str().to_uppercase().as_str() {
                                         "GB" => 1024 * 1024 * 1024,
                                         "MB" => 1024 * 1024,
@@ -73,7 +80,7 @@ impl ParsedQuery {
                                         _ => 1,
                                     })
                                     .unwrap_or(1);
-                                
+
                                 let bytes = (num * multiplier as f64) as u64;
                                 match op {
                                     ">" => min_size = Some(bytes),
@@ -102,7 +109,11 @@ impl ParsedQuery {
             .to_string();
 
         Self {
-            text_query: if text_query.is_empty() { "*".to_string() } else { text_query },
+            text_query: if text_query.is_empty() {
+                "*".to_string()
+            } else {
+                text_query
+            },
             extension,
             path_filter,
             title_filter,
@@ -148,17 +159,18 @@ impl ParsedQuery {
 /// Extract search terms for highlighting from a query
 pub fn extract_highlight_terms(query: &str) -> Vec<String> {
     let parsed = ParsedQuery::new(query);
-    let mut terms: Vec<String> = parsed.text_query
+    let mut terms: Vec<String> = parsed
+        .text_query
         .split_whitespace()
         .map(|s| s.to_lowercase())
         .filter(|s| !s.is_empty() && s != "*")
         .collect();
-    
+
     // Also add title filter terms
     if let Some(title) = parsed.title_filter {
         terms.push(title);
     }
-    
+
     terms
 }
 

@@ -15,16 +15,15 @@ const MAX_TOTAL_TEXT_SIZE: usize = 200 * 1024 * 1024; // 200MB
 /// Parse EPUB file by extracting text from all HTML/XHTML components within the ZIP
 pub fn parse_epub(path: &Path) -> Result<ParsedDocument> {
     let file = File::open(path).map_err(|e| {
-        FlashError::Parse(format!(
-            "Failed to open EPUB file {}: {}",
-            path.display(),
-            e
-        ))
+        FlashError::parse(
+            path,
+            format!("Failed to open EPUB file {}: {}", path.display(), e),
+        )
     })?;
 
     let reader = BufReader::new(file);
     let mut archive = ZipArchive::new(reader)
-        .map_err(|e| FlashError::Parse(format!("Failed to read EPUB archive: {}", e)))?;
+        .map_err(|e| FlashError::parse(path, format!("Failed to read EPUB archive: {}", e)))?;
 
     let mut combined_text = String::with_capacity(1024 * 1024); // Start with 1MB capacity
     let mut total_extracted_size: usize = 0;
@@ -118,7 +117,7 @@ fn extract_epub_title(path: &Path) -> Result<String> {
     let file = File::open(path).map_err(|e| FlashError::Io(e))?;
     let reader = BufReader::new(file);
     let mut archive = ZipArchive::new(reader)
-        .map_err(|e| FlashError::Parse(format!("Failed to read EPUB: {}", e)))?;
+        .map_err(|e| FlashError::parse(path, format!("Failed to read EPUB: {}", e)))?;
 
     // Try to read OPF file for metadata
     let opf_path = if let Ok(mut container_xml) = archive.by_name("META-INF/container.xml") {
@@ -146,7 +145,7 @@ fn extract_epub_title(path: &Path) -> Result<String> {
     // Fallback to filename
     path.file_stem()
         .map(|s| s.to_string_lossy().to_string())
-        .ok_or_else(|| FlashError::Parse("Could not extract title".to_string()))
+        .ok_or_else(|| FlashError::parse(path, "Could not extract title"))
 }
 
 /// Extract OPF file path from container.xml

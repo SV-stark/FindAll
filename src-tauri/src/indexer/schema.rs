@@ -9,12 +9,11 @@ pub fn create_schema() -> Schema {
 
     // Content - indexed for search but NOT stored (to save RAM)
     // We retrieve content from disk on demand
-    let text_options = TextOptions::default()
-        .set_indexing_options(
-            TextFieldIndexing::default()
-                .set_tokenizer("default")
-                .set_index_option(IndexRecordOption::WithFreqsAndPositions),
-        );
+    let text_options = TextOptions::default().set_indexing_options(
+        TextFieldIndexing::default()
+            .set_tokenizer("default")
+            .set_index_option(IndexRecordOption::WithFreqsAndPositions),
+    );
     schema_builder.add_text_field("content", text_options);
 
     // Title - stored for display, indexed for search

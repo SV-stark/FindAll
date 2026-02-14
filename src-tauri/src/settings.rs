@@ -210,12 +210,13 @@ impl SettingsManager {
 
         let content = fs::read_to_string(&self.path).map_err(|e| FlashError::Io(e))?;
 
-        serde_json::from_str(&content).map_err(|e| FlashError::Config(e.to_string()))
+        serde_json::from_str(&content)
+            .map_err(|e| FlashError::config("parse_settings", e.to_string()))
     }
 
     pub fn save(&self, settings: &AppSettings) -> Result<()> {
         let content = serde_json::to_string_pretty(settings)
-            .map_err(|e| FlashError::Config(e.to_string()))?;
+            .map_err(|e| FlashError::config("serialize_settings", e.to_string()))?;
 
         fs::write(&self.path, content).map_err(|e| FlashError::Io(e))
     }

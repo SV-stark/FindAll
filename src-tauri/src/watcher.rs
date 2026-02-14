@@ -123,7 +123,7 @@ impl WatcherManager {
         
         // Parse the file
         let parsed = parse_file(path)
-            .map_err(|e| FlashError::Parse(format!("Failed to parse file: {}", e)))?;
+            .map_err(|e| FlashError::parse(path, format!("Failed to parse file: {}", e)))?;
         
         // Compute content hash
         let content_hash: [u8; 32] = blake3::hash(parsed.content.as_bytes()).into();

@@ -41,18 +41,18 @@ impl IndexSearcher {
             .reader_builder()
             .reload_policy(ReloadPolicy::Manual)
             .try_into()
-            .map_err(|e| FlashError::Search(e.to_string()))?;
+            .map_err(|e| FlashError::search("create_index_reader", e.to_string()))?;
 
         // Get field references once to avoid repeated lookups
         let path_field = schema
             .get_field("file_path")
-            .map_err(|_| FlashError::Search("file_path field not found".to_string()))?;
+            .map_err(|_| FlashError::index_field("file_path", "Field not found in schema"))?;
         let title_field = schema
             .get_field("title")
-            .map_err(|_| FlashError::Search("title field not found".to_string()))?;
+            .map_err(|_| FlashError::index_field("title", "Field not found in schema"))?;
         let size_field = schema
             .get_field("size")
-            .map_err(|_| FlashError::Search("size field not found".to_string()))?;
+            .map_err(|_| FlashError::index_field("size", "Field not found in schema"))?;
 
         // Search across content, title, and file_path fields
         let default_fields: Vec<Field> = vec!["content", "title", "file_path"]
@@ -91,7 +91,7 @@ impl IndexSearcher {
         let text_query = self
             .query_parser
             .parse_query(&parsed.text_query)
-            .map_err(|e| FlashError::Search(e.to_string()))?;
+            .map_err(|e| FlashError::search(&parsed.text_query, e.to_string()))?;
 
         // Build query with optional filters
         let mut combine: Vec<(Occur, Box<dyn tantivy::query::Query>)> =
@@ -170,14 +170,14 @@ impl IndexSearcher {
 
         let top_docs = searcher
             .search(&*final_query, &TopDocs::with_limit(limit))
-            .map_err(|e| FlashError::Search(e.to_string()))?;
+            .map_err(|e| FlashError::search(query, e.to_string()))?;
 
         let mut results = Vec::with_capacity(top_docs.len().min(limit));
 
         for (score, doc_address) in top_docs {
-            let retrieved_doc: TantivyDocument = searcher
-                .doc(doc_address)
-                .map_err(|e| FlashError::Search(e.to_string()))?;
+            let retrieved_doc: TantivyDocument = searcher.doc(doc_address).map_err(|e| {
+                FlashError::search(query, format!("Failed to retrieve document: {}", e))
+            })?;
 
             let file_path = retrieved_doc
                 .get_first(self.path_field)

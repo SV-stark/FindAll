@@ -9,20 +9,18 @@ const MAX_PDF_SIZE: u64 = 500 * 1024 * 1024; // 500MB limit
 /// Implements proper resource management and error handling
 pub fn parse_pdf(path: &Path) -> Result<ParsedDocument> {
     // Check file size first to prevent OOM
-    let metadata = std::fs::metadata(path).map_err(|e| {
-        FlashError::Parse(format!(
-            "Failed to read PDF metadata {}: {}",
-            path.display(),
-            e
-        ))
-    })?;
+    let metadata = std::fs::metadata(path)
+        .map_err(|e| FlashError::parse(path, format!("Failed to read PDF metadata: {}", e)))?;
 
     if metadata.len() > MAX_PDF_SIZE {
-        return Err(FlashError::Parse(format!(
-            "PDF file too large: {} bytes (max: {})",
-            metadata.len(),
-            MAX_PDF_SIZE
-        )));
+        return Err(FlashError::parse(
+            path,
+            format!(
+                "PDF file too large: {} bytes (max: {})",
+                metadata.len(),
+                MAX_PDF_SIZE
+            ),
+        ));
     }
 
     // Use catch_unwind to prevent panics from crashing the application

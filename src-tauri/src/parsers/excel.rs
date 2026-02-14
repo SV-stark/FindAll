@@ -19,7 +19,7 @@ pub fn parse_excel(path: &Path) -> Result<ParsedDocument> {
         return Ok(result);
     }
 
-    Err(FlashError::Parse(format!(
+    Err(FlashError::parse(path, format!(
         "Failed to parse Excel file: {}",
         path.display()
     )))
@@ -27,21 +27,21 @@ pub fn parse_excel(path: &Path) -> Result<ParsedDocument> {
 
 fn parse_xlsx(path: &Path) -> Result<ParsedDocument> {
     let mut workbook: Xlsx<_> = open_workbook(path)
-        .map_err(|e| FlashError::Parse(format!("Failed to open XLSX: {}", e)))?;
+        .map_err(|e| FlashError::parse(path, format!("Failed to open XLSX: {}", e)))?;
 
     extract_excel_content(path, &mut workbook)
 }
 
 fn parse_xlsb(path: &Path) -> Result<ParsedDocument> {
     let mut workbook: Xlsb<_> = open_workbook(path)
-        .map_err(|e| FlashError::Parse(format!("Failed to open XLSB: {}", e)))?;
+        .map_err(|e| FlashError::parse(path, format!("Failed to open XLSB: {}", e)))?;
 
     extract_excel_content(path, &mut workbook)
 }
 
 fn parse_xls(path: &Path) -> Result<ParsedDocument> {
     let mut workbook: Xls<_> =
-        open_workbook(path).map_err(|e| FlashError::Parse(format!("Failed to open XLS: {}", e)))?;
+        open_workbook(path).map_err(|e| FlashError::parse(path, format!("Failed to open XLS: {}", e)))?;
 
     extract_excel_content(path, &mut workbook)
 }

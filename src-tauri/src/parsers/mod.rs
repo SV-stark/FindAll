@@ -6,7 +6,7 @@ pub mod docx;
 pub mod epub;
 pub mod excel;
 pub mod extended;
-pub mod odt;
+pub mod odf;
 pub mod pdf;
 pub mod pptx;
 pub mod text;
@@ -50,8 +50,11 @@ pub fn parse_file(path: &Path) -> Result<ParsedDocument> {
     }
 
     // Check other office formats
-    if extension_matches(extension, "odt") {
-        return odt::parse_odt(path);
+    if extension_matches(extension, "odt")
+        || extension_matches(extension, "odp")
+        || extension_matches(extension, "ods")
+    {
+        return odf::parse_odf(path);
     }
     if extension_matches(extension, "epub") {
         return epub::parse_epub(path);
@@ -112,7 +115,7 @@ pub fn parse_file(path: &Path) -> Result<ParsedDocument> {
 
     // If we got here, the format is not supported
     let ext_str = extension.to_string_lossy().to_string();
-    Err(FlashError::UnsupportedFormat(ext_str))
+    Err(FlashError::unsupported_format(ext_str.clone(), ext_str))
 }
 
 /// Check if extension is a supported text format

@@ -31,7 +31,7 @@
 - **⚡ Blazing Fast**: Sub-50ms search results across millions of documents
 - **📂 Filename Search**: Instant filename-only search mode for ultra-fast navigation
 - **💾 Minimal Footprint**: <50MB RAM usage at idle (vs 200MB+ for Electron apps)
-- **📄 Universal Format Support**: PDF, DOCX, XLSX, EPUB, EML, MSG, ZIP, Markdown, Code files
+- **📄 Universal Format Support**: PDF, DOCX, XLSX, EPUB, EML, MSG, ZIP, Markdown, Code files, ODT, ODP, ODS
 - **🔍 Full-Text Search**: BM25 scoring, boolean queries, exact phrase matching
 - **📊 Advanced Filters**: Filter by size (`size:>1MB`), extension (`ext:rs`), or path (`path:src`)
 - **🔄 Live Indexing**: Automatic file watching and incremental updates
@@ -121,6 +121,7 @@ npm run tauri dev
 | EPUB, EML, MSG | Native + `zip` | ✅ Supported |
 | ZIP, 7z, RAR | `zip` / `sevenz` | ✅ Supported (ZIP) |
 | TXT, MD, Code | Native Rust | ✅ Supported |
+| ODT, ODP, ODS | `litchi` | ✅ Supported |
 | Images (OCR) | `ocrs` / Tesseract | 🚧 Planned |
 
 ## 📊 Performance

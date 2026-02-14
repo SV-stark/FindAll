@@ -42,20 +42,20 @@ impl FilenameIndex {
         let index_path = index_path.join("filenames");
 
         let directory = MmapDirectory::open(&index_path)
-            .map_err(|e| FlashError::Search(format!("Failed to open filename index: {}", e)))?;
+            .map_err(|e| FlashError::index(format!("Failed to open filename index: {}", e)))?;
 
         let index = Index::open_or_create(directory, schema.clone())
-            .map_err(|e| FlashError::Search(format!("Failed to create filename index: {}", e)))?;
+            .map_err(|e| FlashError::index(format!("Failed to create filename index: {}", e)))?;
 
         let reader = index
             .reader_builder()
             .reload_policy(ReloadPolicy::OnCommitWithDelay)
             .try_into()
-            .map_err(|e| FlashError::Search(e.to_string()))?;
+            .map_err(|e| FlashError::index(format!("Failed to create index reader: {}", e)))?;
 
         let writer = index
             .writer(50_000_000)
-            .map_err(|e| FlashError::Search(e.to_string()))?;
+            .map_err(|e| FlashError::index(format!("Failed to create index writer: {}", e)))?;
 
         Ok(Self {
             index,
@@ -77,7 +77,7 @@ impl FilenameIndex {
 
         writer
             .add_document(doc)
-            .map_err(|e| FlashError::Index(e.to_string()))?;
+            .map_err(|e| FlashError::index(format!("Failed to add document: {}", e)))?;
 
         Ok(())
     }
@@ -86,7 +86,7 @@ impl FilenameIndex {
         let mut writer = self.writer.blocking_lock();
         writer
             .commit()
-            .map_err(|e| FlashError::Index(e.to_string()))?;
+            .map_err(|e| FlashError::index(format!("Failed to commit: {}", e)))?;
         Ok(())
     }
 
@@ -94,25 +94,25 @@ impl FilenameIndex {
         // Reload reader to see latest changes
         self.reader
             .reload()
-            .map_err(|e| FlashError::Index(e.to_string()))?;
+            .map_err(|e| FlashError::index(format!("Failed to reload reader: {}", e)))?;
 
         let searcher = self.reader.searcher();
 
         // Use regex query for filename matching
         let regex_query =
             RegexQuery::from_pattern(&format!("(?i){}", regex::escape(query)), self.name_field)
-                .map_err(|e| FlashError::Search(e.to_string()))?;
+                .map_err(|e| FlashError::search(query, format!("Invalid regex: {}", e)))?;
 
         let top_docs = searcher
             .search(&regex_query, &TopDocs::with_limit(limit))
-            .map_err(|e| FlashError::Search(e.to_string()))?;
+            .map_err(|e| FlashError::search(query, e.to_string()))?;
 
         let mut results = Vec::new();
 
         for (_score, doc_address) in top_docs {
-            let doc: TantivyDocument = searcher
-                .doc(doc_address)
-                .map_err(|e| FlashError::Search(e.to_string()))?;
+            let doc: TantivyDocument = searcher.doc(doc_address).map_err(|e| {
+                FlashError::search(query, format!("Failed to retrieve document: {}", e))
+            })?;
 
             let path = doc
                 .get_first(self.path_field)
@@ -139,10 +139,10 @@ impl FilenameIndex {
         let mut writer = self.writer.blocking_lock();
         writer
             .delete_all_documents()
-            .map_err(|e| FlashError::Index(e.to_string()))?;
+            .map_err(|e| FlashError::index(format!("Failed to clear index: {}", e)))?;
         writer
             .commit()
-            .map_err(|e| FlashError::Index(e.to_string()))?;
+            .map_err(|e| FlashError::index(format!("Failed to commit clear: {}", e)))?;
         Ok(())
     }
 

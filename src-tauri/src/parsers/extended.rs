@@ -274,7 +274,8 @@ pub fn parse_zip_content(path: &Path) -> Result<ParsedDocument> {
 
     let file = std::fs::File::open(path)?;
     let reader = BufReader::new(file);
-    let mut archive = ZipArchive::new(reader).map_err(|e| FlashError::Zip(e.to_string()))?;
+    let mut archive = ZipArchive::new(reader)
+        .map_err(|e| FlashError::archive("ZIP", "open_archive", e.to_string()))?;
 
     let mut all_text = String::new();
 
@@ -322,8 +323,9 @@ pub fn parse_zip_content(path: &Path) -> Result<ParsedDocument> {
     }
 
     if all_text.is_empty() {
-        return Err(FlashError::UnsupportedFormat(
-            "No text files found in archive".to_string(),
+        return Err(FlashError::unsupported_format(
+            "Archive",
+            path.extension().and_then(|e| e.to_str()).unwrap_or("zip"),
         ));
     }
 
