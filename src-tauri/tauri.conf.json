@@ -31,10 +31,12 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "nsis": {
-      "installMode": "both",
-      "installerIcon": "icons/icon.ico",
-      "installToPath": true
+    "windows": {
+      "nsis": {
+        "installMode": "both",
+        "installerIcon": "icons/icon.ico",
+        "installerHooks": "windows/hooks.nsi"
+      }
     }
   }
 }
