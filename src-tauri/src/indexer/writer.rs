@@ -7,6 +7,7 @@ use tantivy::{Index, IndexWriter, TantivyDocument};
 /// Manages writing documents to the Tantivy index with batch support
 pub struct IndexWriterManager {
     writer: Mutex<IndexWriter>,
+    #[allow(dead_code)]
     schema: Schema,
     path_field: Field,
     content_field: Field,

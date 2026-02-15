@@ -41,26 +41,11 @@ pub enum FlashError {
     #[error("Lock poisoned: {lock_name}")]
     PoisonedLock { lock_name: String },
 
-    #[error("Validation error: {field} - {reason}")]
-    Validation { field: String, reason: String },
-
-    #[error("Timeout: {operation} did not complete within {timeout_ms}ms")]
-    Timeout { operation: String, timeout_ms: u64 },
-
     #[error("Not found: {resource} '{identifier}'")]
     NotFound {
         resource: String,
         identifier: String,
     },
-
-    #[error("Permission denied: {operation} on {path}")]
-    Permission { operation: String, path: PathBuf },
-
-    #[error("Network error: {status} {url}")]
-    Network { status: u16, url: String },
-
-    #[error("Concurrent modification: {resource} was modified by another operation")]
-    ConcurrentModification { resource: String },
 }
 
 pub type Result<T> = std::result::Result<T, FlashError>;
@@ -142,31 +127,10 @@ impl FlashError {
         }
     }
 
-    pub fn validation<S1: Into<String>, S2: Into<String>>(field: S1, reason: S2) -> Self {
-        Self::Validation {
-            field: field.into(),
-            reason: reason.into(),
-        }
-    }
-
-    pub fn timeout<S: Into<String>>(operation: S, timeout_ms: u64) -> Self {
-        Self::Timeout {
-            operation: operation.into(),
-            timeout_ms,
-        }
-    }
-
     pub fn not_found<S: Into<String>>(resource: S, identifier: S) -> Self {
         Self::NotFound {
             resource: resource.into(),
             identifier: identifier.into(),
-        }
-    }
-
-    pub fn permission<S: Into<String>, P: Into<PathBuf>>(operation: S, path: P) -> Self {
-        Self::Permission {
-            operation: operation.into(),
-            path: path.into(),
         }
     }
 }

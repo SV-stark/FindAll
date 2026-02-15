@@ -14,6 +14,7 @@ use tantivy::{directory::MmapDirectory, Index};
 
 /// Central manager for the Tantivy search index
 pub struct IndexManager {
+    #[allow(dead_code)]
     index: Index,
     writer: IndexWriterManager,
     searcher: IndexSearcher,
@@ -53,7 +54,7 @@ impl IndexManager {
         };
 
         let writer = IndexWriterManager::new(&index)?;
-        let searcher = IndexSearcher::new(&index)?;
+        let searcher = IndexSearcher::new(&index, index_path.to_path_buf())?;
 
         Ok(Self {
             index,

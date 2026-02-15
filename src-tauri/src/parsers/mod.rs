@@ -188,6 +188,7 @@ impl ParserType {
 
 /// Parse file without allocating - uses byte comparison
 #[inline]
+#[allow(dead_code)]
 fn extension_matches(ext: &OsStr, target: &str) -> bool {
     if let Some(ext_bytes) = ext.to_str().map(|s| s.as_bytes()) {
         if ext_bytes.len() != target.len() {
@@ -274,5 +275,9 @@ mod tests {
     #[test]
     fn test_parse_file_txt() {
         let path = PathBuf::from("tests/fixtures/sample.txt");
+        if path.exists() {
+            let result = super::parse_file(&path);
+            assert!(result.is_ok());
+        }
     }
 }

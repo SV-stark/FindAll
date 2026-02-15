@@ -12,6 +12,7 @@ use crate::indexer::{filename_index::FilenameIndex, IndexManager};
 use crate::metadata::MetadataDb;
 use crate::settings::SettingsManager;
 use crate::watcher::WatcherManager;
+use tokio::sync::mpsc;
 use std::sync::Arc;
 
 pub struct AppState {
@@ -20,6 +21,7 @@ pub struct AppState {
     pub settings_manager: Arc<SettingsManager>,
     pub watcher: std::sync::Mutex<WatcherManager>,
     pub filename_index: Option<Arc<FilenameIndex>>,
+    pub progress_tx: mpsc::Sender<crate::scanner::ProgressEvent>,
 }
 
 impl AppState {
@@ -29,6 +31,7 @@ impl AppState {
         settings_manager: SettingsManager,
         watcher: WatcherManager,
         filename_index: Option<Arc<FilenameIndex>>,
+        progress_tx: mpsc::Sender<crate::scanner::ProgressEvent>,
     ) -> Self {
         Self {
             indexer,
@@ -36,6 +39,7 @@ impl AppState {
             settings_manager: Arc::new(settings_manager),
             watcher: std::sync::Mutex::new(watcher),
             filename_index,
+            progress_tx,
         }
     }
 }

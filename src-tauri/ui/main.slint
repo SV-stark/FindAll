@@ -1,0 +1,260 @@
+import { Button, LineEdit, ScrollView, ListView, TabWidget } from "std-widgets.slint";
+
+export struct FileItem {
+    title: string,
+    path: string,
+    score: float,
+}
+
+export component AppWindow inherits Window {
+    title: "Flash Search (Native)";
+    // icon: @image-url("icon.png");
+    width: 1000px;
+    height: 700px;
+    background: #1a1b1e;
+
+    in-out property <bool> sidebar_collapsed: false;
+    in-out property <string> active_tab: "search";
+    
+    // Search Results
+    in-out property <[FileItem]> results: [];
+    in-out property <bool> is_searching: false;
+    
+    // Indexing Progress
+    in-out property <float> content_progress: 0.0;
+    in-out property <string> content_status: "Idle";
+    in-out property <float> filename_progress: 0.0;
+    in-out property <string> filename_status: "Idle";
+    in-out property <bool> show_progress: false;
+
+    // Stats
+    in-out property <int> files_indexed: 0;
+    in-out property <string> index_size: "0 MB";
+
+    // Callbacks
+    callback perform_search(string);
+    callback open_file(string);
+
+    HorizontalLayout {
+        // Sidebar
+        Rectangle {
+            width: sidebar_collapsed ? 60px : 240px;
+            background: #25262b;
+            animate width { duration: 250ms; easing: ease-in-out; }
+
+            VerticalLayout {
+                padding: 16px;
+                spacing: 20px;
+
+                HorizontalLayout {
+                    spacing: 10px;
+                    Text {
+                        text: "🔍";
+                        font-size: 20px;
+                    }
+                    if !sidebar_collapsed : Text {
+                        text: "Flash Search";
+                        font-size: 18px;
+                        font-weight: 700;
+                        color: #ffffff;
+                    }
+                }
+
+                // Tabs Navigation
+                VerticalLayout {
+                    spacing: 4px;
+                    Button { 
+                        text: sidebar_collapsed ? "🔍" : "Search"; 
+                        primary: active_tab == "search";
+                        clicked => { active_tab = "search"; }
+                    }
+                    Button { 
+                        text: sidebar_collapsed ? "⚙️" : "Settings"; 
+                        primary: active_tab == "settings";
+                        clicked => { active_tab = "settings"; }
+                    }
+                    Button { 
+                        text: sidebar_collapsed ? "📊" : "Stats"; 
+                        primary: active_tab == "stats";
+                        clicked => { active_tab = "stats"; }
+                    }
+                }
+
+                if !sidebar_collapsed && show_progress : VerticalLayout {
+                    spacing: 12px;
+                    VerticalLayout {
+                        spacing: 4px;
+                        Text { text: "Content Indexing"; font-size: 11px; color: #909296; }
+                        Rectangle {
+                            height: 4px; background: #373a40; border-radius: 2px;
+                            Rectangle {
+                                width: parent.width * content_progress;
+                                height: 100%; background: #4dabf7; border-radius: 2px; x: 0;
+                            }
+                        }
+                    }
+                    VerticalLayout {
+                        spacing: 4px;
+                        Text { text: "Filename Indexing"; font-size: 11px; color: #909296; }
+                        Rectangle {
+                            height: 4px; background: #373a40; border-radius: 2px;
+                            Rectangle {
+                                width: parent.width * filename_progress;
+                                height: 100%; background: #ae3ec9; border-radius: 2px; x: 0;
+                            }
+                        }
+                    }
+                }
+                
+                Rectangle {}
+                
+                Button {
+                    text: sidebar_collapsed ? ">" : "<";
+                    clicked => { sidebar_collapsed = !sidebar_collapsed; }
+                }
+            }
+        }
+
+        // Main Content Area
+        VerticalLayout {
+            padding: 20px;
+            spacing: 16px;
+
+            if active_tab == "search" : VerticalLayout {
+                spacing: 16px;
+                
+                // Search Header
+                HorizontalLayout {
+                    spacing: 12px;
+                    height: 40px;
+                    search_input := LineEdit {
+                        placeholder-text: "Search files or content...";
+                        font-size: 16px;
+                        accepted(text) => { perform_search(text); }
+                    }
+                    Button { 
+                        text: "Search"; 
+                        primary: true; 
+                        clicked => { perform_search(search_input.text); }
+                    }
+                }
+
+                // Results Area
+                HorizontalLayout {
+                    spacing: 12px;
+                    
+                    // Results List
+                    Rectangle {
+                        background: #25262b;
+                        border-radius: 8px;
+                        
+                        if results.length == 0 : Text {
+                            text: is_searching ? "Searching..." : "No results yet";
+                            color: #909296;
+                            vertical-alignment: center;
+                            horizontal-alignment: center;
+                        }
+
+                        ListView {
+                            for data in results : Rectangle {
+                                height: 50px;
+                                background: touch.has-hover ? #2c2e33 : transparent;
+                                touch := TouchArea {
+                                    double-clicked => { open_file(data.path); }
+                                }
+                                HorizontalLayout {
+                                    padding-left: 10px;
+                                    padding-right: 10px;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Text { text: data.title; font-weight: 600; color: #ffffff; }
+                                        Text { text: data.path; color: #909296; font-size: 11px; overflow: elide; }
+                                    }
+                                    Rectangle { /* Spacer */ }
+                                    Text { text: Math.round(data.score * 10) / 10; color: #4dabf7; vertical-alignment: center; }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if active_tab == "settings" : VerticalLayout {
+                Text { text: "Settings"; font-size: 24px; color: white; }
+                Text { text: "Performance settings and exclusion patterns will go here."; color: #909296; }
+            }
+
+            if active_tab == "stats" : VerticalLayout {
+                spacing: 24px;
+                Text { text: "Index Statistics"; font-size: 24px; font-weight: 700; color: white; }
+                
+                HorizontalLayout {
+                    spacing: 16px;
+                    height: 120px;
+                    
+                    Rectangle {
+                        background: #25262b;
+                        border-radius: 12px;
+                        border-width: 1px;
+                        border-color: #373a40;
+                        VerticalLayout {
+                            padding: 20px;
+                            alignment: center;
+                            Text { text: "Files Indexed"; color: #909296; font-size: 14px; }
+                            Text { text: files_indexed; color: #4dabf7; font-size: 28px; font-weight: 700; }
+                            Text { 
+                                text: "Why is this different from scanned files?"; 
+                                color: #4dabf7; 
+                                font-size: 10px; 
+                                touch_why := TouchArea {}
+                            }
+                            if touch_why.has-hover : Rectangle {
+                                background: #2c2e33;
+                                border-radius: 4px;
+                                width: 250px;
+                                height: 60px;
+                                // Tooltip positioning outside layout would be better, but for now:
+                                VerticalLayout {
+                                    padding: 8px;
+                                    Text {
+                                        text: "The indexer only stores files that are readable and match supported formats. Duplicates and ignored patterns are excluded.";
+                                        color: white;
+                                        wrap: word-wrap;
+                                        font-size: 11px;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    Rectangle {
+                        background: #25262b;
+                        border-radius: 12px;
+                        border-width: 1px;
+                        border-color: #373a40;
+                        VerticalLayout {
+                            padding: 20px;
+                            alignment: center;
+                            Text { text: "Index Size"; color: #909296; font-size: 14px; }
+                            Text { text: index_size; color: #ae3ec9; font-size: 28px; font-weight: 700; }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    background: #25262b;
+                    border-radius: 12px;
+                    VerticalLayout {
+                        padding: 20px;
+                        spacing: 12px;
+                        Text { text: "Recently Indexed Paths"; font-weight: 600; color: white; }
+                        for path in ["C:/Users/Documents", "D:/Work/Projects", "E:/Videos"] : HorizontalLayout {
+                            Text { text: "📁 " + path; color: #909296; }
+                        }
+                        Rectangle {}
+                    }
+                }
+            }
+        }
+    }
+}

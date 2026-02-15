@@ -2,17 +2,12 @@ use crate::commands::AppState;
 use crate::models::SearchHistoryItem;
 use crate::settings::AppSettings;
 use std::sync::Arc;
-use tauri::State;
 
-/// Get current settings
-#[tauri::command]
-pub fn get_settings(state: State<'_, Arc<AppState>>) -> Result<AppSettings, String> {
+pub fn get_settings(state: &Arc<AppState>) -> Result<AppSettings, String> {
     state.settings_manager.load().map_err(|e| e.to_string())
 }
 
-/// Save settings
-#[tauri::command]
-pub fn save_settings(settings: AppSettings, state: State<'_, Arc<AppState>>) -> Result<(), String> {
+pub fn save_settings(settings: AppSettings, state: &Arc<AppState>) -> Result<(), String> {
     state
         .settings_manager
         .save_settings(&settings)
@@ -26,16 +21,12 @@ pub fn save_settings(settings: AppSettings, state: State<'_, Arc<AppState>>) -> 
     Ok(())
 }
 
-/// Get recent searches
-#[tauri::command]
-pub fn get_recent_searches(state: State<'_, Arc<AppState>>) -> Result<Vec<String>, String> {
+pub fn get_recent_searches(state: &Arc<AppState>) -> Result<Vec<String>, String> {
     let settings = state.settings_manager.load().map_err(|e| e.to_string())?;
     Ok(settings.recent_searches.unwrap_or_default())
 }
 
-/// Add a search to recent searches
-#[tauri::command]
-pub fn add_recent_search(query: String, state: State<'_, Arc<AppState>>) -> Result<(), String> {
+pub fn add_recent_search(query: String, state: &Arc<AppState>) -> Result<(), String> {
     let mut settings = state.settings_manager.load().map_err(|e| e.to_string())?;
 
     let mut recent = settings.recent_searches.unwrap_or_default();
@@ -52,9 +43,7 @@ pub fn add_recent_search(query: String, state: State<'_, Arc<AppState>>) -> Resu
     Ok(())
 }
 
-/// Clear recent searches
-#[tauri::command]
-pub fn clear_recent_searches(state: State<'_, Arc<AppState>>) -> Result<(), String> {
+pub fn clear_recent_searches(state: &Arc<AppState>) -> Result<(), String> {
     let mut settings = state.settings_manager.load().map_err(|e| e.to_string())?;
     settings.recent_searches = Some(vec![]);
     state
@@ -64,11 +53,8 @@ pub fn clear_recent_searches(state: State<'_, Arc<AppState>>) -> Result<(), Stri
     Ok(())
 }
 
-/// Add to search history with frequency tracking
-#[tauri::command]
-pub fn add_search_history(query: String, state: State<'_, Arc<AppState>>) -> Result<(), String> {
+pub fn add_search_history(query: String, state: &Arc<AppState>) -> Result<(), String> {
     let mut settings = state.settings_manager.load().map_err(|e| e.to_string())?;
-
     let mut history = settings.search_history.unwrap_or_default();
 
     let mut found = false;
@@ -110,11 +96,9 @@ pub fn add_search_history(query: String, state: State<'_, Arc<AppState>>) -> Res
     Ok(())
 }
 
-/// Get search history sorted by frequency
-#[tauri::command]
 pub fn get_search_history(
     limit: usize,
-    state: State<'_, Arc<AppState>>,
+    state: &Arc<AppState>,
 ) -> Result<Vec<SearchHistoryItem>, String> {
     let settings = state.settings_manager.load().map_err(|e| e.to_string())?;
     let history = settings.search_history.unwrap_or_default();
@@ -133,11 +117,8 @@ pub fn get_search_history(
         .collect())
 }
 
-/// Pin a file for quick access
-#[tauri::command]
-pub fn pin_file(path: String, state: State<'_, Arc<AppState>>) -> Result<(), String> {
+pub fn pin_file(path: String, state: &Arc<AppState>) -> Result<(), String> {
     let mut settings = state.settings_manager.load().map_err(|e| e.to_string())?;
-
     if !settings.pinned_files.contains(&path) {
         settings.pinned_files.push(path);
         state
@@ -145,13 +126,10 @@ pub fn pin_file(path: String, state: State<'_, Arc<AppState>>) -> Result<(), Str
             .save_settings(&settings)
             .map_err(|e| e.to_string())?;
     }
-
     Ok(())
 }
 
-/// Unpin a file
-#[tauri::command]
-pub fn unpin_file(path: String, state: State<'_, Arc<AppState>>) -> Result<(), String> {
+pub fn unpin_file(path: String, state: &Arc<AppState>) -> Result<(), String> {
     let mut settings = state.settings_manager.load().map_err(|e| e.to_string())?;
     settings.pinned_files.retain(|p| p != &path);
     state
@@ -161,9 +139,7 @@ pub fn unpin_file(path: String, state: State<'_, Arc<AppState>>) -> Result<(), S
     Ok(())
 }
 
-/// Get pinned files
-#[tauri::command]
-pub fn get_pinned_files(state: State<'_, Arc<AppState>>) -> Result<Vec<String>, String> {
+pub fn get_pinned_files(state: &Arc<AppState>) -> Result<Vec<String>, String> {
     let settings = state.settings_manager.load().map_err(|e| e.to_string())?;
     Ok(settings.pinned_files)
 }

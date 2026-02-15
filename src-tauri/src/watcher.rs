@@ -2,7 +2,6 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 use notify::{Watcher, RecursiveMode, Event, EventKind, RecommendedWatcher};
-use tauri::{AppHandle, Emitter};
 use crate::error::{FlashError, Result};
 use crate::indexer::IndexManager;
 use crate::metadata::MetadataDb;
@@ -12,20 +11,18 @@ use blake3;
 /// Manages active file system watching
 pub struct WatcherManager {
     watcher: Option<RecommendedWatcher>,
-    app_handle: AppHandle,
+    // Removed tauri dependency
     indexer: Arc<IndexManager>,
     metadata_db: Arc<MetadataDb>,
 }
 
 impl WatcherManager {
     pub fn new(
-        app_handle: AppHandle,
         indexer: Arc<IndexManager>,
         metadata_db: Arc<MetadataDb>,
     ) -> Self {
         Self {
             watcher: None,
-            app_handle,
             indexer,
             metadata_db,
         }
@@ -39,7 +36,6 @@ impl WatcherManager {
             return Ok(());
         }
 
-        let app_handle = self.app_handle.clone();
         let indexer = self.indexer.clone();
         let metadata_db = self.metadata_db.clone();
 
@@ -49,26 +45,17 @@ impl WatcherManager {
                     EventKind::Modify(_) | EventKind::Create(_) => {
                         for path in event.paths {
                             if path.is_file() {
-                                let app = app_handle.clone();
                                 let idx = indexer.clone();
                                 let db = metadata_db.clone();
                                 
-                                tauri::async_runtime::spawn(async move {
+                                // use standard tokio spawn
+                                tokio::spawn(async move {
                                     tokio::time::sleep(Duration::from_millis(500)).await;
                                     
                                     if let Err(e) = Self::reindex_single_file(&path, &idx, &db).await {
                                         eprintln!("Failed to reindex file {:?}: {}", path, e);
-                                    } else {
-                                        let _ = app.emit("file-updated", path.to_string_lossy().to_string());
                                     }
                                 });
-                            }
-                        }
-                    }
-                    EventKind::Remove(_) => {
-                        for path in event.paths {
-                            if path.is_file() {
-                                println!("File removed: {:?}", path);
                             }
                         }
                     }

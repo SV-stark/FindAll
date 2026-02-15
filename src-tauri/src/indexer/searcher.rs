@@ -23,7 +23,7 @@ pub struct SearchResult {
 }
 
 /// Statistics about the search index
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct IndexStatistics {
     pub total_documents: usize,
     pub total_size_bytes: u64,
@@ -34,6 +34,7 @@ pub struct IndexStatistics {
 #[derive(Clone)]
 struct CachedResult {
     results: Vec<SearchResult>,
+    #[allow(dead_code)]
     timestamp: Instant,
 }
 
@@ -94,10 +95,11 @@ pub struct IndexSearcher {
     size_field: Field,
     content_field: Field,
     cache: QueryCache,
+    index_path: std::path::PathBuf,
 }
 
 impl IndexSearcher {
-    pub fn new(index: &Index) -> Result<Self> {
+    pub fn new(index: &Index, index_path: std::path::PathBuf) -> Result<Self> {
         let schema = index.schema();
 
         // Pre-warm the reader by loading index into memory on startup
@@ -142,6 +144,7 @@ impl IndexSearcher {
             size_field,
             content_field,
             cache: QueryCache::new(),
+            index_path,
         })
     }
 
@@ -378,9 +381,16 @@ impl IndexSearcher {
         let searcher = self.reader.searcher();
         let total_docs = searcher.num_docs() as usize;
 
-        // Note: Calculating total size by iterating over all documents is O(N) and slow.
-        // We should track this separately or get it from the file system.
-        let total_size = 0;
+        let mut total_size = 0;
+        if let Ok(entries) = std::fs::read_dir(&self.index_path) {
+            for entry in entries.flatten() {
+                if let Ok(metadata) = entry.metadata() {
+                    if metadata.is_file() {
+                        total_size += metadata.len();
+                    }
+                }
+            }
+        }
 
         Ok(IndexStatistics {
             total_documents: total_docs,
