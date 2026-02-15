@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { invoke } from "@tauri-apps/api/core";
   import { fade, slide } from "svelte/transition";
   import { appState } from '$lib/state.svelte';
   import Icon from './Icon.svelte';
@@ -10,7 +9,7 @@
 
   async function addIndexDir() {
     try {
-      const selected = await invoke<string | null>("select_folder");
+      const selected = prompt("Enter folder path to index:");
       if (selected && !appState.settings.index_dirs.includes(selected)) {
         appState.settings.index_dirs = [...appState.settings.index_dirs, selected];
         appState.hasChanges = true;
@@ -22,7 +21,7 @@
 
   async function addExcludeFolder() {
     try {
-      const selected = await invoke<string | null>("select_folder");
+      const selected = prompt("Enter folder path to exclude:");
       if (selected && !appState.settings.exclude_folders.includes(selected)) {
         appState.settings.exclude_folders = [...appState.settings.exclude_folders, selected];
         appState.hasChanges = true;
@@ -197,6 +196,6 @@
   </div>
 
   <div class="settings-footer">
-    <p>Flash Search v0.2.0 • <a href="#" onclick={() => invoke('open_folder', { path: '.' })}>Open Data Folder</a></p>
+    <p>Flash Search v0.2.0 • <a href="#" onclick={() => window.open('.', '_blank')}>Open Data Folder</a></p>
   </div>
 </div>

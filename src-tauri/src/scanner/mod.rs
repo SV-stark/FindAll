@@ -24,6 +24,9 @@ pub struct ProgressEvent {
     pub current_file: String,
     pub status: String,
     pub ptype: ProgressType,
+    pub files_per_second: f64,
+    pub eta_seconds: u64,
+    pub current_folder: String,
 }
 
 const BATCH_SIZE: usize = 50;
@@ -82,6 +85,9 @@ impl Scanner {
                             current_file: e.path().display().to_string(),
                             status: "Scanning filenames...".to_string(),
                             ptype: ProgressType::Filename,
+                            files_per_second: 0.0,
+                            eta_seconds: 0,
+                            current_folder: String::new(),
                         }).await;
                     }
                 }
@@ -95,6 +101,9 @@ impl Scanner {
             current_file: "Scan complete".to_string(),
             status: "Filenames indexed".to_string(),
             ptype: ProgressType::Filename,
+            files_per_second: 0.0,
+            eta_seconds: 0,
+            current_folder: String::new(),
         }).await;
 
         if total_files == 0 {
@@ -160,6 +169,9 @@ impl Scanner {
                         current_file: chunk[i].display().to_string(),
                         status: "Indexing contents...".to_string(),
                         ptype: ProgressType::Content,
+                        files_per_second: 0.0,
+                        eta_seconds: 0,
+                        current_folder: String::new(),
                     }).await;
                 }
             }
@@ -174,6 +186,9 @@ impl Scanner {
             current_file: "All files indexed".to_string(),
             status: "Idle".to_string(),
             ptype: ProgressType::Content,
+            files_per_second: 0.0,
+            eta_seconds: 0,
+            current_folder: String::new(),
         }).await;
 
         Ok(())

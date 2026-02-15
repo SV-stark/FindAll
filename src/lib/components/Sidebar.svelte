@@ -17,8 +17,7 @@
 
   async function addIndexFolder() {
     try {
-      const { invoke } = await import("@tauri-apps/api/core");
-      const selected = await invoke<string | null>("select_folder");
+      const selected = prompt("Enter folder path to index:");
       if (selected && !appState.settings.index_dirs.includes(selected)) {
         appState.settings.index_dirs = [...appState.settings.index_dirs, selected];
         appState.hasChanges = true;

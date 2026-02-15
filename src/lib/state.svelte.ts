@@ -1,5 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { api } from './api';
 import type { 
   SearchResult, 
   RecentFile, 
@@ -105,39 +104,12 @@ class AppState {
     await this.loadRecentFiles();
     await this.loadStatistics();
     await this.checkFilenameIndex();
-    
-    // Listen for indexing progress
-    await listen<{
-      total: number;
-      processed: number;
-      current_file: string;
-      status: string;
-      files_per_second?: number;
-      eta_seconds?: number;
-      current_folder?: string;
-    }>("indexing-progress", (event) => {
-      this.indexProgress.total = event.payload.total;
-      this.indexProgress.processed = event.payload.processed;
-      this.indexProgress.currentFile = event.payload.current_file;
-      this.indexProgress.status = event.payload.status as any;
-      this.indexProgress.files_per_second = event.payload.files_per_second || 0;
-      this.indexProgress.eta_seconds = event.payload.eta_seconds || 0;
-      this.indexProgress.current_folder = event.payload.current_folder || "";
-
-      if (this.indexProgress.status === "done") {
-        setTimeout(() => {
-          this.indexProgress.status = "idle";
-          this.loadStatistics();
-          this.loadRecentFiles();
-        }, 5000);
-      }
-    });
   }
   
   // Load settings from backend
   async loadSettings() {
     try {
-      const loaded = await invoke<AppSettings>("get_settings");
+      const loaded = await api.getSettings() as Promise<AppSettings>;
       this.settings = { ...defaultSettings, ...loaded };
       this.hasChanges = false;
     } catch (e) {
@@ -148,7 +120,7 @@ class AppState {
   // Save settings to backend
   async saveSettings() {
     try {
-      await invoke("save_settings", { settings: this.settings });
+      await api.saveSettings(this.settings);
       this.hasChanges = false;
       this.showSaveSuccess = true;
       setTimeout(() => this.showSaveSuccess = false, 2000);
@@ -172,7 +144,7 @@ class AppState {
   // Load recent searches
   async loadRecentSearches() {
     try {
-      this.recentSearches = await invoke<string[]>("get_recent_searches");
+      this.recentSearches = await api.getRecentSearches() as Promise<string[]>;
     } catch (e) {
       console.error("Failed to load recent searches:", e);
     }
@@ -181,7 +153,7 @@ class AppState {
   // Load pinned files
   async loadPinnedFiles() {
     try {
-      this.pinnedFiles = await invoke<string[]>("get_pinned_files");
+      this.pinnedFiles = await api.getPinnedFiles() as Promise<string[]>;
     } catch (e) {
       console.error("Failed to load pinned files:", e);
     }
@@ -190,7 +162,7 @@ class AppState {
   // Load recent files
   async loadRecentFiles() {
     try {
-      this.recentFiles = await invoke<RecentFile[]>("get_recent_files", { limit: 10 });
+      this.recentFiles = await api.getRecentFiles(10) as Promise<RecentFile[]>;
     } catch (e) {
       console.error("Failed to load recent files:", e);
     }
@@ -199,7 +171,7 @@ class AppState {
   // Load statistics
   async loadStatistics() {
     try {
-      this.indexStats = await invoke<IndexStats>("get_index_statistics");
+      this.indexStats = await api.getStatistics() as Promise<IndexStats>;
     } catch (e) {
       console.error("Failed to load statistics:", e);
     }
@@ -208,7 +180,7 @@ class AppState {
   // Check if filename index exists
   async checkFilenameIndex() {
     try {
-      await invoke<{total_files: number, index_size_bytes: number}>("get_filename_index_stats");
+      await api.getFilenameIndexStats() as Promise<{total_files: number, index_size_bytes: number}>;
       this.filenameIndexReady = true;
     } catch (e) {
       console.log("Filename index not available:", e);
@@ -237,10 +209,7 @@ class AppState {
     
     try {
       if (this.searchMode === "filename") {
-        const filenameResults = await invoke<{file_path: string, file_name: string}[]>("search_filenames", {
-          query: this.query.trim(),
-          limit: this.settings.max_results
-        });
+        const filenameResults = await api.searchFilenames(this.query.trim(), this.settings.max_results) as Promise<{file_path: string, file_name: string}[]>;
         
         if (this.searchVersion !== currentVersion) return;
         
@@ -252,7 +221,7 @@ class AppState {
         }));
         
         if (this.settings.search_history_enabled && this.query.trim()) {
-          await invoke("add_recent_search", { query: this.query.trim() });
+          await api.addRecentSearch(this.query.trim());
           this.loadRecentSearches();
         }
         
@@ -271,20 +240,20 @@ class AppState {
         fileExtensions = fileTypeMap[this.selectedFileType] || null;
       }
 
-      const searchResults = await invoke<SearchResult[]>("search_query", { 
-        query: this.query.trim() || "*",
-        limit: this.settings.max_results,
-        min_size: this.minSize ? this.minSize * 1024 * 1024 : null,
-        max_size: this.maxSize ? this.maxSize * 1024 * 1024 : null,
-        file_extensions: fileExtensions
-      });
+      const searchResults = await api.search(
+        this.query.trim() || "*",
+        this.settings.max_results,
+        this.minSize ? this.minSize * 1024 * 1024 : undefined,
+        this.maxSize ? this.maxSize * 1024 * 1024 : undefined,
+        fileExtensions || undefined
+      ) as Promise<SearchResult[]>;
 
       if (this.searchVersion !== currentVersion) return;
       
       this.results = searchResults;
 
       if (this.settings.search_history_enabled && this.query.trim()) {
-        await invoke("add_recent_search", { query: this.query.trim() });
+        await api.addRecentSearch(this.query.trim());
         this.loadRecentSearches();
       }
     } catch (e) {
@@ -305,10 +274,7 @@ class AppState {
     if (index !== undefined) this.selectedIndex = index;
     
     try {
-      const result = await invoke<PreviewResult>("get_file_preview_highlighted", { 
-        path,
-        query: this.query.trim() || "*"
-      });
+      const result = await api.getPreviewHighlighted(path, this.query.trim() || "*") as Promise<PreviewResult>;
       this.previewContent = result.content;
       this.highlightedPreview = this.highlightText(result.content, result.matched_terms);
     } catch (e) {
@@ -343,7 +309,7 @@ class AppState {
   // Pin/unpin files
   async pinFile(path: string) {
     try {
-      await invoke("pin_file", { path });
+      await api.pinFile(path);
       this.pinnedFiles = [...this.pinnedFiles, path];
     } catch (e) {
       console.error("Failed to pin file:", e);
@@ -352,7 +318,7 @@ class AppState {
   
   async unpinFile(path: string) {
     try {
-      await invoke("unpin_file", { path });
+      await api.unpinFile(path);
       this.pinnedFiles = this.pinnedFiles.filter(p => p !== path);
     } catch (e) {
       console.error("Failed to unpin file:", e);
@@ -362,7 +328,7 @@ class AppState {
   // Open file
   async openFile(path: string) {
     try {
-      await invoke("open_folder", { path });
+      window.open(`file://${path}`, '_blank');
     } catch (e) {
       console.error("Failed to open file:", e);
     }
@@ -371,7 +337,7 @@ class AppState {
   // Copy to clipboard
   async copyToClipboard(text: string) {
     try {
-      await invoke("copy_to_clipboard", { text });
+      await navigator.clipboard.writeText(text);
     } catch (e) {
       console.error("Failed to copy to clipboard:", e);
     }
@@ -381,8 +347,8 @@ class AppState {
   async startIndexing(path?: string) {
     this.isIndexing = true;
     try {
-      const homeDir = path || await invoke<string>("get_home_dir").catch(() => "./");
-      await invoke("start_indexing", { path: homeDir });
+      const homeDir = path || ".";
+      await api.startIndexing(homeDir);
     } catch (e) {
       console.error("Indexing failed:", e);
     } finally {
@@ -393,8 +359,8 @@ class AppState {
   // Build filename index
   async buildFilenameIndex() {
     try {
-      const homeDir = await invoke<string>("get_home_dir").catch(() => "./");
-      await invoke("build_filename_index", { path: homeDir });
+      const homeDir = ".";
+      await api.startIndexing(homeDir);
       this.filenameIndexReady = true;
       this.searchMode = "filename";
     } catch (e) {
@@ -405,7 +371,7 @@ class AppState {
   // Export results
   async exportResults(format: 'csv' | 'json' | 'txt') {
     try {
-      await invoke("export_results", { results: this.results, format });
+      api.exportResults(this.results, format);
     } catch (e) {
       console.error("Failed to export results:", e);
     }

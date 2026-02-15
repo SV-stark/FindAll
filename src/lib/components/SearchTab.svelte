@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { invoke } from "@tauri-apps/api/core";
+  import { api } from '$lib/api';
   import { fade, slide } from "svelte/transition";
   import { appState } from '$lib/state.svelte';
   import { formatBytes } from '$lib/types';
@@ -98,7 +98,7 @@
         <div class="recent-searches-dropdown">
           <div class="recent-searches-header">
             <span>Recent Searches</span>
-            <button class="clear-recent" onclick={() => { invoke("clear_recent_searches"); appState.recentSearches = []; }}>Clear</button>
+            <button class="clear-recent" onclick={() => { appState.recentSearches = []; }}>Clear</button>
           </div>
           {#each appState.recentSearches as search}
             <button 

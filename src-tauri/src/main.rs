@@ -11,10 +11,10 @@ async fn main() {
     
     if args.iter().any(|arg| arg == "--cli" || arg == "-c") {
         let query = args.get(2).cloned();
-        if let Err(e) = flash_search_lib::run_cli(query, None).await {
+        if let Err(e) = flash_search::run_cli(query, None).await {
             eprintln!("CLI Error: {}", e);
         }
     } else {
-        flash_search_lib::run_tauri();
+        flash_search::run_ui();
     }
 }
