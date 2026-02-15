@@ -15,6 +15,6 @@ async fn main() {
             eprintln!("CLI Error: {}", e);
         }
     } else {
-        flash_search_lib::run_slint();
+        flash_search_lib::run_tauri();
     }
 }

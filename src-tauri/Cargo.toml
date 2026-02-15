@@ -17,6 +17,11 @@ slint-build = "1.9"
 # UI Framework
 slint = "1.9"
 
+# Tauri
+tauri = { version = "2.2.8", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -73,6 +78,9 @@ calamine = "0.24"
 
 [dev-dependencies]
 tempfile = "3.0"
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
 
 [profile.release]
 opt-level = 3

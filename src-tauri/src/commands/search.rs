@@ -17,7 +17,7 @@ pub async fn search_query_internal(
         .map_err(|e| e.to_string())
 }
 
-pub async fn get_file_preview(path: String) -> Result<String, String> {
+pub async fn get_file_preview_internal(path: String) -> Result<String, String> {
     let path = std::path::PathBuf::from(path);
     match parse_file(&path) {
         Ok(doc) => Ok(doc.content[..std::cmp::min(doc.content.len(), 10000)].to_string()),

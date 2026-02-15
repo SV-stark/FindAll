@@ -1,12 +1,12 @@
 use crate::indexer::searcher::SearchResult;
 
-pub fn get_home_dir() -> Result<String, String> {
+pub fn get_home_dir_internal() -> Result<String, String> {
     dirs::home_dir()
         .map(|p| p.to_string_lossy().to_string())
         .ok_or_else(|| "Could not determine home directory".to_string())
 }
 
-pub fn open_folder(path: String) -> Result<(), String> {
+pub fn open_folder_internal(path: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         use std::process::Command;
@@ -27,19 +27,19 @@ pub fn open_folder(path: String) -> Result<(), String> {
     }
 }
 
-pub async fn select_folder() -> Result<Option<String>, String> {
+pub async fn select_folder_internal() -> Result<Option<String>, String> {
     // Placeholder - will integrate rfd or similar for native slint
     Ok(None)
 }
 
-pub fn copy_to_clipboard(text: String) -> Result<(), String> {
+pub fn copy_to_clipboard_internal(text: String) -> Result<(), String> {
     use arboard::Clipboard;
     let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
     clipboard.set_text(text).map_err(|e| e.to_string())?;
     Ok(())
 }
 
-pub async fn export_results(
+pub async fn export_results_internal(
     results: Vec<SearchResult>,
     format: String,
 ) -> Result<(), String> {

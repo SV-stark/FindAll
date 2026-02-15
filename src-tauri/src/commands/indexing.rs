@@ -30,17 +30,17 @@ pub async fn start_indexing_internal(
     Ok(())
 }
 
-pub async fn get_index_status() -> Result<IndexStatus, String> {
+pub async fn get_index_status_internal() -> Result<IndexStatus, String> {
     Ok(IndexStatus { status: "idle".to_string(), files_indexed: 0 })
 }
 
-pub async fn get_index_statistics(
+pub async fn get_index_statistics_internal(
     state: &Arc<AppState>,
 ) -> Result<IndexStatistics, String> {
     state.indexer.get_statistics().map_err(|e| e.to_string())
 }
 
-pub async fn get_recent_files(
+pub async fn get_recent_files_internal(
     limit: usize,
     state: &Arc<AppState>,
 ) -> Result<Vec<RecentFile>, String> {

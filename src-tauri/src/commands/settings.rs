@@ -3,11 +3,11 @@ use crate::models::SearchHistoryItem;
 use crate::settings::AppSettings;
 use std::sync::Arc;
 
-pub fn get_settings(state: &Arc<AppState>) -> Result<AppSettings, String> {
+pub fn get_settings_internal(state: &Arc<AppState>) -> Result<AppSettings, String> {
     state.settings_manager.load().map_err(|e| e.to_string())
 }
 
-pub fn save_settings(settings: AppSettings, state: &Arc<AppState>) -> Result<(), String> {
+pub fn save_settings_internal(settings: AppSettings, state: &Arc<AppState>) -> Result<(), String> {
     state
         .settings_manager
         .save_settings(&settings)
@@ -21,12 +21,12 @@ pub fn save_settings(settings: AppSettings, state: &Arc<AppState>) -> Result<(),
     Ok(())
 }
 
-pub fn get_recent_searches(state: &Arc<AppState>) -> Result<Vec<String>, String> {
+pub fn get_recent_searches_internal(state: &Arc<AppState>) -> Result<Vec<String>, String> {
     let settings = state.settings_manager.load().map_err(|e| e.to_string())?;
     Ok(settings.recent_searches.unwrap_or_default())
 }
 
-pub fn add_recent_search(query: String, state: &Arc<AppState>) -> Result<(), String> {
+pub fn add_recent_search_internal(query: String, state: &Arc<AppState>) -> Result<(), String> {
     let mut settings = state.settings_manager.load().map_err(|e| e.to_string())?;
 
     let mut recent = settings.recent_searches.unwrap_or_default();
@@ -43,7 +43,7 @@ pub fn add_recent_search(query: String, state: &Arc<AppState>) -> Result<(), Str
     Ok(())
 }
 
-pub fn clear_recent_searches(state: &Arc<AppState>) -> Result<(), String> {
+pub fn clear_recent_searches_internal(state: &Arc<AppState>) -> Result<(), String> {
     let mut settings = state.settings_manager.load().map_err(|e| e.to_string())?;
     settings.recent_searches = Some(vec![]);
     state
@@ -53,7 +53,7 @@ pub fn clear_recent_searches(state: &Arc<AppState>) -> Result<(), String> {
     Ok(())
 }
 
-pub fn add_search_history(query: String, state: &Arc<AppState>) -> Result<(), String> {
+pub fn add_search_history_internal(query: String, state: &Arc<AppState>) -> Result<(), String> {
     let mut settings = state.settings_manager.load().map_err(|e| e.to_string())?;
     let mut history = settings.search_history.unwrap_or_default();
 
@@ -96,7 +96,7 @@ pub fn add_search_history(query: String, state: &Arc<AppState>) -> Result<(), St
     Ok(())
 }
 
-pub fn get_search_history(
+pub fn get_search_history_internal(
     limit: usize,
     state: &Arc<AppState>,
 ) -> Result<Vec<SearchHistoryItem>, String> {
@@ -117,7 +117,7 @@ pub fn get_search_history(
         .collect())
 }
 
-pub fn pin_file(path: String, state: &Arc<AppState>) -> Result<(), String> {
+pub fn pin_file_internal(path: String, state: &Arc<AppState>) -> Result<(), String> {
     let mut settings = state.settings_manager.load().map_err(|e| e.to_string())?;
     if !settings.pinned_files.contains(&path) {
         settings.pinned_files.push(path);
@@ -129,7 +129,7 @@ pub fn pin_file(path: String, state: &Arc<AppState>) -> Result<(), String> {
     Ok(())
 }
 
-pub fn unpin_file(path: String, state: &Arc<AppState>) -> Result<(), String> {
+pub fn unpin_file_internal(path: String, state: &Arc<AppState>) -> Result<(), String> {
     let mut settings = state.settings_manager.load().map_err(|e| e.to_string())?;
     settings.pinned_files.retain(|p| p != &path);
     state
@@ -139,7 +139,7 @@ pub fn unpin_file(path: String, state: &Arc<AppState>) -> Result<(), String> {
     Ok(())
 }
 
-pub fn get_pinned_files(state: &Arc<AppState>) -> Result<Vec<String>, String> {
+pub fn get_pinned_files_internal(state: &Arc<AppState>) -> Result<Vec<String>, String> {
     let settings = state.settings_manager.load().map_err(|e| e.to_string())?;
     Ok(settings.pinned_files)
 }
