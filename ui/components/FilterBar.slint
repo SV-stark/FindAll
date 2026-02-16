@@ -1,0 +1,70 @@
+import { ComboBox } from "std-widgets.slint";
+import { Palette } from "../globals.slint";
+
+export component FilterBar inherits Rectangle {
+    in-out property <string> selected_type: "All";
+    in-out property <string> selected_size: "Any";
+    callback filter_changed();
+    height: 40px;
+    background: Palette.current.surface_color;
+
+    // Bottom border
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Palette.current.border_color;
+    }
+
+    HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        spacing: 16px;
+        alignment: start;
+        Text {
+            text: "Filters:";
+            vertical-alignment: center;
+            color: Palette.current.text_secondary;
+            font-size: 12px;
+        }
+
+        HorizontalLayout {
+            spacing: 8px;
+            Text {
+                text: "Type:";
+                vertical-alignment: center;
+                color: Palette.current.text_primary;
+                font-size: 12px;
+            }
+
+            ComboBox {
+                width: 120px;
+                model: ["All", "Text", "Image", "Audio", "Video", "Document", "Archive"];
+                current-value: "All";
+                selected => {
+                    root.selected_type = self.current-value;
+                    filter_changed();
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 8px;
+            Text {
+                text: "Size:";
+                vertical-alignment: center;
+                color: Palette.current.text_primary;
+                font-size: 12px;
+            }
+
+            ComboBox {
+                width: 150px;
+                model: ["Any", "Small (< 1MB)", "Medium (1MB - 100MB)", "Large (> 100MB)"];
+                current-value: "Any";
+                selected => {
+                    root.selected_size = self.current-value;
+                    filter_changed();
+                }
+            }
+        }
+    }
+}

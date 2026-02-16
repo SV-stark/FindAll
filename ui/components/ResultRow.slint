@@ -4,6 +4,7 @@ export component ResultRow inherits Rectangle {
     in property <string> title;
     in property <string> path;
     in property <float> score;
+    in property <string> icon: "📄";
     in property <bool> selected: false;
     in property <bool> alternate: false; // For zebra striping if desired
     
@@ -25,7 +26,7 @@ export component ResultRow inherits Rectangle {
 
         // Icon
         Text {
-            text: "📄";
+            text: root.icon;
             font-size: 14px;
             vertical-alignment: center;
             width: 20px;

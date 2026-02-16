@@ -4,11 +4,27 @@ use std::rc::Rc;
 use crate::commands::AppState;
 use tokio::sync::mpsc;
 use crate::scanner::{ProgressEvent, ProgressType};
+use crate::settings::AppSettings as RustAppSettings;
 
 slint::include_modules!();
 
 pub fn run_slint_ui(state: Arc<AppState>, mut progress_rx: mpsc::Receiver<ProgressEvent>) {
     let ui = AppWindow::new().unwrap();
+
+    // Load initial settings
+    let current_settings = state.settings_manager.load().unwrap_or_default();
+    let slint_settings = AppSettings {
+        theme: current_settings.theme.to_string().into(),
+        index_dirs: ModelRc::from(Rc::new(VecModel::from(
+            current_settings.index_dirs.iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>()
+        ))),
+        exclude_patterns: ModelRc::from(Rc::new(VecModel::from(
+            current_settings.exclude_patterns.iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>()
+        ))),
+        auto_start: current_settings.auto_start_on_boot,
+        minimize_to_tray: current_settings.minimize_to_tray,
+    };
+    ui.set_settings(slint_settings);
     
     // Initial stats
     let stats = state.indexer.get_statistics().unwrap_or_default();
@@ -71,27 +87,72 @@ pub fn run_slint_ui(state: Arc<AppState>, mut progress_rx: mpsc::Receiver<Progre
     let ui_weak_search = ui.as_weak();
     let state_search = state.clone();
     
-    ui.on_perform_search(move |query| {
+    ui.on_perform_search(move |query, filter_type, filter_size| {
         let Some(ui_handle) = ui_weak_search.upgrade() else { return };
         let state = state_search.clone();
         let query = query.to_string();
+        let filter_type = filter_type.to_string();
+        let filter_size = filter_size.to_string();
         
-        if query.is_empty() {
+        // Parse filters
+        let (min_size, max_size) = match filter_size.as_str() {
+             "Small (< 1MB)" => (None, Some(1024 * 1024)),
+             "Medium (1MB - 100MB)" => (Some(1024 * 1024), Some(100 * 1024 * 1024)),
+             "Large (> 100MB)" => (Some(100 * 1024 * 1024), None),
+             _ => (None, None),
+        };
+
+        // Extensions map
+        let extensions: Option<Vec<String>> = match filter_type.as_str() {
+             "Text" => Some(vec!["txt", "md", "rs", "toml", "json", "js", "ts", "html", "css", "c", "cpp", "h", "java", "py", "sh", "bat", "ps1", "log", "ini", "yaml", "xml", "slint", "sql"].iter().map(|s| s.to_string()).collect()),
+             "Image" => Some(vec!["png", "jpg", "jpeg", "gif", "bmp", "svg", "ico", "tiff", "webp"].iter().map(|s| s.to_string()).collect()),
+             "Audio" => Some(vec!["mp3", "wav", "ogg", "flac", "m4a", "aac"].iter().map(|s| s.to_string()).collect()),
+             "Video" => Some(vec!["mp4", "mkv", "avi", "mov", "webm", "flv", "wmv"].iter().map(|s| s.to_string()).collect()),
+             "Document" => Some(vec!["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "rtf", "tex"].iter().map(|s| s.to_string()).collect()),
+             "Archive" => Some(vec!["zip", "tar", "gz", "7z", "rar", "bz2", "xz"].iter().map(|s| s.to_string()).collect()),
+             _ => None,
+        };
+
+        if query.is_empty() && extensions.is_none() && min_size.is_none() && max_size.is_none() {
              ui_handle.set_results(ModelRc::from(Rc::new(VecModel::default())));
              return;
         }
 
         ui_handle.set_is_searching(true);
+        ui_handle.set_results(ModelRc::from(Rc::new(VecModel::default()))); // Clear results
         
         let ui_weak_for_task = ui_weak_search.clone();
         tokio::spawn(async move {
-            let results = state.indexer.search(&query, 50, None, None, None).await.unwrap_or_default();
+            let results = state.indexer.search(&query, 50, min_size, max_size, extensions.as_deref()).await.unwrap_or_default();
             
             let slint_results: Vec<FileItem> = results.into_iter().map(|r| {
+                let path = std::path::Path::new(&r.file_path);
+                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+                let icon = match ext.as_str() {
+                    "rs" => "🦀",
+                    "slint" => "🎨",
+                    "toml" | "ini" | "cfg" | "conf" => "⚙️",
+                    "json" | "xml" | "yaml" | "yml" => "📋",
+                    "md" | "txt" | "log" => "📝",
+                    "png" | "jpg" | "jpeg" | "gif" | "svg" | "bmp" | "ico" => "🖼️",
+                    "mp3" | "wav" | "ogg" | "flac" => "🎵",
+                    "mp4" | "mkv" | "avi" | "mov" | "webm" => "🎬",
+                    "zip" | "tar" | "gz" | "7z" | "rar" => "📦",
+                    "exe" | "msi" | "bat" | "cmd" | "sh" | "ps1" => "🚀",
+                    "pdf" => "📕",
+                    "doc" | "docx" | "rtf" => "📘",
+                    "xls" | "xlsx" | "csv" => "📗",
+                    "ppt" | "pptx" => "📙",
+                    "js" | "ts" | "jsx" | "tsx" | "html" | "css" | "scss" => "🌐",
+                    "c" | "cpp" | "h" | "hpp" | "cs" | "java" | "py" | "go" => "💻",
+                    _ => "📄", 
+                };
+                
                 FileItem {
                     title: r.file_path.split(['\\', '/']).last().unwrap_or("Unknown").into(),
                     path: r.file_path.into(),
                     score: r.score,
+                    icon: icon.into(),
                 }
             }).collect();
             
@@ -117,5 +178,165 @@ pub fn run_slint_ui(state: Arc<AppState>, mut progress_rx: mpsc::Receiver<Progre
         }
     });
     
+    // Settings Callbacks
+    let ui_weak_settings = ui.as_weak();
+    let state_settings = state.clone();
+
+    ui.on_save_settings(move |slint_settings| {
+        let Some(ui) = ui_weak_settings.upgrade() else { return };
+        let mut current = state_settings.settings_manager.load().unwrap_or_default();
+        
+        // Update fields
+        current.theme = match slint_settings.theme.as_str() {
+            "light" => crate::settings::Theme::Light,
+            "dark" => crate::settings::Theme::Dark,
+            _ => crate::settings::Theme::Auto,
+        };
+        
+        current.index_dirs = slint_settings.index_dirs.iter().map(|s| s.to_string()).collect();
+        current.exclude_patterns = slint_settings.exclude_patterns.iter().map(|s| s.to_string()).collect();
+        current.auto_start_on_boot = slint_settings.auto_start;
+        current.minimize_to_tray = slint_settings.minimize_to_tray;
+        
+        if let Err(e) = state_settings.settings_manager.save(&current) {
+            eprintln!("Failed to save settings: {}", e);
+        }
+    });
+
+    let ui_weak_pick = ui.as_weak();
+    ui.on_pick_new_folder(move || {
+        let Some(ui) = ui_weak_pick.upgrade() else { return };
+        let ui_handle = ui.as_weak();
+        std::thread::spawn(move || {
+            if let Some(folder) = rfd::FileDialog::new().pick_folder() {
+                let folder_str = folder.to_string_lossy().to_string();
+                slint::invoke_from_event_loop(move || {
+                    if let Some(ui) = ui_handle.upgrade() {
+                        let mut settings = ui.get_settings();
+                        let mut current_dirs: Vec<slint::SharedString> = settings.index_dirs.iter().collect();
+                        if !current_dirs.iter().any(|d| d.as_str() == folder_str) {
+                            current_dirs.push(folder_str.into());
+                            settings.index_dirs = ModelRc::from(Rc::new(VecModel::from(current_dirs)));
+                            ui.set_settings(settings);
+                        }
+                    }
+                }).unwrap();
+            }
+        });
+    });
+
+    let ui_weak_remove = ui.as_weak();
+    ui.on_remove_folder(move |index| {
+         let Some(ui) = ui_weak_remove.upgrade() else { return };
+         let mut settings = ui.get_settings();
+         let mut current_dirs: Vec<slint::SharedString> = settings.index_dirs.iter().collect();
+         if index >= 0 && (index as usize) < current_dirs.len() {
+             current_dirs.remove(index as usize);
+             settings.index_dirs = ModelRc::from(Rc::new(VecModel::from(current_dirs)));
+             ui.set_settings(settings);
+         }
+    });
+    
+    });
+    
+    // Preview Callbacks
+    let ui_weak_preview = ui.as_weak();
+    ui.on_request_preview(move |path| {
+        let Some(ui) = ui_weak_preview.upgrade() else { return };
+        let path_str = path.to_string();
+        let path_buf = std::path::PathBuf::from(&path_str);
+        
+        // Reset preview
+        ui.set_preview_content("".into());
+        ui.set_preview_type("none".into());
+        ui.set_preview_file_size("".into());
+        ui.set_preview_modified("".into());
+        
+        if !path_buf.exists() {
+             return;
+        }
+
+        // Metadata
+        if let Ok(metadata) = std::fs::metadata(&path_buf) {
+             let size = metadata.len();
+             let size_str = if size < 1024 {
+                 format!("{} B", size)
+             } else if size < 1024 * 1024 {
+                 format!("{:.1} KB", size as f64 / 1024.0)
+             } else {
+                 format!("{:.1} MB", size as f64 / (1024.0 * 1024.0))
+             };
+             ui.set_preview_file_size(size_str.into());
+             
+             // Modified time (simplistic)
+             if let Ok(modified) = metadata.modified() {
+                 let datetime: chrono::DateTime<chrono::Local> = modified.into();
+                 ui.set_preview_modified(datetime.format("%Y-%m-%d %H:%M:%S").to_string().into());
+             }
+        }
+
+        let extension = path_buf.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+        
+        // Image preview
+        if ["png", "jpg", "jpeg", "gif", "bmp", "ico", "svg"].contains(&extension.as_str()) {
+             ui.set_preview_type("image".into());
+             if let Ok(image) = slint::Image::load_from_path(&path_buf) {
+                 ui.set_preview_image(image);
+             }
+             return;
+        }
+        
+        // Text preview (limit 10KB)
+        let is_text = ["txt", "rs", "toml", "json", "md", "js", "ts", "html", "css", "slint", "py", "c", "cpp", "h", "java", "xml", "yaml", "yml", "ini", "log", "bat", "sh", "ps1"].contains(&extension.as_str());
+        
+        if is_text {
+             ui.set_preview_type("text".into());
+             // Spawn reading task
+             let ui_handle = ui.as_weak();
+             let p = path_buf.clone();
+             std::thread::spawn(move || {
+                 use std::io::Read;
+                 if let Ok(file) = std::fs::File::open(&p) {
+                     let mut reader = std::io::BufReader::new(file);
+                     let mut buffer = [0; 10240]; // 10KB
+                     if let Ok(n) = reader.read(&mut buffer) {
+                         let content = String::from_utf8_lossy(&buffer[..n]);
+                         let content_str = content.to_string();
+                         slint::invoke_from_event_loop(move || {
+                             if let Some(ui) = ui_handle.upgrade() {
+                                 ui.set_preview_content(content_str.into());
+                             }
+                         }).unwrap();
+                     }
+                 }
+             });
+        } else {
+             ui.set_preview_type("binary".into());
+        }
+    });
+
+    let ui_weak_actions = ui.as_weak();
+    ui.on_copy_path(move |path| {
+        let path_str = path.to_string();
+        std::thread::spawn(move || {
+            if let Ok(mut clipboard) = arboard::Clipboard::new() {
+                let _ = clipboard.set_text(path_str);
+            }
+        });
+    });
+
+    ui.on_open_folder(move |path| {
+        let path_str = path.to_string();
+        let path_buf = std::path::PathBuf::from(&path_str);
+        #[cfg(target_os = "windows")]
+        {
+            std::process::Command::new("explorer")
+                .arg("/select,")
+                .arg(path_buf)
+                .spawn()
+                .ok();
+        }
+    });
+
     ui.run().unwrap();
 }

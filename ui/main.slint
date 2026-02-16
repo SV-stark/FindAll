@@ -3,11 +3,15 @@ import { Palette, Theme } from "globals.slint";
 import { ResultRow } from "components/ResultRow.slint";
 import { ModernLineEdit } from "components/ModernLineEdit.slint";
 import { ThemeToggle } from "components/ThemeToggle.slint";
+import { SettingsDialog, AppSettings } from "components/Settings.slint";
+import { PreviewPane } from "components/PreviewPane.slint";
+import { FilterBar } from "components/FilterBar.slint";
 
 export struct FileItem {
     title: string,
     path: string,
     score: float,
+    icon: string,
 }
 
 export component AppWindow inherits Window {
@@ -19,7 +23,28 @@ export component AppWindow inherits Window {
     // Data
     in-out property <[FileItem]> results: [];
     in-out property <bool> is_searching: false;
+    in-out property <string> current_query: "";
+    in-out property <string> filter_type: "All";
+    in-out property <string> filter_size: "Any";
     
+    // Settings
+    in-out property <bool> show_settings: false;
+    in-out property <AppSettings> settings: {
+        theme: "auto",
+        index_dirs: [],
+        exclude_patterns: [],
+        auto_start: false,
+        minimize_to_tray: false
+    };
+
+    // Preview
+    in-out property <string> selected_path: "";
+    in-out property <string> preview_content: "";
+    in-out property <image> preview_image;
+    in-out property <string> preview_type: "none";
+    in-out property <string> preview_file_size: "";
+    in-out property <string> preview_modified: "";
+
     // Status
     in-out property <int> files_indexed: 0;
     in-out property <string> index_size: "0 MB";
@@ -39,8 +64,14 @@ export component AppWindow inherits Window {
     in-out property <string> files_per_second: "0";
     
     // Callbacks
-    callback perform_search(string);
+    callback perform_search(string, string, string);
     callback open_file(string);
+    callback save_settings(AppSettings);
+    callback pick_new_folder();
+    callback remove_folder(int);
+    callback request_preview(string);
+    callback copy_path(string);
+    callback open_folder(string);
 
     VerticalLayout {
         // ---------------------------------------------------------
@@ -73,7 +104,7 @@ export component AppWindow inherits Window {
                 ModernLineEdit {
                     placeholder-text: "Search anything...";
                     horizontal-stretch: 1;
-                    accepted(text) => { perform_search(text); }
+                    accepted(text) => { perform_search(text, root.filter_type, root.filter_size); }
                 }
 
                 // Actions (Right side)
@@ -86,6 +117,11 @@ export component AppWindow inherits Window {
                     width: 40px;
                     height: 40px;
                     border-radius: 6px;
+                    
+                    TouchArea {
+                        clicked => { show_settings = !show_settings; }
+                    }
+                    
                     Text { 
                         text: "⚙️"; 
                         font-size: 18px; 
@@ -96,33 +132,78 @@ export component AppWindow inherits Window {
             }
         }
 
+
         // ---------------------------------------------------------
-        // 2. RESULTS AREA (Dense List)
+        // 1.5. FILTER BAR
         // ---------------------------------------------------------
-        Rectangle {
-            clip: true; // clip content
-            
-            if results.length == 0 : VerticalLayout {
-                alignment: center;
-                spacing: 16px;
-                Text {
-                    text: is_searching ? "Searching..." : "Type to start searching";
-                    color: Palette.current.text_secondary;
-                    font-size: 14px;
-                    horizontal-alignment: center;
+        FilterBar {
+             selected_type <=> root.filter_type;
+             selected_size <=> root.filter_size;
+             filter_changed => {
+                 if (root.results.length > 0 || root.current_query != "") {
+                     root.perform_search(root.current_query, root.filter_type, root.filter_size);
+                 }
+             }
+        }
+
+        // ---------------------------------------------------------
+        // 2. RESULTS AREA (Dense List with Preview)
+        // ---------------------------------------------------------
+        HorizontalLayout {
+            // Left side: Results List
+            Rectangle {
+                clip: true;
+                horizontal-stretch: 1;
+                
+                if results.length == 0 : VerticalLayout {
+                    alignment: center;
+                    spacing: 16px;
+                    Text {
+                        text: is_searching ? "Searching..." : "Type to start searching";
+                        color: Palette.current.text_secondary;
+                        font-size: 14px;
+                        horizontal-alignment: center;
+                    }
+                }
+
+                ListView {
+                    padding-top: 4px;
+                    padding-bottom: 4px;
+                    for data[index] in results : ResultRow {
+                        title: data.title;
+                        path: data.path;
+                        score: data.score;
+                        icon: data.icon;
+                        alternate: mod(index, 2) == 0;
+                        selected: selected_path == data.path;
+                        clicked => {
+                            selected_path = data.path;
+                            request_preview(data.path);
+                        }
+                    }
                 }
             }
-
-            ListView {
-                padding-top: 4px;
-                padding-bottom: 4px;
-                for data[index] in results : ResultRow {
-                    title: data.title;
-                    path: data.path;
-                    score: data.score;
-                    alternate: mod(index, 2) == 0;
-                    clicked => { open_file(data.path); }
-                }
+            
+            // Divider
+            if selected_path != "" : Rectangle {
+                width: 1px;
+                background: Palette.current.border_color;
+            }
+            
+            // Right side: Preview Pane
+            if selected_path != "" : PreviewPane {
+                width: 350px;
+                file_name: "Selected File"; // Should extract from path or pass separately
+                file_path: selected_path;
+                content: preview_content;
+                preview_image: preview_image;
+                file_type: preview_type;
+                file_size: preview_file_size;
+                modified: preview_modified;
+                
+                open_file => { root.open_file(root.selected_path); }
+                open_folder => { root.open_folder(root.selected_path); }
+                copy_path => { root.copy_path(root.selected_path); }
             }
         }
 
@@ -367,6 +448,31 @@ export component AppWindow inherits Window {
                 text: "Rebuild Index";
                 height: 28px;
             }
+        }
+    }
+
+    // ---------------------------------------------------------
+    // 6. SETTINGS DIALOG
+    // ---------------------------------------------------------
+    if show_settings : Rectangle {
+        background: #00000080; // Dim background
+        TouchArea { clicked => { show_settings = false; } }
+        
+        SettingsDialog {
+            width: 600px;
+            height: 500px;
+            settings: root.settings;
+            
+            close => { show_settings = false; }
+            save(s) => { 
+                root.save_settings(s);
+                show_settings = false; 
+            }
+            add_folder => { root.pick_new_folder(); }
+            remove_folder(i) => { root.remove_folder(i); }
+            
+            // Stop propagation of clicks to the dimmer
+            TouchArea {} 
         }
     }
 }
