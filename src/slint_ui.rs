@@ -35,6 +35,21 @@ pub fn run_slint_ui(state: Arc<AppState>, mut progress_rx: mpsc::Receiver<Progre
                         ProgressType::Content => {
                             ui.set_content_progress(progress);
                             ui.set_content_status(status.clone().into());
+                            ui.set_current_file(event.current_file.clone().into());
+                            ui.set_current_folder(event.current_folder.clone().into());
+                            ui.set_files_per_second(format!("{:.1}", event.files_per_second).into());
+                            let eta = if event.eta_seconds > 0 {
+                                if event.eta_seconds < 60 {
+                                    format!("{}s", event.eta_seconds)
+                                } else if event.eta_seconds < 3600 {
+                                    format!("{}m {}s", event.eta_seconds / 60, event.eta_seconds % 60)
+                                } else {
+                                    format!("{}h {}m", event.eta_seconds / 3600, (event.eta_seconds % 3600) / 60)
+                                }
+                            } else {
+                                "...".to_string()
+                            };
+                            ui.set_eta_seconds(eta.into());
                         }
                         ProgressType::Filename => {
                             ui.set_filename_progress(progress);

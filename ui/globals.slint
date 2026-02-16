@@ -1,0 +1,37 @@
+import { Button, LineEdit, ScrollView, ListView, TabWidget } from "std-widgets.slint";
+
+export struct Theme {
+    bg_color: brush,
+    surface_color: brush,
+    accent_color: brush,
+    text_primary: brush,
+    text_secondary: brush,
+    border_color: brush,
+    icon_color: brush,
+}
+
+export global Palette {
+    in-out property <bool> is_dark: true;
+    
+    out property <Theme> dark_theme: {
+        bg_color: #1e1e2e,
+        surface_color: #232335,
+        accent_color: #89b4fa,
+        text_primary: #cdd6f4,
+        text_secondary: #a6adc8,
+        border_color: #313244,
+        icon_color: #cdd6f4,
+    };
+
+    out property <Theme> light_theme: {
+        bg_color: #eff1f5,
+        surface_color: #ffffff,
+        accent_color: #1e66f5,
+        text_primary: #4c4f69,
+        text_secondary: #6c6f85,
+        border_color: #bcc0cc,
+        icon_color: #4c4f69,
+    };
+
+    out property <Theme> current: root.is_dark ? root.dark_theme : root.light_theme;
+}

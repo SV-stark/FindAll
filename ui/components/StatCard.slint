@@ -1,0 +1,39 @@
+import { Palette } from "../globals.slint";
+
+export component StatCard inherits Rectangle {
+    in property <string> title;
+    in property <string> value;
+    in property <string> subtext;
+    in property <color> value-color: Palette.current.accent_color;
+
+    background: Palette.current.surface_color;
+    border-radius: 16px;
+    border-width: 1px;
+    border-color: Palette.current.border_color;
+    
+    VerticalLayout {
+        padding: 24px;
+        alignment: center;
+        spacing: 8px;
+        
+        Text { 
+            text: root.title; 
+            color: Palette.current.text_secondary; 
+            font-size: 13px; 
+            font-weight: 500;
+        }
+        
+        Text { 
+            text: root.value; 
+            color: root.value-color; 
+            font-size: 32px; 
+            font-weight: 700; 
+        }
+
+        if root.subtext != "" : Text {
+            text: root.subtext;
+            color: Palette.current.text_secondary;
+            font-size: 11px;
+        }
+    }
+}

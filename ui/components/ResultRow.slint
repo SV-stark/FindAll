@@ -1,0 +1,72 @@
+import { Palette } from "../globals.slint";
+
+export component ResultRow inherits Rectangle {
+    in property <string> title;
+    in property <string> path;
+    in property <float> score;
+    in property <bool> selected: false;
+    in property <bool> alternate: false; // For zebra striping if desired
+    
+    callback clicked <=> touch.clicked;
+    callback double-clicked <=> touch.double-clicked;
+
+    height: 32px; // Dense height
+    background: root.selected ? Palette.current.accent_color.with-alpha(0.2) : 
+                (touch.has-hover ? Palette.current.surface_color.darker(5%) : 
+                (root.alternate ? Palette.current.surface_color.darker(2%) : transparent));
+
+    touch := TouchArea { }
+
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 12px;
+        alignment: start;
+
+        // Icon
+        Text {
+            text: "📄";
+            font-size: 14px;
+            vertical-alignment: center;
+            width: 20px;
+        }
+
+        // Filename (Primary)
+        Text {
+            text: root.title;
+            color: Palette.current.text_primary;
+            font-size: 13px;
+            font-weight: 500;
+            vertical-alignment: center;
+            overflow: elide;
+            width: 30%; // Fixed width allocation for columns? Or flex? Flex is better usually.
+        }
+
+        // Path (Secondary)
+        Text {
+            text: root.path;
+            color: Palette.current.text_secondary;
+            font-size: 12px;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1; // Take remaining space
+        }
+
+        // Score (Right aligned)
+        Text {
+            text: Math.round(root.score * 10.0) / 10.0;
+            color: Palette.current.accent_color;
+            font-size: 11px;
+            vertical-alignment: center;
+            width: 40px;
+            horizontal-alignment: right;
+        }
+    }
+    
+    // Bottom border separator
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Palette.current.border_color.with-alpha(0.3);
+    }
+}

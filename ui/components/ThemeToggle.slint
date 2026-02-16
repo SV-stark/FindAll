@@ -1,0 +1,21 @@
+import { Palette } from "../globals.slint";
+
+export component ThemeToggle inherits Rectangle {
+    callback toggled;
+    width: 40px;
+    height: 40px;
+    border-radius: 20px;
+    background: touch.has-hover ? Palette.current.surface_color : transparent;
+    animate background { duration: 200ms; }
+
+    touch := TouchArea {
+        clicked => { root.toggled(); }
+    }
+
+    Text {
+        text: Palette.is_dark ? "🌙" : "☀️";
+        font-size: 20px;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+    }
+}

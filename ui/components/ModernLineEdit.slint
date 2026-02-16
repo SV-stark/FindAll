@@ -1,0 +1,36 @@
+import { LineEdit } from "std-widgets.slint";
+import { Palette } from "../globals.slint";
+
+export component ModernLineEdit inherits Rectangle {
+    in property <string> placeholder-text;
+    in property <bool> has-focus: input.has-focus;
+    out property <string> text <=> input.text;
+    callback accepted(string);
+
+    height: 45px;
+    background: Palette.current.surface_color;
+    border-radius: 12px;
+    border-width: 1px;
+    border-color: input.has-focus ? Palette.current.accent_color : Palette.current.border_color;
+    animate border-color { duration: 200ms; }
+
+    HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        spacing: 12px;
+        
+        Text {
+            text: "🔍";
+            font-size: 16px;
+            vertical-alignment: center;
+            color: Palette.current.text_secondary;
+        }
+
+        input := LineEdit {
+            placeholder-text: root.placeholder-text;
+            font-size: 14px;
+            accepted(text) => { root.accepted(text); }
+            height: 100%;
+        }
+    }
+}
