@@ -189,54 +189,99 @@
     </div>
   {/if}
 
-  {#if appState.indexProgress.status !== "idle"}
-    <div class="progress-toast" class:done={appState.indexProgress.status === "done"}>
-      <div class="progress-header">
-        <span class="status-text">
-          {#if appState.indexProgress.status === "scanning"}
-            <Icon icon="folder" size={16} />
-            <span>Scanning directories...</span>
-          {:else if appState.indexProgress.status === "done"}
-            <Icon icon="check" size={16} color="var(--success)" />
-            <span>Indexing completed!</span>
+  <!-- Status Indicator (Bottom Right) -->
+  <div class="status-indicator" onclick={() => appState.showProgressPopup = !appState.showProgressPopup}>
+    <div class="status-dots">
+      {#if appState.indexProgress.status === "idle" || appState.indexProgress.status === "done"}
+        <span class="dot green" title="Ready"></span>
+      {:else if appState.indexProgress.status === "scanning"}
+        <span class="dot yellow" title="Scanning..."></span>
+        <span class="dot-count">{appState.progressPercentage}%</span>
+      {:else if appState.indexProgress.status === "indexing"}
+        <span class="dot red" title="Indexing..."></span>
+        <span class="dot-count">{appState.progressPercentage}%</span>
+      {/if}
+    </div>
+  </div>
+
+  <!-- Progress Popup -->
+  {#if appState.showProgressPopup}
+    <div class="progress-popup-backdrop" onclick={() => appState.showProgressPopup = false}></div>
+    <div class="progress-popup">
+      <div class="popup-header">
+        <span class="popup-title">
+          {#if appState.indexProgress.status === "idle"}
+            <Icon icon="check-circle" size={16} color="var(--success)" />
+            Index Ready
+          {:else if appState.indexProgress.status === "scanning"}
+            <Icon icon="folder-search" size={16} color="var(--warning)" />
+            Scanning...
+          {:else if appState.indexProgress.status === "indexing"}
+            <Icon icon="database" size={16} color="var(--error)" />
+            Indexing...
           {:else}
-            <Icon icon="lightning" size={16} />
-            <span>Indexing files...</span>
+            <Icon icon="check-circle" size={16} color="var(--success)" />
+            Index Complete
           {/if}
         </span>
-        <span class="percentage">{appState.progressPercentage}%</span>
+        <button class="popup-close" onclick={() => appState.showProgressPopup = false}>
+          <Icon icon="x" size={14} />
+        </button>
       </div>
-      <div class="progress-bar">
-        <div class="progress-fill" style="width: {appState.progressPercentage}%"></div>
-      </div>
-      <div class="progress-details">
-        <div class="progress-stat">
-          <span class="stat-label">Files:</span>
-          <span class="stat-value">{appState.indexProgress.processed.toLocaleString()} / {appState.indexProgress.total.toLocaleString()}</span>
+      
+      {#if appState.indexProgress.status !== "idle" && appState.indexProgress.status !== "done"}
+        <div class="popup-progress-bar">
+          <div class="popup-progress-fill" style="width: {appState.progressPercentage}%"></div>
         </div>
-        {#if appState.indexProgress.status === "indexing" && appState.indexProgress.processed > 0}
-          <div class="progress-stat">
-            <span class="stat-label">Speed:</span>
-            <span class="stat-value">{appState.indexProgress.files_per_second?.toFixed(1) || "0"} files/sec</span>
+        <div class="popup-stats">
+          <div class="popup-stat">
+            <span class="stat-label">Progress</span>
+            <span class="stat-value">{appState.indexProgress.processed.toLocaleString()} / {appState.indexProgress.total.toLocaleString()}</span>
           </div>
-          <div class="progress-stat">
-            <span class="stat-label">ETA:</span>
-            <span class="stat-value">{formatEta(appState.indexProgress.eta_seconds)}</span>
-          </div>
+          {#if appState.indexProgress.status === "indexing"}
+            <div class="popup-stat">
+              <span class="stat-label">Speed</span>
+              <span class="stat-value">{appState.indexProgress.files_per_second?.toFixed(1) || "0"} files/s</span>
+            </div>
+            <div class="popup-stat">
+              <span class="stat-label">ETA</span>
+              <span class="stat-value">{formatEta(appState.indexProgress.eta_seconds)}</span>
+            </div>
+          {/if}
+        </div>
+      {/if}
+      
+      {#if appState.indexProgress.currentFile && appState.indexProgress.status !== "done"}
+        <div class="popup-current">
+          <Icon icon="file" size={12} />
+          <span class="current-file-name" title={appState.indexProgress.currentFile}>
+            {appState.indexProgress.currentFile.split(/[\\/]/).pop()}
+          </span>
+        </div>
+      {/if}
+      
+      {#if appState.indexProgress.current_folder}
+        <div class="popup-folder">
+          <Icon icon="folder" size={12} />
+          <span class="current-folder-name" title={appState.indexProgress.current_folder}>
+            {appState.indexProgress.current_folder}
+          </span>
+        </div>
+      {/if}
+      
+      <div class="popup-actions">
+        {#if appState.indexProgress.status === "idle" || appState.indexProgress.status === "done"}
+          <button class="popup-btn" onclick={() => appState.startIndexing()}>
+            <Icon icon="refresh" size={12} />
+            Rebuild Index
+          </button>
+        {:else}
+          <button class="popup-btn secondary" onclick={() => {}}>
+            <Icon icon="x" size={12} />
+            Cancel
+          </button>
         {/if}
       </div>
-      {#if appState.indexProgress.currentFile && appState.indexProgress.status !== "done"}
-        <div class="current-file" title={appState.indexProgress.currentFile}>
-          <Icon icon="file" size={14} />
-          <span>{appState.indexProgress.currentFile.split(/[\\/]/).pop()}</span>
-        </div>
-      {/if}
-      {#if appState.indexProgress.current_folder}
-        <div class="current-folder" title={appState.indexProgress.current_folder}>
-          <Icon icon="folder" size={14} />
-          <span>{appState.indexProgress.current_folder}</span>
-        </div>
-      {/if}
     </div>
   {/if}
 </main>
@@ -329,5 +374,231 @@
   .toast.success {
     border-color: var(--success);
     background: linear-gradient(135deg, var(--bg-card), rgba(16, 185, 129, 0.1));
+  }
+
+  /* Status Indicator */
+  .status-indicator {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    z-index: 100;
+    cursor: pointer;
+    padding: 8px 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    box-shadow: var(--shadow-md);
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .status-indicator:hover {
+    background: var(--bg-elevated);
+    border-color: var(--text-secondary);
+    transform: scale(1.02);
+  }
+
+  .status-dots {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+
+  .dot.green {
+    background: var(--success);
+    animation: none;
+  }
+
+  .dot.yellow {
+    background: var(--warning);
+  }
+
+  .dot.red {
+    background: var(--error);
+  }
+
+  .dot-count {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  /* Progress Popup */
+  .progress-popup-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+  }
+
+  .progress-popup {
+    position: fixed;
+    bottom: 60px;
+    right: 16px;
+    width: 280px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow-lg);
+    z-index: 101;
+    overflow: hidden;
+    animation: slideUp 0.2s ease;
+  }
+
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .popup-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+  }
+
+  .popup-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .popup-close {
+    background: none;
+    border: none;
+    padding: 4px;
+    cursor: pointer;
+    color: var(--text-muted);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+  }
+
+  .popup-close:hover {
+    background: var(--border);
+    color: var(--text);
+  }
+
+  .popup-progress-bar {
+    height: 4px;
+    background: var(--border);
+    border-radius: 0;
+  }
+
+  .popup-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary), var(--accent-purple));
+    transition: width 0.3s ease;
+  }
+
+  .popup-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .popup-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .popup-stat .stat-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    font-weight: 500;
+    letter-spacing: 0.3px;
+  }
+
+  .popup-stat .stat-value {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .popup-current, .popup-folder {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .popup-current {
+    color: var(--primary);
+  }
+
+  .current-file-name, .current-folder-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+  }
+
+  .popup-actions {
+    padding: 10px 14px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .popup-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: var(--primary);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .popup-btn:hover {
+    background: var(--primary-hover);
+  }
+
+  .popup-btn.secondary {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+
+  .popup-btn.secondary:hover {
+    background: var(--border);
   }
 </style>

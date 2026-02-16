@@ -86,6 +86,9 @@ class AppState {
   isDragging = $state(false);
   isIndexing = $state(false);
   
+  // Progress popup
+  showProgressPopup = $state(false);
+  
   // Debounce
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   

@@ -325,6 +325,29 @@
   <path d="M40 128c0 13.3 39.5 24 88 24s88-10.7 88-24"/>
 </svg>
 
+<!-- Check Circle Icon -->
+{:else if $$props.icon === 'check-circle'}
+<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 256 256" fill="none" stroke={color} stroke-width={weight === 'bold' ? 16 : 12} stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="128" cy="128" r="96"/>
+  <polyline points="96 128 116 148 160 104"/>
+</svg>
+
+<!-- Folder Search Icon -->
+{:else if $$props.icon === 'folder-search'}
+<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 256 256" fill="none" stroke={color} stroke-width={weight === 'bold' ? 16 : 12} stroke-linecap="round" stroke-linejoin="round">
+  <path d="M216 72H104a8 8 0 0 1-8-8V40a8 8 0 0 0-8-8H40a8 8 0 0 0-8 8v128a8 8 0 0 0 8 8h160a8 8 0 0 0 8-8V88a8 8 0 0 0-8-8Z"/>
+  <circle cx="140" cy="132" r="36"/>
+  <line x1="168" y1="168" x2="216" y2="216"/>
+</svg>
+
+<!-- X Circle Icon -->
+{:else if $$props.icon === 'x-circle'}
+<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 256 256" fill="none" stroke={color} stroke-width={weight === 'bold' ? 16 : 12} stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="128" cy="128" r="96"/>
+  <line x1="96" y1="96" x2="160" y2="160"/>
+  <line x1="160" y1="96" x2="96" y2="160"/>
+</svg>
+
 <!-- Hard Drive Icon -->
 {:else if $$props.icon === 'hard-drive'}
 <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 256 256" fill="none" stroke={color} stroke-width={weight === 'bold' ? 16 : 12} stroke-linecap="round" stroke-linejoin="round">
