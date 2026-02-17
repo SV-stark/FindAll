@@ -22,12 +22,10 @@ pub struct ParsedDocument {
 
 static DOCX_EXTENSIONS: phf::Map<&'static str, ()> = phf_map! {
     "docx" => (),
-    "doc" => (),
 };
 
 static PPTX_EXTENSIONS: phf::Map<&'static str, ()> = phf_map! {
     "pptx" => (),
-    "ppt" => (),
 };
 
 static ODF_EXTENSIONS: phf::Map<&'static str, ()> = phf_map! {

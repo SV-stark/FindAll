@@ -1,21 +1,18 @@
 import { Palette } from "../globals.slint";
+import { Icon } from "Icon.slint";
 
 export component ResultRow inherits Rectangle {
     in property <string> title;
     in property <string> path;
     in property <float> score;
-    in property <string> icon: "📄";
+    in property <string> icon: "file";
     in property <bool> selected: false;
     in property <bool> alternate: false; // For zebra striping if desired
     
     callback clicked <=> touch.clicked;
     callback double-clicked <=> touch.double-clicked;
-
     height: 32px; // Dense height
-    background: root.selected ? Palette.current.accent_color.with-alpha(0.2) : 
-                (touch.has-hover ? Palette.current.surface_color.darker(5%) : 
-                (root.alternate ? Palette.current.surface_color.darker(2%) : transparent));
-
+    background: root.selected ? Palette.current.accent_color.with-alpha(0.2) : (touch.has-hover ? Palette.current.surface_color.darker(5%) : (root.alternate ? Palette.current.surface_color.darker(2%) : transparent));
     touch := TouchArea { }
 
     HorizontalLayout {
@@ -25,11 +22,11 @@ export component ResultRow inherits Rectangle {
         alignment: start;
 
         // Icon
-        Text {
-            text: root.icon;
-            font-size: 14px;
-            vertical-alignment: center;
-            width: 20px;
+        Icon {
+            icon_name: root.icon;
+            size: 16px;
+            icon_color: root.selected ? Palette.current.text_primary : Palette.current.accent_color;
+            y: (parent.height - self.height) / 2;
         }
 
         // Filename (Primary)

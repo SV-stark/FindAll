@@ -11,9 +11,9 @@ use blake3;
 /// Manages active file system watching
 pub struct WatcherManager {
     watcher: Option<RecommendedWatcher>,
-    // Removed tauri dependency
     indexer: Arc<IndexManager>,
     metadata_db: Arc<MetadataDb>,
+    runtime_handle: tokio::runtime::Handle,
 }
 
 impl WatcherManager {
@@ -25,6 +25,7 @@ impl WatcherManager {
             watcher: None,
             indexer,
             metadata_db,
+            runtime_handle: tokio::runtime::Handle::current(),
         }
     }
 
@@ -38,29 +39,39 @@ impl WatcherManager {
 
         let indexer = self.indexer.clone();
         let metadata_db = self.metadata_db.clone();
+        let rt_handle = self.runtime_handle.clone();
 
         let mut watcher = notify::recommended_watcher(move |res: notify::Result<Event>| {
             if let Ok(event) = res {
-                match event.kind {
-                    EventKind::Modify(_) | EventKind::Create(_) => {
-                        for path in event.paths {
-                            if path.is_file() {
-                                let idx = indexer.clone();
-                                let db = metadata_db.clone();
-                                
-                                // use standard tokio spawn
-                                tokio::spawn(async move {
+                let idx = indexer.clone();
+                let db = metadata_db.clone();
+                let rt = rt_handle.clone();
+                
+                // Spawn on the captured runtime handle to avoid "no reactor running" panic
+                rt.spawn(async move {
+                    match event.kind {
+                        EventKind::Modify(_) | EventKind::Create(_) => {
+                            for path in event.paths {
+                                if path.is_file() {
+                                    // Small delay to let file writes finish
                                     tokio::time::sleep(Duration::from_millis(500)).await;
                                     
                                     if let Err(e) = Self::reindex_single_file(&path, &idx, &db).await {
                                         eprintln!("Failed to reindex file {:?}: {}", path, e);
                                     }
-                                });
+                                }
                             }
                         }
+                        EventKind::Remove(_) => {
+                            for path in event.paths {
+                                if let Err(e) = Self::remove_single_file(&path, &idx, &db).await {
+                                    eprintln!("Failed to remove file {:?}: {}", path, e);
+                                }
+                            }
+                        }
+                        _ => {}
                     }
-                    _ => {}
-                }
+                });
             }
         }).map_err(|e| FlashError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
 
@@ -81,6 +92,12 @@ impl WatcherManager {
         indexer: &Arc<IndexManager>,
         metadata_db: &Arc<MetadataDb>,
     ) -> Result<()> {
+        // ... (rest of reindex logic is fine, but re-implementing to be safe/clean)
+        // Check if file still exists
+        if !path.exists() {
+             return Self::remove_single_file(path, indexer, metadata_db).await;
+        }
+
         let metadata = std::fs::metadata(path)
             .map_err(|e| FlashError::Io(e))?;
         
@@ -95,8 +112,14 @@ impl WatcherManager {
             return Ok(());
         }
         
-        let parsed = parse_file(path)
-            .map_err(|e| FlashError::parse(path, format!("Failed to parse file: {}", e)))?;
+        // Handle parsing errors gracefully (don't crash watcher)
+        let parsed = match parse_file(path) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("Failed to parse file {:?}: {}", path, e);
+                return Ok(());
+            }
+        };
         
         let content_hash: [u8; 32] = blake3::hash(parsed.content.as_bytes()).into();
         
@@ -107,6 +130,19 @@ impl WatcherManager {
         
         println!("Re-indexed file: {:?}", path);
         
+        Ok(())
+    }
+
+    async fn remove_single_file(
+        path: &Path,
+        indexer: &Arc<IndexManager>,
+        metadata_db: &Arc<MetadataDb>,
+    ) -> Result<()> {
+        let path_str = path.to_string_lossy();
+        indexer.remove_document(&path_str)?;
+        indexer.commit()?;
+        metadata_db.remove_file(path)?;
+        println!("Removed file from index: {:?}", path);
         Ok(())
     }
 }

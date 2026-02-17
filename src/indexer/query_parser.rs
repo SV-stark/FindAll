@@ -166,15 +166,22 @@ pub fn extract_highlight_terms(query: &str) -> Vec<String> {
     let mut last_end = 0;
 
     let mut iter = memchr(b' ', bytes);
-    while let Some(pos) = iter {
-        let term = &bytes[last_end..pos];
-        if !term.is_empty() {
-            let term_str = String::from_utf8_lossy(term).to_lowercase();
-            if !term_str.is_empty() && term_str != "*" {
-                terms.push(term_str);
+    while let Some(relative_pos) = iter {
+        let pos = if last_end == 0 { relative_pos } else { last_end + relative_pos };
+        
+        if pos > last_end {
+            let term = &bytes[last_end..pos];
+            if !term.is_empty() {
+                let term_str = String::from_utf8_lossy(term).to_lowercase();
+                if !term_str.is_empty() && term_str != "*" {
+                    terms.push(term_str);
+                }
             }
         }
         last_end = pos + 1;
+        if last_end >= bytes.len() {
+            break;
+        }
         iter = memchr(b' ', &bytes[last_end..]);
     }
 

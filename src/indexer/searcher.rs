@@ -4,8 +4,10 @@ use serde::{Deserialize, Serialize};
 use std::ops::Bound;
 use std::time::{Duration, Instant};
 use tantivy::collector::TopDocs;
-use tantivy::query::{BooleanQuery, FuzzyTermQuery, Occur, QueryParser, RangeQuery};
-use tantivy::schema::{Field, Schema, Term, Value};
+use tantivy::query::{BooleanQuery, FuzzyTermQuery, Occur, QueryParser, RangeQuery, Query};
+use tantivy::schema::{Field, IndexRecordOption, TextOptions, TEXT, STORED, STRING, Schema, Value};
+use tantivy::Term;
+use std::sync::Arc;
 use tantivy::{Index, IndexReader, ReloadPolicy, TantivyDocument};
 
 /// Maximum number of cached query results
@@ -147,6 +149,8 @@ impl IndexSearcher {
             index_path,
         })
     }
+
+
 
     /// Search the index and return top results with optional filters
     pub async fn search(

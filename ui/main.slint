@@ -1,4 +1,10 @@
-import { Button, LineEdit, ScrollView, ListView, TabWidget } from "std-widgets.slint";
+import {
+    Button,
+    LineEdit,
+    ScrollView,
+    ListView,
+    TabWidget,
+} from "std-widgets.slint";
 import { Palette, Theme } from "globals.slint";
 import { ResultRow } from "components/ResultRow.slint";
 import { ModernLineEdit } from "components/ModernLineEdit.slint";
@@ -6,6 +12,7 @@ import { ThemeToggle } from "components/ThemeToggle.slint";
 import { SettingsDialog, AppSettings } from "components/Settings.slint";
 import { PreviewPane } from "components/PreviewPane.slint";
 import { FilterBar } from "components/FilterBar.slint";
+import { Icon } from "components/Icon.slint";
 
 export struct FileItem {
     title: string,
@@ -40,7 +47,9 @@ export component AppWindow inherits Window {
     // Preview
     in-out property <string> selected_path: "";
     in-out property <string> preview_content: "";
+    in-out property <string> preview_title: "Selected File";
     in-out property <image> preview_image;
+    in-out property <bool> is_preview_loading: false;
     in-out property <string> preview_type: "none";
     in-out property <string> preview_file_size: "";
     in-out property <string> preview_modified: "";
@@ -64,6 +73,16 @@ export component AppWindow inherits Window {
     in-out property <string> files_per_second: "0";
     
     // Callbacks
+    pure function get_filename_from_path(path: string) -> string {
+        // Basic extraction for "/" or "\" depending on OS, but pure Slint is limited.
+        // We can look for last slash.
+        // Slint string API is limited. 
+        // Better: let backend compute it or just show full path if complex.
+        // Actually, Slint doesn't have `lastIndexOf`.
+        // Let's pass it from backend into `preview_title` property.
+        return path;
+    }
+
     callback perform_search(string, string, string);
     callback open_file(string);
     callback save_settings(AppSettings);
@@ -72,6 +91,7 @@ export component AppWindow inherits Window {
     callback request_preview(string);
     callback copy_path(string);
     callback open_folder(string);
+    callback rebuild_index();
 
     VerticalLayout {
         // ---------------------------------------------------------
@@ -94,56 +114,68 @@ export component AppWindow inherits Window {
                 alignment: center; // Vertically center items
 
                 // Logo / Icon
-                Text {
-                    text: "⚡";
-                    font-size: 20px;
-                    vertical-alignment: center;
+                Icon {
+                    icon_name: "bolt";
+                    size: 24px;
+                    icon_color: Palette.current.accent_color;
                 }
 
                 // Search Input (Stretches)
                 ModernLineEdit {
                     placeholder-text: "Search anything...";
                     horizontal-stretch: 1;
-                    accepted(text) => { perform_search(text, root.filter_type, root.filter_size); }
+                    accepted(text) => {
+                        root.current_query = text;
+                        perform_search(text, root.filter_type, root.filter_size);
+                    }
+                    edited(text) => {
+                        root.current_query = text;
+                        if (text != "") {
+                            perform_search(text, root.filter_type, root.filter_size);
+                        }
+                    }
                 }
 
                 // Actions (Right side)
                 ThemeToggle {
-                    toggled => { Palette.is_dark = !Palette.is_dark; }
+                    toggled => {
+                        Palette.is_dark = !Palette.is_dark;
+                    }
                 }
                 
-                // Settings button placeholder
+                // Settings button
                 Rectangle {
                     width: 40px;
                     height: 40px;
                     border-radius: 6px;
-                    
-                    TouchArea {
-                        clicked => { show_settings = !show_settings; }
+                    background: touch_settings.has-hover ? Palette.current.bg_color : transparent;
+                    animate background { duration: 150ms; }
+                    touch_settings := TouchArea {
+                        clicked => {
+                            show_settings = !show_settings;
+                        }
                     }
-                    
-                    Text { 
-                        text: "⚙️"; 
-                        font-size: 18px; 
-                        vertical-alignment: center; 
-                        horizontal-alignment: center; 
+
+                    Icon {
+                        icon_name: "settings";
+                        size: 20px;
+                        icon_color: Palette.current.text_primary;
                     }
                 }
             }
         }
 
-
         // ---------------------------------------------------------
         // 1.5. FILTER BAR
         // ---------------------------------------------------------
         FilterBar {
-             selected_type <=> root.filter_type;
-             selected_size <=> root.filter_size;
-             filter_changed => {
-                 if (root.results.length > 0 || root.current_query != "") {
-                     root.perform_search(root.current_query, root.filter_type, root.filter_size);
-                 }
-             }
+            selected_type <=> root.filter_type;
+            selected_size <=> root.filter_size;
+            filter_changed => {
+                if (root.results.length > 0 || root.current_query != "") {
+                    root.perform_search(root.current_query, root.filter_type, root.filter_size);
+                }
+            }
         }
 
         // ---------------------------------------------------------
@@ -154,12 +186,11 @@ export component AppWindow inherits Window {
             Rectangle {
                 clip: true;
                 horizontal-stretch: 1;
-                
-                if results.length == 0 : VerticalLayout {
+                if results.length == 0: VerticalLayout {
                     alignment: center;
                     spacing: 16px;
                     Text {
-                        text: is_searching ? "Searching..." : "Type to start searching";
+                        text: is_searching ? "Searching..." : (root.current_query == "" ? "Type to start searching" : "No results found");
                         color: Palette.current.text_secondary;
                         font-size: 14px;
                         horizontal-alignment: center;
@@ -169,7 +200,7 @@ export component AppWindow inherits Window {
                 ListView {
                     padding-top: 4px;
                     padding-bottom: 4px;
-                    for data[index] in results : ResultRow {
+                    for data[index] in results: ResultRow {
                         title: data.title;
                         path: data.path;
                         score: data.score;
@@ -185,25 +216,30 @@ export component AppWindow inherits Window {
             }
             
             // Divider
-            if selected_path != "" : Rectangle {
+            if selected_path != "": Rectangle {
                 width: 1px;
                 background: Palette.current.border_color;
             }
             
             // Right side: Preview Pane
-            if selected_path != "" : PreviewPane {
+            if selected_path != "": PreviewPane {
                 width: 350px;
-                file_name: "Selected File"; // Should extract from path or pass separately
+                file_name: preview_title;
                 file_path: selected_path;
                 content: preview_content;
                 preview_image: preview_image;
                 file_type: preview_type;
                 file_size: preview_file_size;
                 modified: preview_modified;
-                
-                open_file => { root.open_file(root.selected_path); }
-                open_folder => { root.open_folder(root.selected_path); }
-                copy_path => { root.copy_path(root.selected_path); }
+                open_file => {
+                    root.open_file(root.selected_path);
+                }
+                open_folder => {
+                    root.open_folder(root.selected_path);
+                }
+                copy_path => {
+                    root.copy_path(root.selected_path);
+                }
             }
         }
 
@@ -213,7 +249,7 @@ export component AppWindow inherits Window {
         Rectangle {
             height: 28px;
             background: Palette.current.surface_color;
-             Rectangle {
+            Rectangle {
                 y: 0;
                 height: 1px;
                 background: Palette.current.border_color;
@@ -225,11 +261,11 @@ export component AppWindow inherits Window {
                 spacing: 20px;
                 
                 // Scanning Status
-                if content_status != "Idle" : HorizontalLayout {
+                if content_status != "Idle": HorizontalLayout {
                     spacing: 8px;
-                    Text { 
-                        text: "Indexed: " + Math.round(content_progress * 100) + "%"; 
-                        color: Palette.current.accent_color; 
+                    Text {
+                        text: "Indexed: " + Math.round(content_progress * 100) + "%";
+                        color: Palette.current.accent_color;
                         font-size: 11px;
                         vertical-alignment: center;
                     }
@@ -250,24 +286,30 @@ export component AppWindow inherits Window {
                     }
                 }
 
-                if content_status == "Idle" : Text {
+                if content_status == "Idle": Text {
                     text: "Ready";
                     color: Palette.current.text_secondary;
                     font-size: 11px;
                     vertical-alignment: center;
                 }
-                
-                Rectangle { horizontal-stretch: 1; } // Spacer
+                Rectangle {
+                    horizontal-stretch: 1;
+                } // Spacer
 
                 // Stats
                 Text {
-                    text: files_indexed + " Objects";
+                    text: (root.current_query != "" ? root.results.length + " Found • " : "") + files_indexed + " Indexed";
                     color: Palette.current.text_primary;
                     font-size: 11px;
                     vertical-alignment: center;
                 }
-                
-                Rectangle { width: 1px; height: 16px; y: 6px; background: Palette.current.border_color; }
+
+                Rectangle {
+                    width: 1px;
+                    height: 16px;
+                    y: 6px;
+                    background: Palette.current.border_color;
+                }
 
                 Text {
                     text: index_size;
@@ -294,30 +336,30 @@ export component AppWindow inherits Window {
         
         // Click to toggle popup
         TouchArea {
-            clicked => { show_progress_popup = !show_progress_popup; }
+            clicked => {
+                show_progress_popup = !show_progress_popup;
+            }
         }
-        
+
         HorizontalLayout {
             padding: 6px;
             spacing: 6px;
             alignment: center;
             
             // Status Dot
-            if content_status == "Idle" : Rectangle {
+            if content_status == "Idle": Rectangle {
                 width: 8px;
                 height: 8px;
                 border-radius: 4px;
                 background: #10b981; // Green - Ready
             }
-            
-            if content_status == "Scanning" : Rectangle {
+            if content_status == "Scanning": Rectangle {
                 width: 8px;
                 height: 8px;
                 border-radius: 4px;
                 background: #f59e0b; // Yellow - Scanning
             }
-            
-            if content_status == "Indexing" : Rectangle {
+            if content_status == "Indexing": Rectangle {
                 width: 8px;
                 height: 8px;
                 border-radius: 4px;
@@ -325,7 +367,7 @@ export component AppWindow inherits Window {
             }
             
             // Percentage text when active
-            if content_status != "Idle" : Text {
+            if content_status != "Idle": Text {
                 text: Math.round(content_progress * 100) + "%";
                 font-size: 10px;
                 color: Palette.current.text_secondary;
@@ -336,7 +378,7 @@ export component AppWindow inherits Window {
     // ---------------------------------------------------------
     // 5. PROGRESS POPUP (When clicked)
     // ---------------------------------------------------------
-    if show_progress_popup : Rectangle {
+    if show_progress_popup: Rectangle {
         width: 280px;
         height: 180px;
         x: root.width - self.width - 12px;
@@ -347,7 +389,6 @@ export component AppWindow inherits Window {
         border-color: Palette.current.border_color;
         drop-shadow-blur: 8px;
         drop-shadow-color: #00000040;
-        
         VerticalLayout {
             padding: 12px;
             spacing: 8px;
@@ -361,12 +402,25 @@ export component AppWindow inherits Window {
                     font-weight: 600;
                     color: Palette.current.text_primary;
                 }
-                Rectangle { horizontal-stretch: 1; }
-                Text {
-                    text: "x";
-                    font-size: 14px;
-                    color: Palette.current.text_secondary;
-                    TouchArea { clicked => { show_progress_popup = false; } }
+
+                Rectangle {
+                    horizontal-stretch: 1;
+                }
+
+                Rectangle {
+                    width: 16px;
+                    height: 16px;
+                    Icon {
+                        icon_name: "x";
+                        size: 14px;
+                        icon_color: Palette.current.text_secondary;
+                    }
+
+                    TouchArea {
+                        clicked => {
+                            show_progress_popup = false;
+                        }
+                    }
                 }
             }
             
@@ -386,39 +440,41 @@ export component AppWindow inherits Window {
             // Stats row
             HorizontalLayout {
                 spacing: 12px;
-                
                 VerticalLayout {
                     Text {
                         text: "PROGRESS";
                         font-size: 9px;
                         color: Palette.current.text_secondary;
                     }
+
                     Text {
                         text: files_indexed + " files";
                         font-size: 11px;
                         color: Palette.current.text_primary;
                     }
                 }
-                
+
                 VerticalLayout {
                     Text {
                         text: "SPEED";
                         font-size: 9px;
                         color: Palette.current.text_secondary;
                     }
+
                     Text {
                         text: files_per_second + "/s";
                         font-size: 11px;
                         color: Palette.current.text_primary;
                     }
                 }
-                
+
                 VerticalLayout {
                     Text {
                         text: "ETA";
                         font-size: 9px;
                         color: Palette.current.text_secondary;
                     }
+
                     Text {
                         text: eta_seconds;
                         font-size: 11px;
@@ -428,7 +484,7 @@ export component AppWindow inherits Window {
             }
             
             // Current file
-            if current_file != "" : Text {
+            if current_file != "": Text {
                 text: current_file;
                 font-size: 10px;
                 color: Palette.current.accent_color;
@@ -436,7 +492,7 @@ export component AppWindow inherits Window {
             }
             
             // Current folder
-            if current_folder != "" : Text {
+            if current_folder != "": Text {
                 text: current_folder;
                 font-size: 10px;
                 color: Palette.current.text_secondary;
@@ -444,9 +500,12 @@ export component AppWindow inherits Window {
             }
             
             // Action button
-            if content_status == "Idle" : Button {
+            if content_status == "Idle": Button {
                 text: "Rebuild Index";
                 height: 28px;
+                clicked => {
+                    root.rebuild_index();
+                }
             }
         }
     }
@@ -454,26 +513,34 @@ export component AppWindow inherits Window {
     // ---------------------------------------------------------
     // 6. SETTINGS DIALOG
     // ---------------------------------------------------------
-    if show_settings : Rectangle {
+    if show_settings: Rectangle {
         background: #00000080; // Dim background
-        TouchArea { clicked => { show_settings = false; } }
-        
+        TouchArea {
+            clicked => {
+                show_settings = false;
+            }
+        }
+
         SettingsDialog {
             width: 600px;
             height: 500px;
             settings: root.settings;
-            
-            close => { show_settings = false; }
-            save(s) => { 
-                root.save_settings(s);
-                show_settings = false; 
+            close => {
+                show_settings = false;
             }
-            add_folder => { root.pick_new_folder(); }
-            remove_folder(i) => { root.remove_folder(i); }
+            save(s) => {
+                root.save_settings(s);
+                show_settings = false;
+            }
+            add_folder => {
+                root.pick_new_folder();
+            }
+            remove_folder(i) => {
+                root.remove_folder(i);
+            }
             
             // Stop propagation of clicks to the dimmer
-            TouchArea {} 
+            TouchArea { }
         }
     }
 }
-

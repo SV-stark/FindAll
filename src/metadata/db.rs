@@ -173,6 +173,30 @@ impl MetadataDb {
         Ok(())
     }
 
+    /// Remove a file from the metadata database
+    pub fn remove_file(&self, path: &Path) -> Result<bool> {
+        let txn = self.db.begin_write().map_err(|e| {
+            FlashError::database("database_operation", "files_table", e.to_string())
+        })?;
+
+        let existed = {
+            let mut table = txn.open_table(FILES_TABLE).map_err(|e| {
+                FlashError::database("database_operation", "files_table", e.to_string())
+            })?;
+            
+            let path_str = path.to_str().unwrap_or("");
+            let removed = table.remove(path_str)
+                .map_err(|e| FlashError::database("database_operation", "files_table", e.to_string()))?;
+            removed.is_some()
+        };
+
+        txn.commit().map_err(|e| {
+            FlashError::database("database_operation", "files_table", e.to_string())
+        })?;
+
+        Ok(existed)
+    }
+
     /// Get metadata for a specific file
     pub fn get_metadata(&self, path: &Path) -> Result<Option<FileMetadata>> {
         let txn = self.db.begin_read().map_err(|e| {
@@ -337,7 +361,16 @@ impl RedbValue for FileMetadata {
     where
         Self: 'a,
     {
-        bincode::deserialize(data).expect("Failed to deserialize FileMetadata")
+        bincode::deserialize(data).unwrap_or_else(|e| {
+            eprintln!("Failed to deserialize FileMetadata: {}", e);
+            FileMetadata {
+                path: String::new().into(),
+                modified: 0,
+                size: 0,
+                content_hash: [0; 32],
+                indexed_at: 0,
+            }
+        })
     }
 
     fn as_bytes<'a, 'b: 'a>(value: &Self::SelfType<'b>) -> Self::AsBytes<'a>

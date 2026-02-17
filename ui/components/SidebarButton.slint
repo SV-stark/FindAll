@@ -1,4 +1,5 @@
 import { Palette } from "../globals.slint";
+import { Icon } from "Icon.slint";
 
 export component SidebarButton inherits Rectangle {
     in property <string> text;
@@ -6,12 +7,10 @@ export component SidebarButton inherits Rectangle {
     in property <bool> active: false;
     in property <bool> collapsed: false;
     callback clicked <=> touch.clicked;
-
     height: 40px;
     border-radius: 8px;
     background: root.active ? Palette.current.surface_color : (touch.has-hover ? Palette.current.surface_color.darker(5%) : transparent);
     animate background { duration: 200ms; }
-
     touch := TouchArea { }
 
     HorizontalLayout {
@@ -19,15 +18,14 @@ export component SidebarButton inherits Rectangle {
         padding-right: 12px;
         spacing: 12px;
         alignment: start;
-        
-        Text {
-            text: root.icon;
-            font-size: 18px;
-            color: root.active ? Palette.current.accent_color : Palette.current.text_secondary;
-            vertical-alignment: center;
+        Icon {
+            icon_name: root.icon;
+            size: 18px;
+            icon_color: root.active ? Palette.current.accent_color : Palette.current.text_secondary;
+            y: (parent.height - self.height) / 2;
         }
 
-        if !root.collapsed : Text {
+        if !root.collapsed: Text {
             text: root.text;
             font-size: 14px;
             font-weight: root.active ? 600 : 400;

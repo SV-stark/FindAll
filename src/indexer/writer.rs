@@ -158,6 +158,19 @@ impl IndexWriterManager {
         document
     }
 
+    /// Remove a document from the index
+    pub fn remove_document(&self, path: &str) -> Result<()> {
+        let writer = self
+            .writer
+            .lock()
+            .map_err(|_| FlashError::poisoned_lock("IndexWriter"))?;
+
+        let term = tantivy::Term::from_field_text(self.path_field, path);
+        writer.delete_term(term);
+
+        Ok(())
+    }
+
     /// Commit pending changes to disk
     pub fn commit(&self) -> Result<()> {
         let mut writer = self

@@ -1,5 +1,5 @@
 use crate::commands::AppState;
-use crate::models::SearchHistoryItem;
+use crate::settings::SearchHistoryItem;
 use crate::settings::AppSettings;
 use std::sync::Arc;
 

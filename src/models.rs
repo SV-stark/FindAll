@@ -54,23 +54,3 @@ pub struct IndexStatus {
     pub status: String,
     pub files_indexed: usize,
 }
-
-/// Search history item
-#[derive(Serialize, Deserialize)]
-pub struct SearchHistoryItem {
-    pub query: String,
-    pub frequency: u32,
-    pub last_used: u64,
-}
-
-/// Progress event from scanner
-#[derive(Clone, Serialize)]
-pub struct ProgressEvent {
-    pub total: usize,
-    pub processed: usize,
-    pub current_file: String,
-    pub status: String,
-    pub files_per_second: f64,
-    pub eta_seconds: u64,
-    pub current_folder: String,
-}

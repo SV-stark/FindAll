@@ -1,10 +1,13 @@
-use slint::{ComponentHandle, ModelRc, VecModel};
+use slint::{ComponentHandle, ModelRc, VecModel, Model};
 use std::sync::Arc;
 use std::rc::Rc;
 use crate::commands::AppState;
 use tokio::sync::mpsc;
 use crate::scanner::{ProgressEvent, ProgressType};
 use crate::settings::AppSettings as RustAppSettings;
+
+use tracing::warn;
+use tracing::info;
 
 slint::include_modules!();
 
@@ -45,12 +48,24 @@ pub fn run_slint_ui(state: Arc<AppState>, mut progress_rx: mpsc::Receiver<Progre
                         0.0
                     };
                     
-                    let status = event.status.clone();
-                    
+                    let status = event.status.clone(); // Restore this
+
+                    // U5: Normalize status for UI
+                    let ui_status = if status.contains("Scanning") {
+                        "Scanning"
+                    } else if status.contains("Indexing") {
+                        "Indexing"
+                    } else if status == "Idle" || status == "All files indexed" {
+                        "Idle"
+                    } else {
+                        "Idle"
+                    };
+                    ui.set_content_status(ui_status.into());
+
                     match event.ptype {
                         ProgressType::Content => {
                             ui.set_content_progress(progress);
-                            ui.set_content_status(status.clone().into());
+                            // ui.set_content_status(status.clone().into()); // Replaced by normalized
                             ui.set_current_file(event.current_file.clone().into());
                             ui.set_current_folder(event.current_folder.clone().into());
                             ui.set_files_per_second(format!("{:.1}", event.files_per_second).into());
@@ -69,14 +84,14 @@ pub fn run_slint_ui(state: Arc<AppState>, mut progress_rx: mpsc::Receiver<Progre
                         }
                         ProgressType::Filename => {
                             ui.set_filename_progress(progress);
-                            ui.set_filename_status(status.clone().into());
+                            ui.set_filename_status(ui_status.into());
                         }
                     }
                     
-                    // Auto-hide if finished
+                    // Auto-hide if finished (U4)
                     if status == "Idle" || status == "All files indexed" {
-                         // Maybe keep visible for a bit or hide
-                         // ui.set_show_progress(false);
+                         // Delay hiding slightly? For now just hide.
+                         ui.set_show_progress(false);
                     }
                 }
             }).unwrap();
@@ -87,14 +102,24 @@ pub fn run_slint_ui(state: Arc<AppState>, mut progress_rx: mpsc::Receiver<Progre
     let ui_weak_search = ui.as_weak();
     let state_search = state.clone();
     
+    // Track latest query to prevent race conditions (U2/P8)
+    let current_search_query = Arc::new(std::sync::Mutex::new(String::new()));
+    
     ui.on_perform_search(move |query, filter_type, filter_size| {
         let Some(ui_handle) = ui_weak_search.upgrade() else { return };
-        let state = state_search.clone();
+        // Cancel previous search by updating the "current" query
         let query = query.to_string();
+        {
+            let mut guard = current_search_query.lock().unwrap();
+            *guard = query.clone();
+        }
+
+        let state = state_search.clone();
         let filter_type = filter_type.to_string();
         let filter_size = filter_size.to_string();
+        let current_query_ref = current_search_query.clone(); // Clone Arc
         
-        // Parse filters
+        // Parse filters (same as before)
         let (min_size, max_size) = match filter_size.as_str() {
              "Small (< 1MB)" => (None, Some(1024 * 1024)),
              "Medium (1MB - 100MB)" => (Some(1024 * 1024), Some(100 * 1024 * 1024)),
@@ -102,7 +127,7 @@ pub fn run_slint_ui(state: Arc<AppState>, mut progress_rx: mpsc::Receiver<Progre
              _ => (None, None),
         };
 
-        // Extensions map
+        // Extensions map (same as before + extras)
         let extensions: Option<Vec<String>> = match filter_type.as_str() {
              "Text" => Some(vec!["txt", "md", "rs", "toml", "json", "js", "ts", "html", "css", "c", "cpp", "h", "java", "py", "sh", "bat", "ps1", "log", "ini", "yaml", "xml", "slint", "sql"].iter().map(|s| s.to_string()).collect()),
              "Image" => Some(vec!["png", "jpg", "jpeg", "gif", "bmp", "svg", "ico", "tiff", "webp"].iter().map(|s| s.to_string()).collect()),
@@ -119,33 +144,43 @@ pub fn run_slint_ui(state: Arc<AppState>, mut progress_rx: mpsc::Receiver<Progre
         }
 
         ui_handle.set_is_searching(true);
-        ui_handle.set_results(ModelRc::from(Rc::new(VecModel::default()))); // Clear results
+        // Don't clear results immediately to avoid flicker? 
+        // ui_handle.set_results(ModelRc::from(Rc::new(VecModel::default()))); 
         
         let ui_weak_for_task = ui_weak_search.clone();
         tokio::spawn(async move {
-            let results = state.indexer.search(&query, 50, min_size, max_size, extensions.as_deref()).await.unwrap_or_default();
+            let max_results = state.settings_manager.load().map(|s| s.max_results).unwrap_or(50);
+            let results = state.indexer.search(&query, max_results, min_size, max_size, extensions.as_deref()).await.unwrap_or_default();
             
+            // Check if this result is still relevant
+            {
+                 let guard = current_query_ref.lock().unwrap();
+                 if *guard != query {
+                     return; // Discard stale results
+                 }
+            }
+
             let slint_results: Vec<FileItem> = results.into_iter().map(|r| {
                 let path = std::path::Path::new(&r.file_path);
                 let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
                 let icon = match ext.as_str() {
-                    "rs" => "🦀",
-                    "slint" => "🎨",
-                    "toml" | "ini" | "cfg" | "conf" => "⚙️",
-                    "json" | "xml" | "yaml" | "yml" => "📋",
-                    "md" | "txt" | "log" => "📝",
-                    "png" | "jpg" | "jpeg" | "gif" | "svg" | "bmp" | "ico" => "🖼️",
-                    "mp3" | "wav" | "ogg" | "flac" => "🎵",
-                    "mp4" | "mkv" | "avi" | "mov" | "webm" => "🎬",
-                    "zip" | "tar" | "gz" | "7z" | "rar" => "📦",
-                    "exe" | "msi" | "bat" | "cmd" | "sh" | "ps1" => "🚀",
-                    "pdf" => "📕",
-                    "doc" | "docx" | "rtf" => "📘",
-                    "xls" | "xlsx" | "csv" => "📗",
-                    "ppt" | "pptx" => "📙",
-                    "js" | "ts" | "jsx" | "tsx" | "html" | "css" | "scss" => "🌐",
-                    "c" | "cpp" | "h" | "hpp" | "cs" | "java" | "py" | "go" => "💻",
-                    _ => "📄", 
+                    "rs" => "rust",
+                    "slint" => "code",
+                    "toml" | "ini" | "cfg" | "conf" => "settings",
+                    "json" | "xml" | "yaml" | "yml" => "code",
+                    "md" | "txt" | "log" => "file-text",
+                    "png" | "jpg" | "jpeg" | "gif" | "svg" | "bmp" | "ico" => "image",
+                    "mp3" | "wav" | "ogg" | "flac" => "audio",
+                    "mp4" | "mkv" | "avi" | "mov" | "webm" => "video",
+                    "zip" | "tar" | "gz" | "7z" | "rar" => "archive",
+                    "exe" | "msi" | "bat" | "cmd" | "sh" | "ps1" => "terminal",
+                    "pdf" => "book",
+                    "doc" | "docx" | "rtf" => "file-text",
+                    "xls" | "xlsx" | "csv" => "file-text",
+                    "ppt" | "pptx" => "file-text",
+                    "js" | "ts" | "jsx" | "tsx" | "html" | "css" | "scss" => "code",
+                    "c" | "cpp" | "h" | "hpp" | "cs" | "java" | "py" | "go" => "code",
+                    _ => "file", 
                 };
                 
                 FileItem {
@@ -156,6 +191,14 @@ pub fn run_slint_ui(state: Arc<AppState>, mut progress_rx: mpsc::Receiver<Progre
                 }
             }).collect();
             
+            // Re-check one last time before UI update
+            {
+                 let guard = current_query_ref.lock().unwrap();
+                 if *guard != query {
+                     return; 
+                 }
+            }
+
             slint::invoke_from_event_loop(move || {
                 if let Some(ui) = ui_weak_for_task.upgrade() {
                     let model = Rc::new(VecModel::from(slint_results));
@@ -166,15 +209,30 @@ pub fn run_slint_ui(state: Arc<AppState>, mut progress_rx: mpsc::Receiver<Progre
         });
     });
 
+    // U3: Rebuild Index
+    let ui_weak_rebuild = ui.as_weak();
+    let state_rebuild = state.clone();
+    ui.on_rebuild_index(move || {
+        let state = state_rebuild.clone();
+        tokio::spawn(async move {
+            info!("Rebuilding index...");
+            // We could clear index using writer.delete_all_documents() if exposed, 
+            // or just trigger scanning. Ideally we should wipe it.
+            // For now, let's just trigger a re-scan of all folders.
+            let settings = state.settings_manager.load().unwrap_or_default();
+            for dir_str in settings.index_dirs {
+                let dir = std::path::PathBuf::from(dir_str);
+                if let Err(e) = state.scanner.scan_directory(dir, settings.exclude_patterns.clone()).await {
+                     eprintln!("Failed to trigger scan: {}", e);
+                }
+            }
+        });
+    });
+
     ui.on_open_file(move |path| {
         let path_buf = std::path::PathBuf::from(path.as_str());
-        #[cfg(target_os = "windows")]
-        {
-            std::process::Command::new("explorer")
-                .arg("/select,")
-                .arg(path_buf)
-                .spawn()
-                .ok();
+        if let Err(e) = opener::open(path_buf) {
+            eprintln!("Failed to open file: {}", e);
         }
     });
     
@@ -237,7 +295,7 @@ pub fn run_slint_ui(state: Arc<AppState>, mut progress_rx: mpsc::Receiver<Progre
          }
     });
     
-    });
+
     
     // Preview Callbacks
     let ui_weak_preview = ui.as_weak();
@@ -245,10 +303,22 @@ pub fn run_slint_ui(state: Arc<AppState>, mut progress_rx: mpsc::Receiver<Progre
         let Some(ui) = ui_weak_preview.upgrade() else { return };
         let path_str = path.to_string();
         let path_buf = std::path::PathBuf::from(&path_str);
+        let weak = ui_weak_preview.clone();
+
+        // calc title
+        let file_name = path_buf.file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "Selected File".to_string());
         
-        // Reset preview
-        ui.set_preview_content("".into());
-        ui.set_preview_type("none".into());
+        // Update title immediately
+        let _ = weak.upgrade_in_event_loop(move |ui| {
+            ui.set_preview_title(file_name.into());
+            ui.set_is_preview_loading(true);
+            ui.set_preview_type("none".into());
+            ui.set_preview_content("Loading...".into());
+        });
+        
+        // Reset other preview fields
         ui.set_preview_file_size("".into());
         ui.set_preview_modified("".into());
         
@@ -328,13 +398,8 @@ pub fn run_slint_ui(state: Arc<AppState>, mut progress_rx: mpsc::Receiver<Progre
     ui.on_open_folder(move |path| {
         let path_str = path.to_string();
         let path_buf = std::path::PathBuf::from(&path_str);
-        #[cfg(target_os = "windows")]
-        {
-            std::process::Command::new("explorer")
-                .arg("/select,")
-                .arg(path_buf)
-                .spawn()
-                .ok();
+        if let Err(e) = opener::open(path_buf) {
+            eprintln!("Failed to open folder: {}", e);
         }
     });
 

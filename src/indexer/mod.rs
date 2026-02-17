@@ -68,6 +68,11 @@ impl IndexManager {
         self.writer.add_document(doc, modified, size)
     }
 
+    /// Remove a document from the index
+    pub fn remove_document(&self, path: &str) -> Result<()> {
+        self.writer.remove_document(path)
+    }
+
     /// Commit pending changes
     pub fn commit(&self) -> Result<()> {
         self.writer.commit()

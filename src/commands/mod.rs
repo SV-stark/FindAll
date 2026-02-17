@@ -22,6 +22,7 @@ pub struct AppState {
     pub watcher: std::sync::Mutex<WatcherManager>,
     pub filename_index: Option<Arc<FilenameIndex>>,
     pub progress_tx: mpsc::Sender<crate::scanner::ProgressEvent>,
+    pub scanner: Arc<crate::scanner::Scanner>,
 }
 
 impl AppState {
@@ -32,6 +33,7 @@ impl AppState {
         watcher: WatcherManager,
         filename_index: Option<Arc<FilenameIndex>>,
         progress_tx: mpsc::Sender<crate::scanner::ProgressEvent>,
+        scanner: Arc<crate::scanner::Scanner>,
     ) -> Self {
         Self {
             indexer,
@@ -40,6 +42,7 @@ impl AppState {
             watcher: std::sync::Mutex::new(watcher),
             filename_index,
             progress_tx,
+            scanner,
         }
     }
 }
