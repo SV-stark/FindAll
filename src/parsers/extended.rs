@@ -11,107 +11,22 @@ static TEXT_EXTENSIONS: phf::Set<&'static str> = phf_set![
 ];
 
 pub fn parse_rtf(path: &Path) -> Result<ParsedDocument> {
-    let bytes = memory_map::read_file(path)?;
-    let bytes = bytes.as_slice();
-
-    let mut text = String::new();
-    let mut brace_depth = 0;
-    let mut skip_until_brace = false;
-
-    let mut i = 0;
-
-    while i < bytes.len() {
-        let b = bytes[i];
-
-        if skip_until_brace {
-            if b == b'{' {
-                brace_depth += 1;
-            } else if b == b'}' {
-                brace_depth -= 1;
-                if brace_depth == 0 {
-                    skip_until_brace = false;
-                }
-            }
-            i += 1;
-            continue;
-        }
-
-        match b {
-            b'\\' => {
-                if i + 1 < bytes.len() {
-                    let next = bytes[i + 1];
-                    match next {
-                        b'\'' => {
-                            if i + 3 < bytes.len() {
-                                if let Ok(hex_str) = std::str::from_utf8(&bytes[i + 2..i + 4]) {
-                                    if let Ok(byte) = u8::from_str_radix(hex_str, 16) {
-                                        text.push(byte as char);
-                                    }
-                                }
-                                i += 4;
-                                continue;
-                            }
-                        }
-                        b'{' | b'}' | b'\\' => {
-                            text.push(next as char);
-                            i += 2;
-                            continue;
-                        }
-                        b'\n' | b'\r' => {
-                            text.push(' ');
-                            i += 2;
-                            continue;
-                        }
-                        _ => {
-                            let mut j = i + 1;
-                            while j < bytes.len() && bytes[j].is_ascii_alphabetic() {
-                                j += 1;
-                            }
-                            if j > i + 1 {
-                                let control = std::str::from_utf8(&bytes[i + 1..j]).unwrap_or("");
-
-                                match control {
-                                    "par" | "line" => text.push(' '),
-                                    "tab" => text.push('\t'),
-                                    "emph" | "b" | "i" | "u" | "strike" | "fs" => {
-                                        skip_until_brace = true;
-                                        brace_depth = 0;
-                                    }
-                                    _ => {}
-                                }
-                                i = j;
-                                if i < bytes.len() && bytes[i] == b' ' {
-                                    i += 1;
-                                }
-                                continue;
-                            }
-                        }
-                    }
-                }
-                i += 1;
-            }
-            b'{' => {
-                brace_depth += 1;
-                i += 1;
-            }
-            b'}' => {
-                brace_depth -= 1;
-                i += 1;
-            }
-            _ => {
-                if b.is_ascii() && b != b'\r' && b != b'\n' {
-                    text.push(b as char);
-                }
-                i += 1;
-            }
-        }
+    // Litchi integration is currently disabled due to crate API incompatibility
+    /*
+    match litchi::extract(path) {
+        Ok(text) => return Ok(ParsedDocument {
+            path: path.to_string_lossy().to_string(),
+            content: text,
+            title: None,
+        }),
+        Err(_) => {}
     }
+    */
 
-    let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
-
+    let metadata = memory_map::get_file_size(path)?;
     Ok(ParsedDocument {
         path: path.to_string_lossy().to_string(),
-        content: text,
+        content: format!("RTF Document (Litchi disabled): {} bytes.", metadata),
         title: None,
     })
 }
@@ -270,7 +185,7 @@ pub fn parse_zip_content(path: &Path) -> Result<ParsedDocument> {
     let max_size = 10 * 1024 * 1024; // 10MB limit
 
     for i in 0..archive.len() {
-        if let Ok(mut file) = archive.by_index(i) {
+        if let Ok(file) = archive.by_index(i) {
             if !file.is_dir() {
                 let name = file.name().to_lowercase();
 
@@ -327,6 +242,27 @@ pub fn parse_rar_content(path: &Path) -> Result<ParsedDocument> {
     Ok(ParsedDocument {
         path: path.to_string_lossy().to_string(),
         content: format!("RAR archive: {} bytes", metadata),
+        title: None,
+    })
+}
+
+pub fn parse_legacy_office(path: &Path) -> Result<ParsedDocument> {
+    // Litchi integration is currently disabled due to crate API incompatibility
+    /*
+    match litchi::extract(path) {
+         Ok(text) => return Ok(ParsedDocument {
+            path: path.to_string_lossy().to_string(),
+            content: text,
+            title: None,
+        }),
+        Err(_) => {}
+    }
+    */
+
+    let metadata = memory_map::get_file_size(path)?;
+    Ok(ParsedDocument {
+        path: path.to_string_lossy().to_string(),
+        content: format!("Legacy Office Document (Litchi disabled): {} bytes.", metadata),
         title: None,
     })
 }

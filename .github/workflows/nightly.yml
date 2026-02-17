@@ -20,7 +20,6 @@ jobs:
 
       - name: Build
         run: |
-          cd src-tauri
           cargo build --release
 
       - name: Create Release
@@ -30,7 +29,7 @@ jobs:
           release_name: "Nightly Build"
           body: "Automated nightly build from the latest push."
           files: |
-            src-tauri/target/release/flash-search.exe
+            target/release/flash-search.exe
           draft: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

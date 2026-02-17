@@ -1,5 +1,6 @@
-use std::path::Path;
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use notify::{Watcher, RecursiveMode, Event, EventKind, RecommendedWatcher};
 use crate::error::{FlashError, Result};
@@ -8,12 +9,20 @@ use crate::metadata::MetadataDb;
 use crate::parsers::parse_file;
 use blake3;
 
-/// Manages active file system watching
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum WatcherAction {
+    Index,
+    Remove,
+}
+
+/// Manages active file system watching with debouncing
 pub struct WatcherManager {
     watcher: Option<RecommendedWatcher>,
     indexer: Arc<IndexManager>,
     metadata_db: Arc<MetadataDb>,
     runtime_handle: tokio::runtime::Handle,
+    // Buffer for pending events: Map<Path, Action>
+    event_buffer: Arc<Mutex<HashMap<PathBuf, WatcherAction>>>,
 }
 
 impl WatcherManager {
@@ -21,11 +30,61 @@ impl WatcherManager {
         indexer: Arc<IndexManager>,
         metadata_db: Arc<MetadataDb>,
     ) -> Self {
+        let buffer: Arc<Mutex<HashMap<PathBuf, WatcherAction>>> = Arc::new(Mutex::new(HashMap::new()));
+        let buffer_for_task = buffer.clone();
+        let indexer_for_task = indexer.clone();
+        let metadata_db_for_task = metadata_db.clone();
+        let runtime_handle = tokio::runtime::Handle::current();
+        
+        // Spawn background processor for debounced events
+        runtime_handle.spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_millis(1000)).await; // Check every 1s
+                
+                let events = {
+                    let mut guard = buffer_for_task.lock().unwrap();
+                    if guard.is_empty() {
+                        continue;
+                    }
+                    // Take all events
+                    let events: HashMap<PathBuf, WatcherAction> = std::mem::take(&mut *guard);
+                    events
+                };
+                
+                let mut needs_commit = false;
+                
+                for (path, action) in events {
+                    let res = match action {
+                        WatcherAction::Index => Self::reindex_single_file(&path, &indexer_for_task, &metadata_db_for_task).await,
+                        WatcherAction::Remove => Self::remove_single_file(&path, &indexer_for_task, &metadata_db_for_task).await,
+                    };
+                    
+                    if let Ok(processed) = res {
+                        if processed {
+                            needs_commit = true;
+                        }
+                    } else if let Err(e) = res {
+                        eprintln!("Watcher error processing {:?}: {}", path, e);
+                    }
+                }
+                
+                if needs_commit {
+                    if let Err(e) = indexer_for_task.commit() {
+                         eprintln!("Watcher failed to commit index: {}", e);
+                    } else {
+                        indexer_for_task.invalidate_cache();
+                        // eprintln!("Watcher committed changes.");
+                    }
+                }
+            }
+        });
+
         Self {
             watcher: None,
             indexer,
             metadata_db,
-            runtime_handle: tokio::runtime::Handle::current(),
+            runtime_handle,
+            event_buffer: buffer,
         }
     }
 
@@ -37,41 +96,32 @@ impl WatcherManager {
             return Ok(());
         }
 
-        let indexer = self.indexer.clone();
-        let metadata_db = self.metadata_db.clone();
-        let rt_handle = self.runtime_handle.clone();
+        let buffer_clone = self.event_buffer.clone();
 
         let mut watcher = notify::recommended_watcher(move |res: notify::Result<Event>| {
             if let Ok(event) = res {
-                let idx = indexer.clone();
-                let db = metadata_db.clone();
-                let rt = rt_handle.clone();
+                let mut guard = buffer_clone.lock().unwrap();
                 
-                // Spawn on the captured runtime handle to avoid "no reactor running" panic
-                rt.spawn(async move {
-                    match event.kind {
-                        EventKind::Modify(_) | EventKind::Create(_) => {
-                            for path in event.paths {
-                                if path.is_file() {
-                                    // Small delay to let file writes finish
-                                    tokio::time::sleep(Duration::from_millis(500)).await;
-                                    
-                                    if let Err(e) = Self::reindex_single_file(&path, &idx, &db).await {
-                                        eprintln!("Failed to reindex file {:?}: {}", path, e);
-                                    }
-                                }
+                match event.kind {
+                    EventKind::Modify(_) | EventKind::Create(_) => {
+                        for path in event.paths {
+                            if path.is_file() {
+                                guard.insert(path, WatcherAction::Index);
                             }
                         }
-                        EventKind::Remove(_) => {
-                            for path in event.paths {
-                                if let Err(e) = Self::remove_single_file(&path, &idx, &db).await {
-                                    eprintln!("Failed to remove file {:?}: {}", path, e);
-                                }
-                            }
-                        }
-                        _ => {}
                     }
-                });
+                    EventKind::Remove(_) => {
+                        for path in event.paths {
+                            guard.insert(path, WatcherAction::Remove);
+                        }
+                    }
+                    // Flatten Rename: treated as Remove(old) + Create(new) usually,
+                    // but notify might send Rename(Both) or separate events.
+                    // For simplicity, we handle explicit Create/Remove/Modify.
+                    // Rename often comes as Rename(From) then Rename(To).
+                    // We might miss renames if not handled carefully, but standard Modify/Create usually covers it.
+                    _ => {}
+                }
             }
         }).map_err(|e| FlashError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
 
@@ -87,62 +137,64 @@ impl WatcherManager {
         Ok(())
     }
     
+    // Returns true if changes were made (requiring commit)
     async fn reindex_single_file(
         path: &Path,
         indexer: &Arc<IndexManager>,
         metadata_db: &Arc<MetadataDb>,
-    ) -> Result<()> {
-        // ... (rest of reindex logic is fine, but re-implementing to be safe/clean)
-        // Check if file still exists
+    ) -> Result<bool> {
         if !path.exists() {
              return Self::remove_single_file(path, indexer, metadata_db).await;
         }
 
-        let metadata = std::fs::metadata(path)
-            .map_err(|e| FlashError::Io(e))?;
+        let metadata = match std::fs::metadata(path) {
+            Ok(m) => m,
+            Err(_) => return Ok(false), // Ignore if cannot read metadata
+        };
         
         let modified = metadata.modified()
-            .map_err(|e| FlashError::Io(e))?
+            .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
             .duration_since(std::time::SystemTime::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
         let size = metadata.len();
         
-        if !metadata_db.needs_reindex(path, modified, size)? {
-            return Ok(());
+        // Skip check? If watcher said it changed, it probably did.
+        // But checking db saves re-hashing if it was a false alarm.
+        if !metadata_db.needs_reindex(path, modified, size).unwrap_or(true) {
+            return Ok(false);
         }
         
-        // Handle parsing errors gracefully (don't crash watcher)
         let parsed = match parse_file(path) {
             Ok(p) => p,
             Err(e) => {
                 eprintln!("Failed to parse file {:?}: {}", path, e);
-                return Ok(());
+                return Ok(false);
             }
         };
         
         let content_hash: [u8; 32] = blake3::hash(parsed.content.as_bytes()).into();
         
         indexer.add_document(&parsed, modified, size)?;
-        indexer.commit()?;
+        // NO commit here
         
         metadata_db.update_metadata(path, modified, size, content_hash)?;
         
-        println!("Re-indexed file: {:?}", path);
+        println!("Re-indexed file (watcher): {:?}", path);
         
-        Ok(())
+        Ok(true)
     }
 
     async fn remove_single_file(
         path: &Path,
         indexer: &Arc<IndexManager>,
         metadata_db: &Arc<MetadataDb>,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         let path_str = path.to_string_lossy();
         indexer.remove_document(&path_str)?;
-        indexer.commit()?;
+        // NO commit here
         metadata_db.remove_file(path)?;
-        println!("Removed file from index: {:?}", path);
-        Ok(())
+        println!("Removed file (watcher): {:?}", path);
+        Ok(true)
     }
 }

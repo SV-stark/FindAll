@@ -14,11 +14,39 @@ import { PreviewPane } from "components/PreviewPane.slint";
 import { FilterBar } from "components/FilterBar.slint";
 import { Icon } from "components/Icon.slint";
 
+component Spinner inherits Rectangle {
+    width: 20px;
+    height: 20px;
+    property <angle> rotation_angle: 0deg;
+
+    animate rotation_angle {
+        duration: 1000ms;
+        iteration-count: -1;
+        easing: linear;
+    }
+    
+    // Trigger animation
+    init => {
+        rotation_angle = 360deg;
+    }
+    Text {
+        text: "⟳";
+        font-size: 18px;
+        color: Palette.current.accent_color;
+        transform-rotation: root.rotation_angle;
+        width: 100%;
+        height: 100%;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
 export struct FileItem {
     title: string,
     path: string,
     score: float,
     icon: string,
+    snippet: string,
 }
 
 export component AppWindow inherits Window {
@@ -92,234 +120,280 @@ export component AppWindow inherits Window {
     callback copy_path(string);
     callback open_folder(string);
     callback rebuild_index();
+    
+    // U2: Search Debounce
+    property <string> pending_query: "";
+    property <bool> debounce_running: false;
+    debounce_timer := Timer {
+        interval: 300ms;
+        running: debounce_running;
+        triggered => {
+            debounce_running = false;
+            root.perform_search(pending_query, root.filter_type, root.filter_size);
+        }
+    }
 
-    VerticalLayout {
+    forward-focus: main_focus_scope;
+
+    main_focus_scope := FocusScope {
+        // U1: Keyboard Shortcuts
+        key-pressed(event) => {
+            if (event.text == "f" && event.modifiers.control) {
+                search_input.focus_input();
+                return accept;
+            }
+            if (event.text == "Escape") {
+                // Clear search or close preview?
+                if (root.selected_path != "") {
+                    root.selected_path = "";
+                    return accept;
+                }
+            }
+            return reject;
+        }
+
+        VerticalLayout {
         // ---------------------------------------------------------
         // 1. TOP BAR (Header)
         // ---------------------------------------------------------
         Rectangle {
-            height: 60px;
-            background: Palette.current.surface_color;
+                height: 60px;
+                background: Palette.current.surface_color;
             // Drop shadow or border bottom
             Rectangle {
-                y: parent.height - 1px;
-                height: 1px;
-                background: Palette.current.border_color;
-            }
+                    y: parent.height - 1px;
+                    height: 1px;
+                    background: Palette.current.border_color;
+                }
 
-            HorizontalLayout {
-                padding-left: 16px;
-                padding-right: 16px;
-                spacing: 12px;
-                alignment: center; // Vertically center items
+                HorizontalLayout {
+                    padding-left: 16px;
+                    padding-right: 16px;
+                    spacing: 12px;
+                    alignment: center; // Vertically center items
 
                 // Logo / Icon
                 Icon {
-                    icon_name: "bolt";
-                    size: 24px;
-                    icon_color: Palette.current.accent_color;
-                }
-
-                // Search Input (Stretches)
-                ModernLineEdit {
-                    placeholder-text: "Search anything...";
-                    horizontal-stretch: 1;
-                    accepted(text) => {
-                        root.current_query = text;
-                        perform_search(text, root.filter_type, root.filter_size);
+                        icon_name: "bolt";
+                        size: 24px;
+                        icon_color: Palette.current.accent_color;
                     }
-                    edited(text) => {
-                        root.current_query = text;
-                        if (text != "") {
+
+                    // Search Input (Stretches)
+                search_input := ModernLineEdit {
+                        placeholder-text: "Search anything... (Ctrl+F)";
+                        horizontal-stretch: 1;
+                        accepted(text) => {
+                        // Instant search on Enter
+                        debounce_running = false;
+                            root.current_query = text;
                             perform_search(text, root.filter_type, root.filter_size);
                         }
+                        edited(text) => {
+                            root.current_query = text;
+                            root.pending_query = text;
+                            debounce_running = false; // Reset
+                        debounce_running = true;  // Start
                     }
-                }
+                    }
 
-                // Actions (Right side)
+                    // Actions (Right side)
                 ThemeToggle {
-                    toggled => {
-                        Palette.is_dark = !Palette.is_dark;
+                        toggled => {
+                            Palette.is_dark = !Palette.is_dark;
+                        }
                     }
-                }
                 
                 // Settings button
                 Rectangle {
-                    width: 40px;
-                    height: 40px;
-                    border-radius: 6px;
-                    background: touch_settings.has-hover ? Palette.current.bg_color : transparent;
-                    animate background { duration: 150ms; }
-                    touch_settings := TouchArea {
-                        clicked => {
-                            show_settings = !show_settings;
+                        width: 40px;
+                        height: 40px;
+                        border-radius: 6px;
+                        background: touch_settings.has-hover ? Palette.current.bg_color : transparent;
+                        animate background { duration: 150ms; }
+                        touch_settings := TouchArea {
+                            clicked => {
+                                show_settings = !show_settings;
+                            }
                         }
-                    }
 
-                    Icon {
-                        icon_name: "settings";
-                        size: 20px;
-                        icon_color: Palette.current.text_primary;
+                        Icon {
+                            icon_name: "settings";
+                            size: 20px;
+                            icon_color: Palette.current.text_primary;
+                        }
                     }
                 }
             }
-        }
 
-        // ---------------------------------------------------------
+            // ---------------------------------------------------------
         // 1.5. FILTER BAR
         // ---------------------------------------------------------
         FilterBar {
-            selected_type <=> root.filter_type;
-            selected_size <=> root.filter_size;
-            filter_changed => {
-                if (root.results.length > 0 || root.current_query != "") {
-                    root.perform_search(root.current_query, root.filter_type, root.filter_size);
+                selected_type <=> root.filter_type;
+                selected_size <=> root.filter_size;
+                filter_changed => {
+                    if (root.results.length > 0 || root.current_query != "") {
+                        root.perform_search(root.current_query, root.filter_type, root.filter_size);
+                    }
                 }
             }
-        }
 
-        // ---------------------------------------------------------
+            // ---------------------------------------------------------
         // 2. RESULTS AREA (Dense List with Preview)
         // ---------------------------------------------------------
         HorizontalLayout {
             // Left side: Results List
             Rectangle {
-                clip: true;
-                horizontal-stretch: 1;
-                if results.length == 0: VerticalLayout {
-                    alignment: center;
-                    spacing: 16px;
-                    Text {
-                        text: is_searching ? "Searching..." : (root.current_query == "" ? "Type to start searching" : "No results found");
-                        color: Palette.current.text_secondary;
-                        font-size: 14px;
-                        horizontal-alignment: center;
-                    }
-                }
+                    clip: true;
+                    horizontal-stretch: 1;
+                    if results.length == 0: VerticalLayout {
+                        alignment: center;
+                        spacing: 16px;
+                        if is_searching: VerticalLayout {
+                            spacing: 8px;
+                            alignment: center;
+                            Spinner { }
 
-                ListView {
-                    padding-top: 4px;
-                    padding-bottom: 4px;
-                    for data[index] in results: ResultRow {
-                        title: data.title;
-                        path: data.path;
-                        score: data.score;
-                        icon: data.icon;
-                        alternate: mod(index, 2) == 0;
-                        selected: selected_path == data.path;
-                        clicked => {
-                            selected_path = data.path;
-                            request_preview(data.path);
+                            Text {
+                                text: "Searching...";
+                                color: Palette.current.text_secondary;
+                                font-size: 14px;
+                                horizontal-alignment: center;
+                            }
+                        }
+                        if !is_searching: Text {
+                            text: (root.current_query == "" ? "Type to start searching" : "No results found");
+                            color: Palette.current.text_secondary;
+                            font-size: 14px;
+                            horizontal-alignment: center;
+                        }
+                    }
+
+                    ListView {
+
+                        for data[index] in results: ResultRow {
+                            title: data.title;
+                            path: data.path;
+                            score: data.score;
+                            icon: data.icon;
+                            snippet: data.snippet;
+                            alternate: mod(index, 2) == 0;
+                            selected: selected_path == data.path;
+                            clicked => {
+                                selected_path = data.path;
+                                request_preview(data.path);
+                            }
                         }
                     }
                 }
-            }
             
             // Divider
             if selected_path != "": Rectangle {
-                width: 1px;
-                background: Palette.current.border_color;
-            }
+                    width: 1px;
+                    background: Palette.current.border_color;
+                }
             
             // Right side: Preview Pane
             if selected_path != "": PreviewPane {
-                width: 350px;
-                file_name: preview_title;
-                file_path: selected_path;
-                content: preview_content;
-                preview_image: preview_image;
-                file_type: preview_type;
-                file_size: preview_file_size;
-                modified: preview_modified;
-                open_file => {
-                    root.open_file(root.selected_path);
-                }
-                open_folder => {
-                    root.open_folder(root.selected_path);
-                }
-                copy_path => {
-                    root.copy_path(root.selected_path);
+                    width: 350px;
+                    file_name: preview_title;
+                    file_path: selected_path;
+                    content: preview_content;
+                    preview_image: preview_image;
+                    file_type: preview_type;
+                    file_size: preview_file_size;
+                    modified: preview_modified;
+                    open_file => {
+                        root.open_file(root.selected_path);
+                    }
+                    open_folder => {
+                        root.open_folder(root.selected_path);
+                    }
+                    copy_path => {
+                        root.copy_path(root.selected_path);
+                    }
                 }
             }
-        }
 
-        // ---------------------------------------------------------
+            // ---------------------------------------------------------
         // 3. STATUS BAR (Footer)
         // ---------------------------------------------------------
         Rectangle {
-            height: 28px;
-            background: Palette.current.surface_color;
-            Rectangle {
-                y: 0;
-                height: 1px;
-                background: Palette.current.border_color;
-            }
-
-            HorizontalLayout {
-                padding-left: 12px;
-                padding-right: 12px;
-                spacing: 20px;
-                
-                // Scanning Status
-                if content_status != "Idle": HorizontalLayout {
-                    spacing: 8px;
-                    Text {
-                        text: "Indexed: " + Math.round(content_progress * 100) + "%";
-                        color: Palette.current.accent_color;
-                        font-size: 11px;
-                        vertical-alignment: center;
-                    }
-                    // Simple progress bar
-                    Rectangle {
-                        width: 100px;
-                        height: 8px;
-                        y: (parent.height - self.height) / 2;
-                        background: Palette.current.border_color;
-                        border-radius: 4px;
-                        Rectangle {
-                            x: 0;
-                            width: parent.width * content_progress;
-                            height: 100%;
-                            background: Palette.current.accent_color;
-                            border-radius: 4px;
-                        }
-                    }
-                }
-
-                if content_status == "Idle": Text {
-                    text: "Ready";
-                    color: Palette.current.text_secondary;
-                    font-size: 11px;
-                    vertical-alignment: center;
-                }
+                height: 28px;
+                background: Palette.current.surface_color;
                 Rectangle {
-                    horizontal-stretch: 1;
-                } // Spacer
-
-                // Stats
-                Text {
-                    text: (root.current_query != "" ? root.results.length + " Found • " : "") + files_indexed + " Indexed";
-                    color: Palette.current.text_primary;
-                    font-size: 11px;
-                    vertical-alignment: center;
-                }
-
-                Rectangle {
-                    width: 1px;
-                    height: 16px;
-                    y: 6px;
+                    y: 0;
+                    height: 1px;
                     background: Palette.current.border_color;
                 }
 
+                HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    spacing: 20px;
+                
+                // Scanning Status
+                if content_status != "Idle": HorizontalLayout {
+                        spacing: 8px;
+                        Text {
+                            text: "Indexed: " + Math.round(content_progress * 100) + "%";
+                            color: Palette.current.accent_color;
+                            font-size: 11px;
+                            vertical-alignment: center;
+                        }
+                    // Simple progress bar
+                    Rectangle {
+                            width: 100px;
+                            height: 8px;
+                            y: (parent.height - self.height) / 2;
+                            background: Palette.current.border_color;
+                            border-radius: 4px;
+                            Rectangle {
+                                x: 0;
+                                width: parent.width * content_progress;
+                                height: 100%;
+                                background: Palette.current.accent_color;
+                                border-radius: 4px;
+                            }
+                        }
+                    }
+
+                    if content_status == "Idle": Text {
+                        text: "Ready";
+                        color: Palette.current.text_secondary;
+                        font-size: 11px;
+                        vertical-alignment: center;
+                    }
+                    Rectangle {
+                        horizontal-stretch: 1;
+                    } // Spacer
+
+                // Stats
                 Text {
-                    text: index_size;
-                    color: Palette.current.text_primary;
-                    font-size: 11px;
-                    vertical-alignment: center;
+                        text: (root.current_query != "" ? root.results.length + " Found • " : "") + files_indexed + " Indexed";
+                        color: Palette.current.text_primary;
+                        font-size: 11px;
+                        vertical-alignment: center;
+                    }
+
+                    Rectangle {
+                        width: 1px;
+                        height: 16px;
+                        y: 6px;
+                        background: Palette.current.border_color;
+                    }
+
+                    Text {
+                        text: index_size;
+                        color: Palette.current.text_primary;
+                        font-size: 11px;
+                        vertical-alignment: center;
+                    }
                 }
             }
         }
-    }
+    } // End FocusScope
     
     // ---------------------------------------------------------
     // 4. STATUS INDICATOR (Bottom Right) - Clickable

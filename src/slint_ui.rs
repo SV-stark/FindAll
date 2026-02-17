@@ -4,18 +4,20 @@ use std::rc::Rc;
 use crate::commands::AppState;
 use tokio::sync::mpsc;
 use crate::scanner::{ProgressEvent, ProgressType};
-use crate::settings::AppSettings as RustAppSettings;
 
-use tracing::warn;
 use tracing::info;
 
 slint::include_modules!();
 
+
+
 pub fn run_slint_ui(state: Arc<AppState>, mut progress_rx: mpsc::Receiver<ProgressEvent>) {
     let ui = AppWindow::new().unwrap();
 
-    // Load initial settings
-    let current_settings = state.settings_manager.load().unwrap_or_default();
+    // Load initial settings and cache them
+    let initial_settings = state.settings_manager.load().unwrap_or_default();
+    let cached_settings = Arc::new(std::sync::Mutex::new(initial_settings.clone()));
+    let current_settings = initial_settings;
     let slint_settings = AppSettings {
         theme: current_settings.theme.to_string().into(),
         index_dirs: ModelRc::from(Rc::new(VecModel::from(
@@ -101,6 +103,7 @@ pub fn run_slint_ui(state: Arc<AppState>, mut progress_rx: mpsc::Receiver<Progre
     // Set up search callback
     let ui_weak_search = ui.as_weak();
     let state_search = state.clone();
+    let cached_settings_for_search = cached_settings.clone();
     
     // Track latest query to prevent race conditions (U2/P8)
     let current_search_query = Arc::new(std::sync::Mutex::new(String::new()));
@@ -148,9 +151,28 @@ pub fn run_slint_ui(state: Arc<AppState>, mut progress_rx: mpsc::Receiver<Progre
         // ui_handle.set_results(ModelRc::from(Rc::new(VecModel::default()))); 
         
         let ui_weak_for_task = ui_weak_search.clone();
+        let settings_clone = cached_settings_for_search.clone();
         tokio::spawn(async move {
-            let max_results = state.settings_manager.load().map(|s| s.max_results).unwrap_or(50);
-            let results = state.indexer.search(&query, max_results, min_size, max_size, extensions.as_deref()).await.unwrap_or_default();
+            let max_results = settings_clone.lock().unwrap().max_results;
+            
+            let results = if filter_type == "Filename Only" {
+                 if let Some(f_index) = &state.filename_index {
+                     f_index.search(&query, max_results).unwrap_or_default()
+                        .into_iter()
+                        .map(|r| crate::indexer::searcher::SearchResult {
+                            file_path: r.file_path,
+                            title: Some(r.file_name),
+                            score: 1.0,
+                            matched_terms: vec![], // Nucleo doesn't expose terms easily here
+                            snippet: None,
+                        })
+                        .collect()
+                 } else {
+                     vec![]
+                 }
+            } else {
+                 state.indexer.search(&query, max_results, min_size, max_size, extensions.as_deref()).await.unwrap_or_default()
+            };
             
             // Check if this result is still relevant
             {
@@ -188,6 +210,7 @@ pub fn run_slint_ui(state: Arc<AppState>, mut progress_rx: mpsc::Receiver<Progre
                     path: r.file_path.into(),
                     score: r.score,
                     icon: icon.into(),
+                    snippet: r.snippet.unwrap_or_default().into(),
                 }
             }).collect();
             
@@ -216,9 +239,17 @@ pub fn run_slint_ui(state: Arc<AppState>, mut progress_rx: mpsc::Receiver<Progre
         let state = state_rebuild.clone();
         tokio::spawn(async move {
             info!("Rebuilding index...");
-            // We could clear index using writer.delete_all_documents() if exposed, 
-            // or just trigger scanning. Ideally we should wipe it.
-            // For now, let's just trigger a re-scan of all folders.
+            // Clear existing index and metadata to force full rebuild
+            if let Err(e) = state.indexer.clear() {
+                eprintln!("Failed to clear index: {}", e);
+            }
+            if let Err(e) = state.indexer.commit() {
+                eprintln!("Failed to commit cleared index: {}", e);
+            }
+            if let Err(e) = state.metadata_db.clear() {
+                eprintln!("Failed to clear metadata: {}", e);
+            }
+
             let settings = state.settings_manager.load().unwrap_or_default();
             for dir_str in settings.index_dirs {
                 let dir = std::path::PathBuf::from(dir_str);
@@ -240,9 +271,11 @@ pub fn run_slint_ui(state: Arc<AppState>, mut progress_rx: mpsc::Receiver<Progre
     let ui_weak_settings = ui.as_weak();
     let state_settings = state.clone();
 
+    let cached_settings_for_save = cached_settings.clone();
     ui.on_save_settings(move |slint_settings| {
         let Some(ui) = ui_weak_settings.upgrade() else { return };
-        let mut current = state_settings.settings_manager.load().unwrap_or_default();
+        // Update cache
+        let mut current = cached_settings_for_save.lock().unwrap().clone();
         
         // Update fields
         current.theme = match slint_settings.theme.as_str() {
@@ -258,6 +291,9 @@ pub fn run_slint_ui(state: Arc<AppState>, mut progress_rx: mpsc::Receiver<Progre
         
         if let Err(e) = state_settings.settings_manager.save(&current) {
             eprintln!("Failed to save settings: {}", e);
+        } else {
+             // Update the cache if save succeeded
+             *cached_settings_for_save.lock().unwrap() = current;
         }
     });
 
@@ -398,7 +434,8 @@ pub fn run_slint_ui(state: Arc<AppState>, mut progress_rx: mpsc::Receiver<Progre
     ui.on_open_folder(move |path| {
         let path_str = path.to_string();
         let path_buf = std::path::PathBuf::from(&path_str);
-        if let Err(e) = opener::open(path_buf) {
+        // Fix B10: Open parent folder, not the file itself
+        if let Err(e) = opener::open(path_buf.parent().unwrap_or(&path_buf)) {
             eprintln!("Failed to open folder: {}", e);
         }
     });

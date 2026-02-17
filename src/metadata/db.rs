@@ -197,6 +197,32 @@ impl MetadataDb {
         Ok(existed)
     }
 
+    /// Clear all metadata (nuke the table)
+    pub fn clear(&self) -> Result<()> {
+        let txn = self.db.begin_write().map_err(|e| {
+            FlashError::database("database_operation", "files_table", e.to_string())
+        })?;
+
+        {
+            // Deleting the table is the fastest way to clear it
+            txn.delete_table(FILES_TABLE).map_err(|e| {
+                FlashError::database("database_operation", "files_table", e.to_string())
+            })?;
+            // We must recreate it in the same transaction or next open?
+            // Actually, open_table in next usage will recreate it if we create it here?
+            // Safer to just open it again to ensure it exists empty.
+            let _ = txn.open_table(FILES_TABLE).map_err(|e| {
+                 FlashError::database("database_operation", "files_table", e.to_string())
+            })?;
+        }
+
+        txn.commit().map_err(|e| {
+            FlashError::database("database_operation", "files_table", e.to_string())
+        })?;
+
+        Ok(())
+    }
+
     /// Get metadata for a specific file
     pub fn get_metadata(&self, path: &Path) -> Result<Option<FileMetadata>> {
         let txn = self.db.begin_read().map_err(|e| {
@@ -361,6 +387,17 @@ impl RedbValue for FileMetadata {
     where
         Self: 'a,
     {
+        // Simple sanity check to prevent panics on extremely short/corrupt data
+        if data.len() < 40 {
+             return FileMetadata {
+                path: String::new().into(),
+                modified: 0,
+                size: 0,
+                content_hash: [0; 32],
+                indexed_at: 0,
+            };
+        }
+
         bincode::deserialize(data).unwrap_or_else(|e| {
             eprintln!("Failed to deserialize FileMetadata: {}", e);
             FileMetadata {

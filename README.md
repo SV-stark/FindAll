@@ -19,8 +19,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-000000?style=flat&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/Tauri-24C8D8?style=flat&logo=tauri&logoColor=white" alt="Tauri">
-  <img src="https://img.shields.io/badge/Svelte-FF3E00?style=flat&logo=svelte&logoColor=white" alt="Svelte">
+  <img src="https://img.shields.io/badge/Slint-230046?style=flat&logo=slint&logoColor=white" alt="Slint">
   <img src="https://img.shields.io/badge/License-GPL--3.0-blue.svg" alt="License">
 </p>
 
@@ -30,13 +29,13 @@
 
 - **⚡ Blazing Fast**: Sub-50ms search results across millions of documents
 - **📂 Filename Search**: Instant filename-only search mode for ultra-fast navigation
-- **💾 Minimal Footprint**: <50MB RAM usage at idle (vs 200MB+ for Electron apps)
+- **💾 Minimal Footprint**: <30MB RAM usage at idle (vs 200MB+ for Electron apps)
 - **📄 Universal Format Support**: PDF, DOCX, XLSX, EPUB, EML, MSG, ZIP, Markdown, Code files, ODT, ODP, ODS
 - **🔍 Full-Text Search**: BM25 scoring, boolean queries, exact phrase matching
 - **📊 Advanced Filters**: Filter by size (`size:>1MB`), extension (`ext:rs`), or path (`path:src`)
 - **🔄 Live Indexing**: Automatic file watching and incremental updates
 - **🎯 Smart Filtering**: .gitignore support, custom exclude patterns
-- **🌙 Native UI**: Beautiful dark/light themes using system webview
+- **🌙 Native UI**: Beautiful dark/light themes using Slint's native toolkit
 
 ## 📥 Installation
 
@@ -57,14 +56,11 @@ Download the latest release for your platform from the [Releases](https://github
 git clone https://github.com/yourusername/flash-search.git
 cd flash-search
 
-# Install dependencies
-npm install
-
 # Build the application
-npm run tauri build
+cargo build --release
 
-# Or run in development mode
-npm run tauri dev
+# Run in development mode
+cargo run
 ```
 
 ## 🎮 Usage
@@ -105,8 +101,7 @@ npm run tauri dev
 | Component | Technology | Purpose |
 |-----------|------------|---------|
 | **Language** | Rust | Zero-overhead, memory-safe core |
-| **GUI** | Tauri v2 | Native webview-based UI (<20MB RAM) |
-| **Frontend** | Svelte + TypeScript | Reactive, compiled-to-vanilla JS |
+| **GUI** | Slint | Lightweight, native UI framework (<30MB RAM) |
 | **Search Engine** | Tantivy | Full-text indexing with BM25 scoring |
 | **Metadata DB** | redb | Pure Rust key-value storage |
 | **Concurrency** | Rayon + Tokio | Parallel processing + async I/O |
@@ -134,7 +129,7 @@ Benchmarks on AMD Ryzen 7 5800X with NVMe SSD:
 | **Index 100,000 TXT files** | ~12 seconds |
 | **Search latency (p50)** | 12ms |
 | **Search latency (p99)** | 45ms |
-| **Idle RAM usage** | ~35MB |
+| **Idle RAM usage** | ~25MB |
 | **Peak RAM (indexing)** | ~180MB |
 
 ### Comparison
@@ -142,7 +137,7 @@ Benchmarks on AMD Ryzen 7 5800X with NVMe SSD:
 | Feature | Flash Search | AnyTXT | Windows Search | Recoll |
 |---------|-------------|---------|----------------|---------|
 | Startup Time | Instant | ~2s | System | ~3s |
-| RAM Usage | 35MB | 80MB | 150MB+ | 120MB |
+| RAM Usage | 25MB | 80MB | 150MB+ | 120MB |
 | PDF Search | ✅ | ✅ | ⚠️ | ✅ |
 | Live Updates | ✅ | ✅ | ✅ | ❌ |
 | Cross-Platform | ✅ | ⚠️ | ❌ | ✅ |
@@ -150,7 +145,7 @@ Benchmarks on AMD Ryzen 7 5800X with NVMe SSD:
 ## 🗺️ Roadmap
 
 ### Phase 1: Core (Completed ✅)
-- [x] Project setup with Tauri v2
+- [x] Project setup with Slint
 - [x] Basic file parsers (PDF, DOCX, TXT)
 - [x] Tantivy integration
 - [x] Parallel file scanning
@@ -185,16 +180,12 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 # Install Rust
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
-# Install Node.js (v18+)
-nvm install 18
-
 # Clone and setup
 git clone https://github.com/yourusername/flash-search.git
 cd flash-search
-npm install
 
 # Run development server
-npm run tauri dev
+cargo run
 ```
 
 ## 📄 License
@@ -204,7 +195,7 @@ This project is licensed under the GNU General Public License v3 - see the [LICE
 ## 🙏 Acknowledgments
 
 - [Tantivy](https://github.com/quickwit-oss/tantivy) - The blazing-fast search engine library
-- [Tauri](https://tauri.app/) - The framework for desktop apps
+- [Slint](https://slint.dev/) - The lightweight UI framework
 - [Redb](https://github.com/cberner/redb) - The pure Rust embedded database
 
 ---

@@ -68,10 +68,10 @@ fn parse_with_mmap(path: &Path) -> Result<String> {
             .map_err(|e| FlashError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?
     };
 
-    // Convert to string (this will allocate, but only once)
-    // For text files, we assume valid UTF-8
-    String::from_utf8(mmap.to_vec())
-        .map_err(|e| FlashError::parse(path, format!("Invalid UTF-8: {}", e)))
+    // Use from_utf8_lossy to handle potential invalid UTF-8 sequences without erroring out
+    // and to avoid an explicit intermediate Vec allocation (mmap.to_vec()).
+    // This returns Cow<str>, into_owned() converts to String.
+    Ok(String::from_utf8_lossy(&mmap).into_owned())
 }
 
 /// Extract title from first non-empty line

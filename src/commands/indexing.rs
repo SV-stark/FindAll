@@ -21,7 +21,7 @@ pub async fn start_indexing_internal(
     let progress_tx = state.progress_tx.clone();
 
     tokio::spawn(async move {
-        let scanner = Scanner::new(indexer, metadata_db, Some(progress_tx));
+        let scanner = Scanner::new(indexer, metadata_db, state.filename_index.clone(), Some(progress_tx));
         if let Err(e) = scanner.scan_directory(path, exclude_patterns).await {
             eprintln!("Indexing error: {}", e);
         }

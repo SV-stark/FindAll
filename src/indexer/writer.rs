@@ -171,6 +171,20 @@ impl IndexWriterManager {
         Ok(())
     }
 
+    /// Delete all documents from the index
+    pub fn delete_all_documents(&self) -> Result<()> {
+        let writer = self
+            .writer
+            .lock()
+            .map_err(|_| FlashError::poisoned_lock("IndexWriter"))?;
+
+        writer
+            .delete_all_documents()
+            .map_err(|e| FlashError::index(format!("Failed to delete all documents: {}", e)))?;
+
+        Ok(())
+    }
+
     /// Commit pending changes to disk
     pub fn commit(&self) -> Result<()> {
         let mut writer = self

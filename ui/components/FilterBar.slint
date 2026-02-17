@@ -38,7 +38,16 @@ export component FilterBar inherits Rectangle {
 
             ComboBox {
                 width: 120px;
-                model: ["All", "Text", "Image", "Audio", "Video", "Document", "Archive"];
+                model: [
+                    "All",
+                    "Filename Only",
+                    "Text",
+                    "Image",
+                    "Audio",
+                    "Video",
+                    "Document",
+                    "Archive"
+                ];
                 current-value: "All";
                 selected => {
                     root.selected_type = self.current-value;

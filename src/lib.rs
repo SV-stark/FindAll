@@ -59,6 +59,7 @@ pub fn setup_app() -> (Arc<AppState>, tokio::sync::mpsc::Receiver<crate::scanner
     let scanner = Arc::new(crate::scanner::Scanner::new(
         indexer_shared.clone(),
         metadata_db_shared.clone(),
+        filename_index.clone(),
         Some(progress_tx.clone()),
     ));
 

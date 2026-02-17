@@ -25,6 +25,11 @@ pub struct FilenameIndexStats {
     pub index_size_bytes: u64,
 }
 
+/// File extension for the binary index file
+const INDEX_FILENAME: &str = "filenames.bin";
+/// Legacy JSON filename for migration
+const LEGACY_INDEX_FILENAME: &str = "filenames.json";
+
 pub struct FilenameIndex {
     entries: Arc<RwLock<Vec<FilenameEntry>>>,
     data_path: std::path::PathBuf,
@@ -35,18 +40,47 @@ impl FilenameIndex {
         let data_path = data_path.to_path_buf();
 
         let entries = if data_path.exists() {
-            match std::fs::read_to_string(data_path.join("filenames.json")) {
-                Ok(content) => match serde_json::from_str::<Vec<FilenameEntry>>(&content) {
-                    Ok(entries) => {
-                        tracing::info!("Loaded {} filenames from disk", entries.len());
-                        entries
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to parse filename index: {}", e);
-                        Vec::new()
-                    }
-                },
-                Err(_) => Vec::new(),
+            // Try bincode first, then fall back to legacy JSON
+            let bin_path = data_path.join(INDEX_FILENAME);
+            let json_path = data_path.join(LEGACY_INDEX_FILENAME);
+
+            if bin_path.exists() {
+                match std::fs::read(&bin_path) {
+                    Ok(bytes) => match bincode::deserialize::<Vec<FilenameEntry>>(&bytes) {
+                        Ok(entries) => {
+                            tracing::info!("Loaded {} filenames from bincode index", entries.len());
+                            entries
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to parse bincode filename index: {}", e);
+                            Vec::new()
+                        }
+                    },
+                    Err(_) => Vec::new(),
+                }
+            } else if json_path.exists() {
+                // Migrate from legacy JSON
+                match std::fs::read_to_string(&json_path) {
+                    Ok(content) => match serde_json::from_str::<Vec<FilenameEntry>>(&content) {
+                        Ok(entries) => {
+                            tracing::info!(
+                                "Migrated {} filenames from legacy JSON index",
+                                entries.len()
+                            );
+                            // Save as bincode immediately and remove JSON
+                            Self::save_to_disk_sync(&entries, &data_path);
+                            let _ = std::fs::remove_file(&json_path);
+                            entries
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to parse legacy JSON filename index: {}", e);
+                            Vec::new()
+                        }
+                    },
+                    Err(_) => Vec::new(),
+                }
+            } else {
+                Vec::new()
             }
         } else {
             Vec::new()
@@ -73,7 +107,7 @@ impl FilenameIndex {
                 let data = guard.clone();
                 let data_path = self.data_path.clone();
                 std::thread::spawn(move || {
-                    Self::save_to_disk(&data, &data_path);
+                    Self::save_to_disk_sync(&data, &data_path);
                 });
             }
         }
@@ -94,32 +128,39 @@ impl FilenameIndex {
                 })
                 .collect();
             std::thread::spawn(move || {
-                Self::save_to_disk(&data, &data_path);
+                Self::save_to_disk_sync(&data, &data_path);
             });
         }
 
         Ok(())
     }
 
-    fn save_to_disk(entries: &[FilenameEntry], data_path: &std::path::PathBuf) {
-        if let Ok(json) = serde_json::to_string(entries) {
-            let _ = std::fs::write(data_path.join("filenames.json"), json);
+    /// Save entries to disk using bincode (P3: replaces JSON for ~10x smaller + faster)
+    fn save_to_disk_sync(entries: &[FilenameEntry], data_path: &std::path::PathBuf) {
+        match bincode::serialize(entries) {
+            Ok(bytes) => {
+                let _ = std::fs::write(data_path.join(INDEX_FILENAME), bytes);
+            }
+            Err(e) => {
+                tracing::warn!("Failed to serialize filename index: {}", e);
+            }
         }
     }
 
     pub fn search(&self, query: &str, limit: usize) -> Result<Vec<FilenameSearchResult>> {
-        let entries = self.entries.clone();
+        // P4: Hold the read lock for the duration of the search instead of cloning
+        let entries_lock = self.entries.clone();
 
-        let entries = match entries.read() {
-            Ok(guard) => guard.clone(),
+        let guard = match entries_lock.read() {
+            Ok(guard) => guard,
             Err(_) => return Ok(Vec::new()),
         };
 
-        if entries.is_empty() {
+        if guard.is_empty() {
             return Ok(Vec::new());
         }
 
-        let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+        let names: Vec<&str> = guard.iter().map(|e| e.name.as_str()).collect();
 
         let mut matcher = Matcher::new(Config::DEFAULT.match_paths());
         let pattern = Pattern::parse(query, CaseMatching::Ignore);
@@ -128,12 +169,18 @@ impl FilenameIndex {
 
         let mut results = Vec::with_capacity(matches.len().min(limit));
 
-        for (idx, (_score, _matched)) in matches.into_iter().enumerate() {
-            if idx >= limit {
+        // B3 fix: `match_list` returns (&str, score) pairs sorted by score.
+        // The returned &str borrows from our `names` slice, so we can find
+        // the original index by comparing pointers instead of string values.
+        for (matched_name, _score) in matches.into_iter() {
+            if results.len() >= limit {
                 break;
             }
 
-            if let Some(entry) = entries.get(idx) {
+            // Find the entry whose name matches the returned reference.
+            // Use pointer comparison for O(1) matching when possible.
+            let matched_ptr = matched_name.as_ptr();
+            if let Some(entry) = guard.iter().find(|e| e.name.as_str().as_ptr() == matched_ptr) {
                 results.push(FilenameSearchResult {
                     file_path: entry.path.clone(),
                     file_name: entry.name.clone(),
@@ -151,7 +198,8 @@ impl FilenameIndex {
             guard.clear();
             let data_path = self.data_path.clone();
             std::thread::spawn(move || {
-                let _ = std::fs::remove_file(data_path.join("filenames.json"));
+                let _ = std::fs::remove_file(data_path.join(INDEX_FILENAME));
+                let _ = std::fs::remove_file(data_path.join(LEGACY_INDEX_FILENAME));
             });
         }
 
@@ -200,7 +248,7 @@ impl FilenameIndex {
                 })
                 .collect();
             std::thread::spawn(move || {
-                Self::save_to_disk(&data, &data_path);
+                Self::save_to_disk_sync(&data, &data_path);
             });
         }
 

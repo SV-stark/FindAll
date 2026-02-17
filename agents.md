@@ -6,78 +6,55 @@
 
 ## Architecture Overview
 
-```
 ┌─────────────────────────────────────────────────────────────┐
 │                     Flash Search                             │
 ├─────────────────────────────────────────────────────────────┤
-│  Frontend (Svelte + TypeScript)                              │
-│  ├── UI Components                                           │
-│  ├── Search Interface                                        │
-│  └── Settings Panel                                          │
+│  UI (Slint)                                                 │
+│  ├── components/    - Reusable Slint widgets                │
+│  ├── main.slint     - Main window definition                │
+│  └── globals.slint  - Global properties and types           │
 ├─────────────────────────────────────────────────────────────┤
-│  Tauri Bridge                                                │
-│  ├── Commands (invoke handlers)                              │
-│  └── Events (async notifications)                            │
+│  Rust Backend (Glue & Logic)                                │
+│  ├── slint_ui.rs    - Slint window orchestration & callbacks│
+│  ├── commands/      - Business logic handlers               │
+│  └── state/         - Application state management          │
 ├─────────────────────────────────────────────────────────────┤
-│  Rust Backend                                                │
-│  ├── parsers/     - File format parsers                      │
-│  ├── indexer/     - Tantivy search engine wrapper            │
-│  ├── scanner/     - File system crawler & watcher            │
-│  ├── metadata/    - redb database operations                 │
-│  └── state/       - Application state management             │
+│  Core Engine                                                │
+│  ├── indexer/       - Tantivy search engine wrapper         │
+│  ├── parsers/       - File format parsers                   │
+│  ├── scanner/       - File system crawler                   │
+│  └── metadata/      - redb database operations              │
 └─────────────────────────────────────────────────────────────┘
-```
 
 ## Project Structure
 
 ```
 flash-search/
-├── src-tauri/
-│   ├── src/
-│   │   ├── main.rs              # Application entry point
-│   │   ├── lib.rs               # Library exports (if needed)
-│   │   ├── commands.rs          # Tauri command handlers
-│   │   ├── error.rs             # Error types and handling
-│   │   ├── state.rs             # Tauri managed state
-│   │   ├── parsers/
-│   │   │   ├── mod.rs           # Parser dispatch
-│   │   │   ├── docx.rs          # DOCX parser (zip + quick-xml)
-│   │   │   ├── pdf.rs           # PDF parser
-│   │   │   ├── text.rs          # Text file parser
-│   │   │   └── excel.rs         # XLSX parser
-│   │   ├── indexer/
-│   │   │   ├── mod.rs           # Indexer module
-│   │   │   ├── schema.rs        # Tantivy schema definition
-│   │   │   ├── writer.rs        # Document addition/removal
-│   │   │   └── searcher.rs      # Query execution
-│   │   ├── scanner/
-│   │   │   ├── mod.rs           # Scanner orchestration
-│   │   │   ├── crawler.rs       # Directory traversal
-│   │   │   ├── watcher.rs       # File system watcher
-│   │   │   └── worker.rs        # Parallel processing pool
-│   │   └── metadata/
-│   │       ├── mod.rs           # Metadata DB interface
-│   │       ├── db.rs            # redb table definitions
-│   │       └── cache.rs         # File hash cache
-│   ├── Cargo.toml
-│   └── tauri.conf.json
 ├── src/
-│   ├── App.svelte               # Main app component
-│   ├── main.ts                  # Frontend entry
-│   ├── components/
-│   │   ├── SearchBar.svelte
-│   │   ├── ResultList.svelte
-│   │   ├── ResultItem.svelte
-│   │   ├── PreviewPanel.svelte
-│   │   └── SettingsPanel.svelte
-│   ├── stores/
-│   │   ├── search.ts            # Search state management
-│   │   └── settings.ts          # User preferences
-│   └── utils/
-│       ├── api.ts               # Tauri invoke wrappers
-│       └── format.ts            # Text formatting utilities
-├── Cargo.toml
-├── package.json
+│   ├── main.rs              # Application entry point
+│   ├── lib.rs               # Library exports
+│   ├── slint_ui.rs          # Slint UI glue code
+│   ├── error.rs             # Error types
+│   ├── models.rs            # Data models
+│   ├── settings.rs          # Settings management
+│   ├── commands/            # Business logic (AppState)
+│   ├── parsers/
+│   │   ├── mod.rs           # Parser dispatch
+│   │   ├── docx.rs          # DOCX parser
+│   │   ├── pdf.rs           # PDF parser
+│   │   └── ...              # Other parsers
+│   ├── indexer/
+│   │   ├── mod.rs           # Indexer module
+│   │   ├── schema.rs        # Tantivy schema
+│   │   └── searcher.rs      # Query execution
+│   └── metadata/
+│       ├── mod.rs           # Metadata DB interface
+│       └── db.rs            # redb definitions
+├── ui/
+│   ├── main.slint           # Main UI definition
+│   ├── globals.slint        # Global types/properties
+│   └── components/          # Reusable Slint widgets
+├── Cargo.toml               # Project dependencies
 └── README.md
 ```
 
@@ -87,16 +64,15 @@ flash-search/
 
 **This project prioritizes performance over convenience.**
 
-- **Memory**: Keep RAM usage under 50MB at idle
+- **Memory**: Keep RAM usage under 30MB at idle
 - **Speed**: Search results must return in <50ms
-- **I/O**: Use memory-mapped files where possible
-- **CPU**: Parallelize parsing with Rayon
+- **I/O**: Use memory-mapped files for parsing
+- **UI Responsiveness**: Never block the Slint event loop
 
 **DON'Ts:**
-- Don't load entire files into memory unless necessary
-- Don't use DOM-based XML parsers (use quick-xml streaming)
-- Don't block the main thread during indexing
-- Don't use heavy serialization (prefer rkyv over serde_json for hot paths)
+- Don't perform heavy computations in Slint callbacks (use `tokio::spawn`)
+- Don't update the UI directly from background threads (use `slint::invoke_from_event_loop`)
+- Don't load large datasets into Slint models at once (use pagination or lazy loading if needed)
 
 ### 2. Error Handling
 
@@ -278,94 +254,59 @@ impl MetadataDb {
 }
 ```
 
-### 7. Tauri Commands
+### 7. Slint Integration (Glue Code)
 
 ```rust
-use tauri::State;
-use std::sync::Arc;
-use tokio::sync::Mutex;
-
-// State type
-pub type AppState = Arc<Mutex<AppStateInner>>;
-
-pub struct AppStateInner {
-    pub indexer: IndexManager,
-    pub metadata_db: MetadataDb,
-}
-
-// Command implementations
-#[tauri::command]
-pub async fn search_query(
-    query: String,
-    state: State<'_, AppState>,
-) -> Result<Vec<SearchResult>, String> {
-    let state = state.lock().await;
+pub fn run_slint_ui(state: Arc<AppState>) {
+    let ui = AppWindow::new().unwrap();
+    let ui_weak = ui.as_weak();
     
-    state.indexer
-        .search(&query)
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn start_indexing(
-    path: String,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    let state = state.inner().clone();
-    
-    // Spawn indexing in background
-    tokio::spawn(async move {
-        let scanner = Scanner::new(state);
-        scanner.scan_directory(PathBuf::from(path)).await
+    // Set up search callback
+    let state_search = state.clone();
+    ui.on_perform_search(move |query| {
+        let Some(ui_handle) = ui_weak.upgrade() else { return };
+        let state = state_search.clone();
+        
+        // Spawn async task for search
+        tokio::spawn(async move {
+            let results = state.indexer.search(&query).await.unwrap_or_default();
+            
+            // Convert to Slint model
+            let slint_results: Vec<FileItem> = results.into_iter().map(|r| {
+                FileItem {
+                    title: r.title.unwrap_or_default().into(),
+                    path: r.file_path.into(),
+                    // ...
+                }
+            }).collect();
+            
+            // Update UI on event loop
+            slint::invoke_from_event_loop(move || {
+                if let Some(ui) = ui_handle.upgrade() {
+                    ui.set_results(ModelRc::from(Rc::new(VecModel::from(slint_results))));
+                }
+            }).unwrap();
+        });
     });
-    
-    Ok(())
+
+    ui.run().unwrap();
 }
 ```
 
-### 8. Frontend Patterns (Svelte)
+### 8. Slint Component Patterns
 
-```svelte
-<!-- SearchBar.svelte -->
-<script lang="ts">
-  import { invoke } from '@tauri-apps/api/core';
-  import { debounce } from '$lib/utils';
-  
-  let query = '';
-  let results: SearchResult[] = [];
-  let isLoading = false;
-  
-  const debouncedSearch = debounce(async (q: string) => {
-    if (!q.trim()) {
-      results = [];
-      return;
-    }
+```slint
+// ui/components/SearchBar.slint
+export component SearchBar inherits Rectangle {
+    callback perform-search(string);
+    in property <bool> is-searching;
     
-    isLoading = true;
-    try {
-      results = await invoke('search_query', { query: q });
-    } catch (e) {
-      console.error('Search failed:', e);
-    } finally {
-      isLoading = false;
+    TextInput {
+        accepted(text) => {
+            root.perform-search(text);
+        }
     }
-  }, 300);
-  
-  $: debouncedSearch(query);
-</script>
-
-<input
-  type="text"
-  bind:value={query}
-  placeholder="Search files..."
-  class="search-input"
-/>
-
-{#if isLoading}
-  <div class="loading">Searching...</div>
-{:else}
-  <ResultList {results} />
-{/if}
+}
 ```
 
 ## Common Tasks
@@ -385,13 +326,12 @@ pub async fn start_indexing(
 3. Consider migration strategy for existing users
 4. Bump index version in constants
 
-### Adding a Tauri Command
+### Adding a New Slint Callback
 
-1. Define command in `src/commands.rs`
-2. Add to `tauri::generate_handler![]` in `main.rs`
-3. Create TypeScript type definition in `src/types.ts`
-4. Add wrapper function in `src/utils/api.ts`
-5. Update AGENTS.md command documentation
+1. Define callback in `ui/main.slint`
+2. Implement listener in `src/slint_ui.rs`
+3. Use `ui.as_weak()` to capture the UI handle safely
+4. Use `slint::invoke_from_event_loop` to send data back to UI
 
 ## Testing Guidelines
 
@@ -422,20 +362,14 @@ mod tests {
 ## Build Commands
 
 ```bash
-# Development
-npm run tauri dev
+# Build and Run
+cargo run
 
 # Build for production
-npm run tauri build
+cargo build --release
 
 # Run Rust tests
-cd src-tauri && cargo test
-
-# Run linter
-cd src-tauri && cargo clippy -- -D warnings
-
-# Format code
-cd src-tauri && cargo fmt
+cargo test
 ```
 
 ## Troubleshooting
@@ -460,8 +394,8 @@ cd src-tauri && cargo fmt
 
 ## Resources
 
+- [Slint Documentation](https://slint.dev/docs/rust/slint/)
 - [Tantivy Documentation](https://docs.rs/tantivy/latest/tantivy/)
-- [Tauri v2 Guide](https://v2.tauri.app/)
 - [Redb Documentation](https://docs.rs/redb/latest/redb/)
 - [Rayon Documentation](https://docs.rs/rayon/latest/rayon/)
 

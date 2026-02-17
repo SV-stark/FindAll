@@ -68,9 +68,19 @@ impl IndexManager {
         self.writer.add_document(doc, modified, size)
     }
 
+    /// Add multiple documents in a single lock acquisition (much more efficient)
+    pub fn add_documents_batch(&self, docs: &[(ParsedDocument, u64, u64)]) -> Result<()> {
+        self.writer.add_documents_batch(docs)
+    }
+
     /// Remove a document from the index
     pub fn remove_document(&self, path: &str) -> Result<()> {
         self.writer.remove_document(path)
+    }
+
+    /// Clear all documents from the index
+    pub fn clear(&self) -> Result<()> {
+        self.writer.delete_all_documents()
     }
 
     /// Commit pending changes

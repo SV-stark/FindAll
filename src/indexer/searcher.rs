@@ -4,11 +4,12 @@ use serde::{Deserialize, Serialize};
 use std::ops::Bound;
 use std::time::{Duration, Instant};
 use tantivy::collector::TopDocs;
-use tantivy::query::{BooleanQuery, FuzzyTermQuery, Occur, QueryParser, RangeQuery, Query};
-use tantivy::schema::{Field, IndexRecordOption, TextOptions, TEXT, STORED, STRING, Schema, Value};
+use tantivy::query::{BooleanQuery, FuzzyTermQuery, Occur, QueryParser, RangeQuery};
+use tantivy::schema::{Field, Schema, Value};
 use tantivy::Term;
-use std::sync::Arc;
 use tantivy::{Index, IndexReader, ReloadPolicy, TantivyDocument};
+use tantivy::snippet::SnippetGenerator;
+use std::sync::OnceLock;
 
 /// Maximum number of cached query results
 const MAX_CACHE_SIZE: usize = 100;
@@ -22,6 +23,8 @@ pub struct SearchResult {
     pub score: f32,
     /// Terms that matched for highlighting
     pub matched_terms: Vec<String>,
+    /// Context snippet with highlighting
+    pub snippet: Option<String>,
 }
 
 /// Statistics about the search index
@@ -191,17 +194,12 @@ impl IndexSearcher {
 
         // Add size filters
         if min_size.is_some() || max_size.is_some() {
-            let size_field_name = self.schema.get_field_name(self.size_field).to_string();
-            let value_type = tantivy::schema::Type::U64;
-
             if let Some(min_val) = min_size {
                 let lower = Term::from_field_u64(self.size_field, min_val);
                 let upper = Term::from_field_u64(self.size_field, u64::MAX);
-                let range = RangeQuery::new_term_bounds(
-                    size_field_name.clone(),
-                    value_type,
-                    &Bound::Included(lower),
-                    &Bound::Included(upper),
+                let range = RangeQuery::new(
+                    Bound::Included(lower),
+                    Bound::Included(upper),
                 );
                 combine.push((Occur::Must, Box::new(range)));
             }
@@ -209,11 +207,9 @@ impl IndexSearcher {
             if let Some(max_val) = max_size {
                 let lower = Term::from_field_u64(self.size_field, 0);
                 let upper = Term::from_field_u64(self.size_field, max_val);
-                let range = RangeQuery::new_term_bounds(
-                    size_field_name.clone(),
-                    value_type,
-                    &Bound::Included(lower),
-                    &Bound::Included(upper),
+                let range = RangeQuery::new(
+                    Bound::Included(lower),
+                    Bound::Included(upper),
                 );
                 combine.push((Occur::Must, Box::new(range)));
             }
@@ -282,11 +278,18 @@ impl IndexSearcher {
                 .and_then(|f| f.as_str())
                 .map(|s: &str| s.to_string());
 
+            // Generate snippet
+            let snippet_generator = SnippetGenerator::create(&searcher, &*final_query, self.content_field)?;
+            let snippet = snippet_generator.snippet_from_doc(&retrieved_doc);
+            // Use to_html() to get <b> tags for highlighting, which UI can parse or sanitize
+            let snippet_html = snippet.to_html(); 
+
             results.push(SearchResult {
                 file_path,
                 title,
                 score,
                 matched_terms: highlight_terms.clone(),
+                snippet: Some(snippet_html),
             });
 
             if results.len() >= limit {
@@ -303,7 +306,8 @@ impl IndexSearcher {
     /// Build a fuzzy query for better typo tolerance
     fn build_fuzzy_query(&self, text_query: &str) -> Result<Box<dyn tantivy::query::Query>> {
         // Check if it's a phrase query (contains quoted strings)
-        let phrase_regex = regex::Regex::new(r#""([^"]+)""#).unwrap();
+        static PHRASE_REGEX: OnceLock<regex::Regex> = OnceLock::new();
+        let phrase_regex = PHRASE_REGEX.get_or_init(|| regex::Regex::new(r#""([^"]+)""#).unwrap());
         
         if phrase_regex.is_match(text_query) {
             // For phrase queries, use the query parser with phrase support

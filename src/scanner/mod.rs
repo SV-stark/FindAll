@@ -33,7 +33,6 @@ pub struct ProgressEvent {
 }
 
 const BATCH_SIZE: usize = 50;
-const CHUNK_SIZE: usize = 1000;
 
 #[derive(Debug)]
 struct IndexTask {
@@ -46,6 +45,7 @@ struct IndexTask {
 pub struct Scanner {
     indexer: Arc<IndexManager>,
     metadata_db: Arc<MetadataDb>,
+    filename_index: Option<Arc<crate::indexer::filename_index::FilenameIndex>>,
     progress_tx: Option<mpsc::Sender<ProgressEvent>>,
 }
 
@@ -53,11 +53,13 @@ impl Scanner {
     pub fn new(
         indexer: Arc<IndexManager>,
         metadata_db: Arc<MetadataDb>,
+        filename_index: Option<Arc<crate::indexer::filename_index::FilenameIndex>>,
         progress_tx: Option<mpsc::Sender<ProgressEvent>>,
     ) -> Self {
         Self {
             indexer,
             metadata_db,
+            filename_index,
             progress_tx,
         }
     }
@@ -96,7 +98,7 @@ impl Scanner {
             
             // --- Stage 1: Filename Indexing ---
             info!("Stage 1: Filename Indexing");
-            let mut builder = builder.build_parallel();
+            let builder = builder.build_parallel();
             builder.run(|| {
                 let path_tx = path_tx.clone();
                 let tx = tx_clone.clone();
@@ -145,115 +147,117 @@ impl Scanner {
             }
         });
 
-        // --- Stage 2: Content Indexing ---
-        // Run in separate blocking thread to process paths as they arrive (Pipeline)
-        let self_clone = Scanner {
-             indexer: self.indexer.clone(),
-             metadata_db: self.metadata_db.clone(),
-             progress_tx: self.progress_tx.clone(),
-        };
-        
+        // --- Stage 2: Content Indexing (Batched) ---
+        // Parse files in parallel via Rayon, collect results via mpsc,
+        // then batch-write to the index and metadata DB.
+        let (task_tx, task_rx) = std::sync::mpsc::sync_channel::<IndexTask>(BATCH_SIZE * 2);
+        let metadata_db_for_parser = self.metadata_db.clone();
+        let metadata_db_for_writer = self.metadata_db.clone();
+        let indexer_clone = self.indexer.clone();
+        let filename_index_clone = self.filename_index.clone();
+        let progress_tx_clone = self.progress_tx.clone();
         let total_files = total.clone();
-        
-        let indexer_handle = tokio::task::spawn_blocking(move || {
-            info!("Stage 2: Content Indexing");
-            let start = Instant::now();
-            let processed = AtomicUsize::new(0);
-            
-            // Use Rayon for parallel processing of the stream
+
+        // --- Stage 2a: Parallel parsing (Rayon) → sends IndexTask into channel ---
+        let parser_handle = tokio::task::spawn_blocking(move || {
+            info!("Stage 2a: Parallel Parsing");
             path_rx.into_iter().par_bridge().for_each(|path: PathBuf| {
-                let p_count = processed.fetch_add(1, Ordering::Relaxed);
-                let current_total = total_files.load(Ordering::Relaxed);
-                
-                if let Err(e) = Scanner::process_and_index_file(&path, &self_clone.indexer, &self_clone.metadata_db) {
-                     // warn!("Failed to index {:?}: {}", path, e);
+                if let Some(task) = Scanner::process_file(&path, &metadata_db_for_parser) {
+                    let _ = task_tx.send(task);
+                }
+            });
+            // task_tx is dropped here, closing the channel
+        });
+
+        // --- Stage 2b: Sequential batch writer (single thread) ---
+        let writer_handle = tokio::task::spawn_blocking(move || {
+            info!("Stage 2b: Batch Writing");
+            let start = Instant::now();
+            let mut doc_batch: Vec<(crate::parsers::ParsedDocument, u64, u64)> = Vec::with_capacity(BATCH_SIZE);
+            let mut meta_batch: Vec<(String, u64, u64, [u8; 32])> = Vec::with_capacity(BATCH_SIZE);
+            let mut processed: usize = 0;
+
+            for task in task_rx.iter() {
+                // Add to filename index
+                if let Some(f_index) = &filename_index_clone {
+                    let path = std::path::Path::new(&task.doc.path);
+                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                        let _ = f_index.add_file(&task.doc.path, name);
+                    }
+                }
+
+                doc_batch.push((task.doc.clone(), task.modified, task.size));
+                meta_batch.push((task.doc.path.clone(), task.modified, task.size, task.content_hash));
+                processed += 1;
+
+                // Flush batch when full
+                if doc_batch.len() >= BATCH_SIZE {
+                    let _ = indexer_clone.add_documents_batch(&doc_batch);
+                    let _ = indexer_clone.commit();
+                    indexer_clone.invalidate_cache();
+                    let _ = metadata_db_for_writer.batch_update_metadata(&meta_batch);
+                    doc_batch.clear();
+                    meta_batch.clear();
                 }
 
                 // Progress update
-                if p_count % 10 == 0 {
+                if processed % 10 == 0 {
+                    let current_total = total_files.load(Ordering::Relaxed);
                     let elapsed = start.elapsed().as_secs_f64();
-                    let rate = if elapsed > 0.0 { p_count as f64 / elapsed } else { 0.0 };
-                    if let Some(tx) = &self_clone.progress_tx {
+                    let rate = if elapsed > 0.0 { processed as f64 / elapsed } else { 0.0 };
+                    if let Some(tx) = &progress_tx_clone {
                          let _ = tx.try_send(ProgressEvent {
                             ptype: ProgressType::Content,
-                            current_file: path.file_name().unwrap_or_default().to_string_lossy().to_string(),
-                            current_folder: path.parent().unwrap_or(&path).to_string_lossy().to_string(),
-                            processed: p_count,
-                            total: current_total, 
+                            current_file: "".to_string(),
+                            current_folder: "".to_string(),
+                            processed,
+                            total: current_total,
                             status: "Indexing contents...".to_string(),
-                            eta_seconds: if rate > 0.0 { (current_total.saturating_sub(p_count) as f64 / rate) as u64 } else { 0 },
+                            eta_seconds: if rate > 0.0 { (current_total.saturating_sub(processed) as f64 / rate) as u64 } else { 0 },
                             files_per_second: rate,
                         });
                     }
                 }
-            });
-            
-            let final_count = processed.load(Ordering::Relaxed);
-            if let Some(tx) = &self_clone.progress_tx {
+            }
+
+            // Flush remaining items (B1: always commit at end)
+            if !doc_batch.is_empty() {
+                let _ = indexer_clone.add_documents_batch(&doc_batch);
+                let _ = indexer_clone.commit();
+                indexer_clone.invalidate_cache();
+                let _ = metadata_db_for_writer.batch_update_metadata(&meta_batch);
+            }
+
+            // Final progress
+            if let Some(tx) = &progress_tx_clone {
                 let _ = tx.try_send(ProgressEvent {
                     ptype: ProgressType::Content,
                     current_file: "".to_string(),
                     current_folder: "".to_string(),
-                    processed: final_count,
-                    total: final_count,
+                    processed,
+                    total: processed,
                     status: "All files indexed".to_string(),
                     eta_seconds: 0,
                     files_per_second: 0.0,
                 });
             }
+
+            info!("Indexed {} files in {:.2}s", processed, start.elapsed().as_secs_f64());
         });
 
-        // Wait for both to complete
+        // Wait for all stages to complete
         let _ = walker_handle.await.map_err(|e| crate::error::FlashError::index(format!("Walk task failed: {}", e)))?;
-        let _ = indexer_handle.await.map_err(|e| crate::error::FlashError::index(format!("Index task failed: {}", e)))?;
-        
+        let _ = parser_handle.await.map_err(|e| crate::error::FlashError::index(format!("Parse task failed: {}", e)))?;
+        let _ = writer_handle.await.map_err(|e| crate::error::FlashError::index(format!("Write task failed: {}", e)))?;
+
+        // Commit filename index to disk
+        if let Some(f_index) = &self.filename_index {
+            let _ = f_index.commit();
+        }
+
         Ok(())
-    }
-    
-    // Helper to process and index without self ref issues in Rayon
-    fn process_and_index_file(path: &Path, indexer: &Arc<IndexManager>, metadata_db: &Arc<MetadataDb>) -> Result<()> {
-         if let Some(task) = Self::process_file(path, metadata_db) {
-             indexer.add_document(&task.doc, task.modified, task.size)?;
-             // We are not batching here? P3 logic was "non-blocking concurrent traversal".
-             // If we don't batch, commit frequency might be high.
-             // But `add_document` in `IndexWriter` is usually buffered in RAM.
-             // Taking a lock on writer for every file might be slow?
-             // Previously `scan_directory` used `mpsc` to batch commits.
-             // If I use `par_bridge`, I can't easily batch unless I use `map...collect` then batch.
-             // But I want pipeline. 
-             // Ideally: `par_bridge` produces tasks -> `mpsc` -> batched committer.
-             // But I simply called `add_document`.
-             // Depending on `IndexManager` impl, this might be fine.
-             // `IndexManager` uses `IndexWriterManager` which locks `writer`.
-             // It's probably fine for now. Performance P3 was focused on "non-blocking traversal".
-             // Batching P4 was about double walk?
-             // Let's assume `add_document` is fast enough.
-             // Only explicit `commit` is needed.
-             // When to commit?
-             // Maybe at end?
-         }
-         Ok(())
     }
 
-    async fn send_progress(&self, event: ProgressEvent) {
-        if let Some(tx) = &self.progress_tx {
-            let _ = tx.send(event).await;
-        }
-    }
-    
-    async fn commit_batch(
-        indexer: &Arc<IndexManager>,
-        metadata_db: &Arc<MetadataDb>,
-        batch: &mut Vec<IndexTask>,
-        metadata_batch: &mut Vec<(String, u64, u64, [u8; 32])>,
-    ) -> Result<()> {
-        for task in batch.iter() {
-            let _ = indexer.add_document(&task.doc, task.modified, task.size);
-        }
-        indexer.commit()?;
-        metadata_db.batch_update_metadata(metadata_batch)?;
-        Ok(())
-    }
     
     fn process_file(
         path: &Path,

@@ -135,6 +135,15 @@ impl FlashError {
     }
 }
 
+impl From<tantivy::TantivyError> for FlashError {
+    fn from(e: tantivy::TantivyError) -> Self {
+        FlashError::Index {
+            msg: e.to_string(),
+            field: None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

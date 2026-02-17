@@ -28,6 +28,12 @@ static PPTX_EXTENSIONS: phf::Map<&'static str, ()> = phf_map! {
     "pptx" => (),
 };
 
+static LEGACY_OFFICE_EXTENSIONS: phf::Map<&'static str, ()> = phf_map! {
+    "doc" => (),
+    "ppt" => (),
+    "xls" => (),
+};
+
 static ODF_EXTENSIONS: phf::Map<&'static str, ()> = phf_map! {
     "odt" => (),
     "odp" => (),
@@ -146,6 +152,7 @@ static OTHER_EXTENSIONS: phf::Map<&'static str, ParserType> = phf_map! {
     "zip" => ParserType::Zip,
     "7z" => ParserType::SevenZ,
     "rar" => ParserType::Rar,
+    "legacy_office" => ParserType::LegacyOffice,
 };
 
 #[derive(Clone, Copy)]
@@ -164,6 +171,7 @@ enum ParserType {
     Zip,
     SevenZ,
     Rar,
+    LegacyOffice,
     Text,
 }
 
@@ -178,6 +186,8 @@ impl ParserType {
             Some(ParserType::Odf)
         } else if TEXT_EXTENSIONS.contains_key(&ext_lower) {
             Some(ParserType::Text)
+        } else if LEGACY_OFFICE_EXTENSIONS.contains_key(&ext_lower) {
+            Some(ParserType::LegacyOffice)
         } else {
             OTHER_EXTENSIONS.get(&ext_lower).copied()
         }
@@ -224,6 +234,7 @@ pub fn parse_file(path: &Path) -> Result<ParsedDocument> {
             Some(ParserType::SevenZ) => return extended::parse_7z_content(path),
             Some(ParserType::Rar) => return extended::parse_rar_content(path),
             Some(ParserType::Text) => return text::parse_text(path),
+            Some(ParserType::LegacyOffice) => return extended::parse_legacy_office(path),
             None => {}
         }
     }
