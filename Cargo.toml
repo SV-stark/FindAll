@@ -10,11 +10,10 @@ rust-version = "1.75"
 name = "flash_search"
 
 [build-dependencies]
-slint-build = "1.9"
 
 [dependencies]
 # UI Framework
-slint = "1.9"
+iced = { version = "0.13", features = ["image", "svg", "tokio"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

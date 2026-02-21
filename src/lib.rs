@@ -1,12 +1,12 @@
 pub mod commands;
 pub mod error;
+pub mod iced_ui;
 pub mod indexer;
 pub mod metadata;
 pub mod models;
 pub mod parsers;
 pub mod scanner;
 pub mod settings;
-pub mod slint_ui;
 pub mod watcher;
 
 use commands::AppState;
@@ -85,7 +85,7 @@ pub fn run_ui() {
     info!("Starting Flash Search UI...");
     let (state, rx) = setup_app();
     
-    slint_ui::run_slint_ui(state, rx);
+    iced_ui::run_ui(state, rx);
 }
 
 pub async fn run_cli(query: Option<String>, _index_path: Option<String>) -> crate::error::Result<()> {
