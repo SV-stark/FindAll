@@ -43,7 +43,7 @@ impl WatcherManager {
                 tokio::time::sleep(Duration::from_millis(1000)).await; // Check every 1s
                 
                 let events = {
-                    let guard = match buffer_for_task.lock() {
+                    let mut guard = match buffer_for_task.lock() {
                         Ok(g) => g,
                         Err(e) => {
                             error!("Watcher lock poisoned: {}", e);
@@ -76,26 +76,45 @@ impl WatcherManager {
                 
                 // Process removes first
                 for path in remove_paths {
-                    let res = Self::remove_single_file(&path, &indexer_for_task, &metadata_db_for_task).await;
-                    if let Ok(processed) = res {
-                        if processed {
+                    let path_str = path.to_string_lossy();
+                    let _ = indexer_for_task.remove_document(&path_str);
+                    match metadata_db_for_task.remove_file(&path) {
+                        Ok(true) => {
                             needs_commit = true;
+                            info!("Removed file (watcher): {:?}", path);
                         }
-                    } else if let Err(e) = res {
-                        error!("Watcher error removing {:?}: {}", path, e);
+                        Err(e) => error!("Watcher error removing {:?}: {}", path, e),
+                        _ => {}
                     }
                 }
                 
                 // Then process indexes
+                let mut docs_to_add = Vec::new();
+                let mut meta_to_update = Vec::new();
+
                 for path in index_paths {
-                    let res = Self::reindex_single_file(&path, &indexer_for_task, &metadata_db_for_task).await;
-                    if let Ok(processed) = res {
-                        if processed {
-                            needs_commit = true;
+                    match Self::reindex_single_file(&path, &metadata_db_for_task).await {
+                        Ok(Some((doc, modified, size, hash))) => {
+                            meta_to_update.push((doc.path.clone(), modified, size, hash));
+                            docs_to_add.push((doc, modified, size));
                         }
-                    } else if let Err(e) = res {
-                        error!("Watcher error indexing {:?}: {}", path, e);
+                        Ok(None) => {} // Skipped or does not exist
+                        Err(e) => {
+                            error!("Watcher error indexing {:?}: {}", path, e);
+                        }
                     }
+                }
+
+                if !docs_to_add.is_empty() {
+                    if let Err(e) = indexer_for_task.add_documents_batch(&docs_to_add) {
+                        error!("Watcher error batch adding to index: {}", e);
+                    }
+                    if let Err(e) = metadata_db_for_task.batch_update_metadata(&meta_to_update) {
+                        error!("Watcher error batch updating DB: {}", e);
+                    } else {
+                        info!("Re-indexed {} files (watcher)", docs_to_add.len());
+                    }
+                    needs_commit = true;
                 }
                 
                 if needs_commit {
@@ -147,6 +166,11 @@ impl WatcherManager {
                                         guard.insert(path.clone(), WatcherAction::Remove);
                                     }
                                     _ => {
+                                        // P4 bug B6: don't overwrite if we already have it maybe? 
+                                        // Actually, if we get Modify/Create, we want to Index.
+                                        // But if we got a remove, then a create, we want to Index.
+                                        // If we got a modification, we process it as an Index.
+                                        // The issue was that the old code did insert(Remove) then insert(Index) in the SAME handler.
                                         guard.insert(path.clone(), WatcherAction::Index);
                                     }
                                 }
@@ -170,19 +194,18 @@ impl WatcherManager {
         Ok(())
     }
     
-    // Returns true if changes were made (requiring commit)
+    // Returns parsed document data if file needs re-indexing
     async fn reindex_single_file(
         path: &Path,
-        indexer: &Arc<IndexManager>,
         metadata_db: &Arc<MetadataDb>,
-    ) -> Result<bool> {
+    ) -> Result<Option<(crate::parsers::ParsedDocument, u64, u64, [u8; 32])>> {
         if !path.exists() {
-             return Self::remove_single_file(path, indexer, metadata_db).await;
+             return Ok(None);
         }
 
         let metadata = match std::fs::metadata(path) {
             Ok(m) => m,
-            Err(_) => return Ok(false), // Ignore if cannot read metadata
+            Err(_) => return Ok(None), // Ignore if cannot read metadata
         };
         
         let modified = metadata.modified()
@@ -195,39 +218,19 @@ impl WatcherManager {
         // Skip check? If watcher said it changed, it probably did.
         // But checking db saves re-hashing if it was a false alarm.
         if !metadata_db.needs_reindex(path, modified, size).unwrap_or(true) {
-            return Ok(false);
+            return Ok(None);
         }
         
         let parsed = match parse_file(path) {
             Ok(p) => p,
             Err(e) => {
                 warn!("Failed to parse file {:?}: {}", path, e);
-                return Ok(false);
+                return Ok(None);
             }
         };
         
         let content_hash: [u8; 32] = blake3::hash(parsed.content.as_bytes()).into();
         
-        indexer.add_document(&parsed, modified, size)?;
-        // NO commit here
-        
-        metadata_db.update_metadata(path, modified, size, content_hash)?;
-        
-        info!("Re-indexed file (watcher): {:?}", path);
-        
-        Ok(true)
-    }
-
-    async fn remove_single_file(
-        path: &Path,
-        indexer: &Arc<IndexManager>,
-        metadata_db: &Arc<MetadataDb>,
-    ) -> Result<bool> {
-        let path_str = path.to_string_lossy();
-        indexer.remove_document(&path_str)?;
-        // NO commit here
-        metadata_db.remove_file(path)?;
-        info!("Removed file (watcher): {:?}", path);
-        Ok(true)
+        Ok(Some((parsed, modified, size, content_hash)))
     }
 }

@@ -63,7 +63,9 @@ pub enum Message {
     TabChanged(Tab),
     RebuildIndex,
     IndexRebuilt,
+    RebuildProgress(ProgressEvent),
     AddFolder,
+    FolderPicked(Option<String>),
     RemoveFolder(usize),
     SaveSettings,
     ToggleTheme,
@@ -78,6 +80,8 @@ pub enum Message {
     Quit,
     MaxResultsChanged(String),
     ExcludePatternsChanged(String),
+    PollProgressResult(Option<ProgressEvent>),
+    StartPollingProgress,
 }
 
 pub struct App {
@@ -98,6 +102,9 @@ pub struct App {
     filter_size: String,
     preview_content: Option<String>,
     is_loading_preview: bool,
+    rebuild_progress: Option<f32>,
+    rebuild_status: Option<String>,
+    progress_rx: Option<Arc<tokio::sync::Mutex<mpsc::Receiver<ProgressEvent>>>>,
 }
 
 impl App {
@@ -114,6 +121,7 @@ impl App {
                     files_indexed: stats.total_documents as i32, index_size, is_dark,
                     search_mode: SearchMode::FullText, filter_extension: String::new(),
                     filter_size: String::new(), preview_content: None, is_loading_preview: false,
+                    rebuild_progress: None, rebuild_status: None, progress_rx: None,
                 }
             }
             Err(err_msg) => {
@@ -135,6 +143,9 @@ impl App {
                     filter_size: String::new(),
                     preview_content: None,
                     is_loading_preview: false,
+                    rebuild_progress: None,
+                    rebuild_status: None,
+                    progress_rx: None,
                 }
             }
         }
@@ -309,29 +320,71 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     None => return Task::none(),
                 };
                 let settings = app.settings.clone();
-                Task::future(async move {
-                    let _ = state.indexer.clear();
-                    let _ = state.indexer.commit();
-                    let _ = state.metadata_db.clear();
-                    for dir in settings.index_dirs {
-                        let _ = state.scanner.scan_directory(PathBuf::from(dir), settings.exclude_patterns.clone()).await;
-                    }
-                    Message::IndexRebuilt
-                })
+                app.rebuild_progress = Some(0.0);
+                app.rebuild_status = Some("Starting rebuild...".to_string());
+                app.files_indexed = 0;
+                let rx = app.progress_rx.clone();
+                Task::batch(vec![
+                    Task::future(async move {
+                        let _ = state.indexer.clear();
+                        let _ = state.indexer.commit();
+                        let _ = state.metadata_db.clear();
+                        for dir in settings.index_dirs {
+                            let _ = state.scanner.scan_directory(PathBuf::from(dir), settings.exclude_patterns.clone()).await;
+                        }
+                        Message::IndexRebuilt
+                    }),
+                    Task::perform(async move {
+                        if let Some(r) = rx {
+                            let mut g = r.lock().await;
+                            g.recv().await
+                        } else {
+                            None
+                        }
+                    }, Message::PollProgressResult)
+                ])
             }
+            Message::PollProgressResult(Some(event)) => {
+                let p = if event.total > 0 {
+                    (event.processed as f32) / (event.total as f32)
+                } else {
+                    0.0
+                };
+                app.rebuild_progress = Some(p);
+                app.rebuild_status = Some(event.status.clone());
+                app.files_indexed = event.processed as i32;
+                
+                let rx = app.progress_rx.clone();
+                Task::perform(async move {
+                    if let Some(r) = rx {
+                        let mut g = r.lock().await;
+                        g.recv().await
+                    } else {
+                        None
+                    }
+                }, Message::PollProgressResult)
+            }
+            Message::PollProgressResult(None) => Task::none(),
+            Message::RebuildProgress(_) => Task::none(), // Fallback
             Message::IndexRebuilt => {
                 let stats = app.state.as_ref().map(|s| s.indexer.get_statistics().unwrap_or_default()).unwrap_or_default();
                 app.files_indexed = stats.total_documents as i32;
                 app.index_size = format!("{:.1} MB", (stats.total_size_bytes as f64) / 1_048_576.0);
+                app.rebuild_progress = None;
+                app.rebuild_status = None;
                 Task::none()
             }
             Message::AddFolder => {
-                if let Some(folder) = rfd::FileDialog::new().pick_folder() {
-                    let f = folder.to_string_lossy().to_string();
-                    if !app.settings.index_dirs.iter().any(|d| d == &f) { app.settings.index_dirs.push(f); }
+                Task::perform(async { rfd::AsyncFileDialog::new().pick_folder().await.map(|p| p.path().to_string_lossy().to_string()) }, Message::FolderPicked)
+            }
+            Message::FolderPicked(Some(f)) => {
+                if !app.settings.index_dirs.iter().any(|d| d == &f) {
+                    app.settings.index_dirs.push(f);
+                    app.save_settings();
                 }
                 Task::none()
             }
+            Message::FolderPicked(None) => Task::none(),
             Message::RemoveFolder(i) => { if i < app.settings.index_dirs.len() { app.settings.index_dirs.remove(i); } Task::none() }
             Message::SaveSettings => { app.save_settings(); Task::none() }
             Message::MaxResultsChanged(val) => {
@@ -394,7 +447,20 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             Message::Quit => {
                 std::process::exit(0);
             }
+            Message::StartPollingProgress => Task::none(),
         }
+    }
+}
+
+fn subscription(app: &App) -> Subscription<Message> {
+    if matches!(app.active_tab, Tab::Search) && !app.results.is_empty() {
+        iced::keyboard::on_key_press(|key, _modifiers| match key {
+            iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowUp) => Some(Message::MoveUp),
+            iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowDown) => Some(Message::MoveDown),
+            _ => None,
+        })
+    } else {
+        Subscription::none()
     }
 }
 
@@ -422,12 +488,14 @@ fn error_view(error: &str) -> Element<Message> {
     .into()
 }
 
-pub fn run_ui(state: Result<std::sync::Arc<AppState>, String>, _progress_rx: mpsc::Receiver<ProgressEvent>) {
+pub fn run_ui(state: Result<std::sync::Arc<AppState>, String>, progress_rx: mpsc::Receiver<ProgressEvent>) {
     let settings = Settings::default();
-    let app = App::new(state);
+    let mut app = App::new(state);
     let is_dark = app.is_dark;
+    app.progress_rx = Some(Arc::new(tokio::sync::Mutex::new(progress_rx)));
     
     let _ = iced::application("Flash Search", update, view)
+        .subscription(subscription)
         .settings(settings)
         .theme(move |_| if is_dark { Theme::Dark } else { Theme::Light })
         .run_with(|| (app, Task::none()));

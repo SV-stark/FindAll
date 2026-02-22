@@ -52,7 +52,15 @@ pub fn search_view(app: &App) -> Element<Message> {
     
     let mode_btn = button(mode_text).on_press(Message::ToggleSearchMode).padding(8.0).style(theme::Button::Secondary);
     let theme_btn = button(if app.is_dark { "Light" } else { "Dark" }).on_press(Message::ToggleTheme).padding(8.0).style(theme::Button::Secondary);
-    let rebuild_btn = button("Rebuild Index").on_press(Message::RebuildIndex).padding(8.0).style(theme::Button::Secondary);
+    let rebuild_display: Element<_> = if let Some(progress) = app.rebuild_progress {
+        let status = app.rebuild_status.as_deref().unwrap_or("Rebuilding...");
+        row![
+            text(status).size(14),
+            iced::widget::ProgressBar::new(0.0..=1.0, progress).height(Length::Fixed(8.0)).width(Length::Fixed(100.0)),
+        ].spacing(8).align_items(Alignment::Center).into()
+    } else {
+        button("Rebuild Index").on_press(Message::RebuildIndex).padding(8.0).style(theme::Button::Secondary).into()
+    };
     let settings_btn = button("Settings").on_press(Message::TabChanged(Tab::Settings)).padding(8.0).style(theme::Button::Secondary);
 
     let filter_row = row![
