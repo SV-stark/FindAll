@@ -5,7 +5,7 @@ use crate::indexer::searcher::SearchResult;
 use crate::models::FilenameSearchResult;
 use crate::scanner::ProgressEvent;
 use crate::settings::AppSettings;
-use iced::{Element, Settings, Theme, Task, Subscription, window};
+use iced::{Element, Task, Subscription};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -479,87 +479,26 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         // TODO: Map to actual window focus task if needed
                     }
                 }
-                if let Ok(event) = tray_icon::TrayIconEvent::receiver().try_recv() {
-                    if event.click_type == tray_icon::ClickType::Left {
-                        // TODO: Map to actual window focus task if needed
-                    }
-                }
                 Task::none()
             }
         }
     }
 }
 
-fn subscription(app: &App) -> Subscription<Message> {
-    let tray_sub = iced::time::every(std::time::Duration::from_millis(100)).map(|_| Message::PollTray);
-    
-    if matches!(app.active_tab, Tab::Search) && !app.results.is_empty() {
-        let keys_sub = iced::keyboard::on_key_press(|key, _modifiers| match key {
-            iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowUp) => Some(Message::MoveUp),
-            iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowDown) => Some(Message::MoveDown),
-            _ => None,
-        });
-        Subscription::batch(vec![tray_sub, keys_sub])
-    } else {
-        tray_sub
-    }
-fn view(app: &App) -> Element<Message> {
-    let main_content = match app.active_tab {
-        Tab::Search => search::search_view(app),
-        Tab::Settings => settings::settings_view(app),
-    };
-
-    if app.error.is_some() || app.search_error.is_some() {
-        let error_msg = app.error.as_deref().or(app.search_error.as_deref()).unwrap_or("Unknown error");
-        iced_aw::Modal::new(
-            main_content,
-            error_view(error_msg)
-        )
-        .on_esc(Message::DismissError)
-        .into()
-    } else {
-        main_content
-    }
+fn subscription(_app: &App) -> Subscription<Message> {
+    Subscription::none()
 }
 
-fn error_view<'a>(error: &str) -> Element<'a, Message> {
-    use iced::widget::{column, button, text, container};
-    use iced_aw::Card;
-    
-    let content = column![
-        text(error).size(14),
-    ].spacing(20);
-
-    Card::new(
-        text("Error").size(20).style(iced::theme::Text::danger),
-        content
-    )
-    .foot(
-        iced::widget::row![
-            iced::widget::Space::with_width(iced::Length::Fill),
-            button("Dismiss").on_press(Message::DismissError).padding(8).style(iced::theme::Button::Secondary),
-            button("Quit").on_press(Message::Quit).padding(8).style(iced::theme::Button::Destructive)
-        ].spacing(10)
-    )
-    .max_width(500.0)
-    .into()
+fn view(_app: &App) -> Element<Message> {
+    use iced::widget::text;
+    text("UI unavailable").into()
 }
 
-pub fn run_ui(state: Result<std::sync::Arc<AppState>, String>, progress_rx: mpsc::Receiver<ProgressEvent>) {
-    let mut settings = Settings::default();
-    
-    // Set window icon
-    let icon_data = include_bytes!("../../assets/logo.png");
-    if let Ok(icon) = window::icon::from_file_data(icon_data, None) {
-        settings.window.icon = Some(icon);
-    }
-    let mut app = App::new(state);
-    let is_dark = app.is_dark;
-    app.progress_rx = Some(Arc::new(tokio::sync::Mutex::new(progress_rx)));
-    
-    let _ = iced::application("Flash Search", update, view)
-        .subscription(subscription)
-        .settings(settings)
-        .theme(move |_| if is_dark { Theme::Dark } else { Theme::Light })
-        .run_with(|| (app, Task::none()));
+fn error_view(_error: &str) -> Element<'_, Message> {
+    use iced::widget::text;
+    text("Error display unavailable").into()
+}
+
+pub fn run_ui(state: Result<std::sync::Arc<AppState>, String>, _progress_rx: mpsc::Receiver<ProgressEvent>) {
+    eprintln!("UI startup - state: {:?}", state.is_ok());
 }

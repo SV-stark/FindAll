@@ -15,7 +15,7 @@ winres = "0.1"
 [dependencies]
 # UI Framework
 iced = { version = "0.14", features = ["image", "svg", "tokio"] }
-iced_aw = { version = "0.13.0", default-features = false, features = ["card", "modal"] }
+iced_aw = { version = "0.13.0", default-features = false, features = ["card"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -65,6 +65,7 @@ rfd = "0.14"
 ctrlc = "3.2"
 tray-icon = "0.14"
 auto-launch = "0.5"
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"

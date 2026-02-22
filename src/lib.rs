@@ -36,7 +36,7 @@ pub fn setup_app() -> std::result::Result<(Arc<AppState>, tokio::sync::mpsc::Rec
     
     if !app_data_dir.exists() {
         std::fs::create_dir_all(&app_data_dir)
-            .context("Failed to create app data directory")?;
+            .map_err(|e| FlashError::config("create_dir", e.to_string()))?;
     }
 
     info!("App data directory: {:?}", app_data_dir);
