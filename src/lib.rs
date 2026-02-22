@@ -12,7 +12,6 @@ pub mod watcher;
 use commands::AppState;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tracing::info;
 
 pub fn get_app_data_dir() -> PathBuf {
     #[cfg(target_os = "windows")]
@@ -77,12 +76,6 @@ pub fn setup_app() -> (Arc<AppState>, tokio::sync::mpsc::Receiver<crate::scanner
 }
 
 pub fn run_ui() {
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env()
-            .add_directive(tracing::Level::INFO.into()))
-        .init();
-
-    info!("Starting Flash Search UI...");
     let (state, rx) = setup_app();
     
     iced_ui::run_ui(state, rx);
