@@ -4,11 +4,13 @@ use crate::indexer::searcher::SearchResult;
 use crate::models::FilenameSearchResult;
 use crate::scanner::ProgressEvent;
 use crate::settings::AppSettings;
-use iced::widget::{button, column, container, row, text, TextInput, Space, Scrollable};
-use iced::{Element, Length, Settings, Theme, Task};
+use iced::{Element, Settings, Theme, Task};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc;
+
+pub mod search;
+pub mod settings;
 
 #[derive(Clone, Debug)]
 pub struct FileItem {
@@ -316,142 +318,9 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
 fn view(app: &App) -> Element<Message> {
     match app.active_tab {
-        Tab::Search => search_view(app),
-        Tab::Settings => settings_view(app),
+        Tab::Search => search::search_view(app),
+        Tab::Settings => settings::settings_view(app),
     }
-}
-
-fn search_view(app: &App) -> Element<Message> {
-    let mode_text = match app.search_mode {
-        SearchMode::FullText => "Full Text",
-        SearchMode::Filename => "Filename Only",
-    };
-    
-    let input = TextInput::new("Search files...", &app.search_query)
-        .on_input(Message::SearchQueryChanged)
-        .on_submit(Message::SearchSubmitted)
-        .padding(10).size(18);
-    
-    let filter_ext = TextInput::new("ext:pdf", &app.filter_extension)
-        .on_input(Message::FilterExtensionChanged)
-        .on_submit(Message::SearchSubmitted)
-        .padding(5).size(14).width(Length::Fixed(80.0));
-    
-    let filter_size = TextInput::new("size:>1MB", &app.filter_size)
-        .on_input(Message::FilterSizeChanged)
-        .on_submit(Message::SearchSubmitted)
-        .padding(5).size(14).width(Length::Fixed(100.0));
-    
-    let tabs = row([
- button("Search").on_press(Message::TabChanged(Tab::Search)).into(),
-        button("Settings").on_press(Message::TabChanged(Tab::Settings)).into()
-    ]).spacing(10);
-    
-    let theme_btn = button(if app.is_dark { "Light" } else { "Dark" }).on_press(Message::ToggleTheme).padding(8);
-    let mode_btn = button(mode_text).on_press(Message::ToggleSearchMode).padding(8);
-    let rebuild_btn = button("Rebuild").on_press(Message::RebuildIndex).padding(8);
-    
-    let toolbar = row([theme_btn.into(), mode_btn.into(), rebuild_btn.into()]).spacing(10);
-    let stats = text(format!("Files: {} | Index: {}", app.files_indexed, app.index_size));
-    
-    let results_panel: Element<Message> = if app.is_searching {
-        container(text("Searching...")).width(Length::Fill).height(Length::Fill)
-            .center_x(Length::Fill).center_y(Length::Fill).into()
-    } else if app.results.is_empty() {
-        container(text("No results - enter a query")).width(Length::Fill).height(Length::Fill)
-            .center_x(Length::Fill).center_y(Length::Fill).into()
-    } else {
-        let items: Vec<_> = app.results.iter().enumerate().map(|(i, item)| {
-            let ext_str = item.extension.as_deref().unwrap_or("");
-            
-            let item_content = row([
-                text(&item.title).size(14).width(Length::Fill).into(),
-                text(ext_str).size(12).color(iced::Color::from_rgb(0.5, 0.5, 0.5)).into(),
-            ]).spacing(10);
-            
-            button(item_content)
-                .on_press(Message::ResultSelected(i))
-                .width(Length::Fill)
-                .padding(8)
-                .into()
-        }).collect();
-        Scrollable::new(column(items).spacing(2)).height(Length::Fill).into()
-    };
-    
-    let preview_panel: Element<Message> = if app.is_loading_preview {
-        container(text("Loading preview...")).width(Length::Fill).height(Length::Fill)
-            .center_x(Length::Fill).center_y(Length::Fill).into()
-    } else if let Some(ref preview) = app.preview_content {
-        let preview_text = text(preview).size(12);
-        Scrollable::new(container(preview_text).padding(10).width(Length::Fill))
-            .height(Length::Fill).into()
-    } else {
-        container(text("Select a file to preview")).width(Length::Fill).height(Length::Fill)
-            .center_x(Length::Fill).center_y(Length::Fill).into()
-    };
-    
-    let filter_row = row([filter_ext.into(), filter_size.into(), button("Search").on_press(Message::SearchSubmitted).padding(5).into()])
-        .spacing(10);
-    
-    let main_content = row([
-        column([input.into(), filter_row.into(), results_panel.into()])
-            .width(Length::Fill)
-            .spacing(10)
-            .into(),
-        column([text("Preview").size(16).into(), preview_panel.into()])
-            .width(Length::Fixed(350.0))
-            .spacing(10)
-            .into(),
-    ]).spacing(10);
-    
-    column([tabs.into(), toolbar.into(), stats.into(), main_content.into()])
-        .padding(20).spacing(10).into()
-}
-
-fn settings_view(app: &App) -> Element<Message> {
-    let title = text("Settings").size(24);
-    let tabs = row([
-        button("Search").on_press(Message::TabChanged(Tab::Search)).into(),
-        button("Settings").on_press(Message::TabChanged(Tab::Settings)).into()
-    ]).spacing(10);
-    
-    let max_results_label = text("Max Results:");
-    let max_results_val = app.settings.max_results.to_string();
-    let max_results_input = TextInput::new("100", &max_results_val)
-        .padding(5).size(14).width(Length::Fixed(100.0));
-    
-    let exclude_label = text("Exclude Patterns (comma separated):");
-    let exclude_val = app.settings.exclude_patterns.join(", ");
-    let exclude_input = TextInput::new("*.git, target, node_modules", &exclude_val)
-        .padding(5).size(14).width(Length::Fill);
-    
-    let mut dirs = column([text("Index Directories").size(16).into()]).spacing(5);
-    for (i, dir) in app.settings.index_dirs.iter().enumerate() {
-        let row_item = row([
-            text(dir).size(12).width(Length::Fill).into(),
-            button("X").on_press(Message::RemoveFolder(i)).into()
-        ]).spacing(10);
-        dirs = dirs.push(row_item);
-    }
-    
-    let add_btn = button("Add Folder").on_press(Message::AddFolder).padding(8);
-    let save_btn = button("Save Settings").on_press(Message::SaveSettings).padding(10);
-    
-    let settings_form = column([
-        max_results_label.into(),
-        max_results_input.into(),
-        Space::new(Length::Fixed(0.0), Length::Fixed(15.0)).into(),
-        exclude_label.into(),
-        exclude_input.into(),
-        Space::new(Length::Fixed(0.0), Length::Fixed(15.0)).into(),
-        dirs.into(),
-        add_btn.into(),
-        Space::new(Length::Fixed(0.0), Length::Fixed(15.0)).into(),
-        save_btn.into(),
-    ]).spacing(5);
-    
-    column([tabs.into(), title.into(), Space::new(Length::Fixed(0.0), Length::Fixed(20.0)).into(), settings_form.into()])
-        .padding(20).spacing(10).into()
 }
 
 pub fn run_ui(state: Arc<AppState>, _progress_rx: mpsc::Receiver<ProgressEvent>) {
