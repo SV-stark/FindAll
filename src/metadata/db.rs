@@ -6,6 +6,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::SystemTime;
+use tracing::warn;
 
 const FILES_TABLE: TableDefinition<&str, FileMetadata> = TableDefinition::new("files");
 
@@ -399,7 +400,7 @@ impl RedbValue for FileMetadata {
         }
 
         bincode::deserialize(data).unwrap_or_else(|e| {
-            eprintln!("Failed to deserialize FileMetadata: {}", e);
+            warn!("Failed to deserialize FileMetadata: {}", e);
             FileMetadata {
                 path: String::new().into(),
                 modified: 0,
@@ -415,7 +416,10 @@ impl RedbValue for FileMetadata {
         Self: 'a,
         Self: 'b,
     {
-        bincode::serialize(value).expect("Failed to serialize FileMetadata")
+        bincode::serialize(value).unwrap_or_else(|e| {
+            tracing::error!("Failed to serialize FileMetadata: {}", e);
+            Vec::new()
+        })
     }
 
     fn type_name() -> TypeName {

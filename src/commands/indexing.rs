@@ -3,6 +3,7 @@ use crate::scanner::Scanner;
 use crate::indexer::searcher::IndexStatistics;
 use crate::models::{IndexStatus, RecentFile};
 use crate::commands::AppState;
+use tracing::error;
 
 pub async fn start_indexing_internal(
     path: String,
@@ -23,7 +24,7 @@ pub async fn start_indexing_internal(
     tokio::spawn(async move {
         let scanner = Scanner::new(indexer, metadata_db, state.filename_index.clone(), Some(progress_tx));
         if let Err(e) = scanner.scan_directory(path, exclude_patterns).await {
-            eprintln!("Indexing error: {}", e);
+            error!("Indexing error: {}", e);
         }
     });
 

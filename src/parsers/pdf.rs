@@ -1,6 +1,7 @@
 use crate::error::{FlashError, Result};
 use crate::parsers::ParsedDocument;
 use std::path::Path;
+use tracing::warn;
 
 /// Maximum PDF content size to prevent memory issues
 const MAX_PDF_SIZE: u64 = 500 * 1024 * 1024; // 500MB limit
@@ -29,16 +30,16 @@ pub fn parse_pdf(path: &Path) -> Result<ParsedDocument> {
     let content = match text {
         Ok(Ok(text)) => text,
         Ok(Err(e)) => {
-            eprintln!(
-                "Warning: Failed to extract PDF text from {}: {}",
+            warn!(
+                "Failed to extract PDF text from {}: {}",
                 path.display(),
                 e
             );
             String::new()
         }
         Err(_) => {
-            eprintln!(
-                "Warning: PDF extraction panicked for {}. File may be corrupted or encrypted.",
+            warn!(
+                "PDF extraction panicked for {}. File may be corrupted or encrypted.",
                 path.display()
             );
             String::new()

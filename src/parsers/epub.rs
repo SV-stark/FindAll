@@ -6,6 +6,7 @@ use quick_xml::Reader;
 use std::io::Read;
 use std::path::Path;
 use zip::ZipArchive;
+use tracing::warn;
 
 const MAX_HTML_SIZE: usize = 50 * 1024 * 1024;
 const MAX_TOTAL_TEXT_SIZE: usize = 200 * 1024 * 1024;
@@ -27,8 +28,8 @@ pub fn parse_epub(path: &Path) -> Result<ParsedDocument> {
             match archive.by_name(&name) {
                 Ok(mut inner_file) => {
                     if inner_file.size() > MAX_HTML_SIZE as u64 {
-                        eprintln!(
-                            "Warning: Skipping large HTML file {} in EPUB ({} bytes)",
+                        warn!(
+                            "Skipping large HTML file {} in EPUB ({} bytes)",
                             name,
                             inner_file.size()
                         );
@@ -40,8 +41,8 @@ pub fn parse_epub(path: &Path) -> Result<ParsedDocument> {
                     match inner_file.read_to_string(&mut content) {
                         Ok(_) => {
                             if total_extracted_size + content.len() > MAX_TOTAL_TEXT_SIZE {
-                                eprintln!(
-                                    "Warning: EPUB {} has exceeded maximum text size limit",
+                                warn!(
+                                    "EPUB {} has exceeded maximum text size limit",
                                     path.display()
                                 );
                                 break;
@@ -51,12 +52,12 @@ pub fn parse_epub(path: &Path) -> Result<ParsedDocument> {
                             total_extracted_size += content.len();
                         }
                         Err(e) => {
-                            eprintln!("Warning: Failed to read {} from EPUB: {}", name, e);
+                            warn!("Failed to read {} from EPUB: {}", name, e);
                         }
                     }
                 }
                 Err(e) => {
-                    eprintln!("Warning: Failed to access {} in EPUB: {}", name, e);
+                    warn!("Failed to access {} in EPUB: {}", name, e);
                 }
             }
         }
@@ -87,7 +88,7 @@ fn extract_text_from_html(html: &str, output: &mut String) {
             }
             Ok(Event::Eof) => break,
             Err(e) => {
-                eprintln!("Warning: HTML parsing error: {}", e);
+                warn!("HTML parsing error: {}", e);
                 break;
             }
             _ => {}

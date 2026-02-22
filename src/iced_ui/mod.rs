@@ -1,5 +1,6 @@
 use crate::commands::AppState;
 use crate::commands::{search_query_internal, search_filenames_internal, get_file_preview_highlighted_internal};
+use crate::error::FlashError;
 use crate::indexer::searcher::SearchResult;
 use crate::models::FilenameSearchResult;
 use crate::scanner::ProgressEvent;
@@ -72,10 +73,12 @@ pub enum Message {
     PreviewLoaded(Option<String>),
     MoveUp,
     MoveDown,
+    DismissError,
 }
 
 pub struct App {
-    state: Arc<AppState>,
+    state: Option<Arc<AppState>>,
+    error: Option<String>,
     search_query: String,
     results: Vec<FileItem>,
     selected_index: Option<usize>,
@@ -93,18 +96,46 @@ pub struct App {
 }
 
 impl App {
-    fn new(state: Arc<AppState>) -> Self {
-        let settings = state.settings_manager.load().unwrap_or_default();
-        let stats = state.indexer.get_statistics().unwrap_or_default();
-        let index_size = format!("{:.1} MB", (stats.total_size_bytes as f64) / 1_048_576.0);
-        let is_dark = matches!(settings.theme, crate::settings::Theme::Dark);
-        App { 
-            state, search_query: String::new(), results: Vec::new(), selected_index: None, 
-            is_searching: false, settings, active_tab: Tab::Search,
-            files_indexed: stats.total_documents as i32, index_size, is_dark,
-            search_mode: SearchMode::FullText, filter_extension: String::new(),
-            filter_size: String::new(), preview_content: None, is_loading_preview: false,
+    fn new(state: Result<Arc<AppState>, String>) -> Self {
+        match state {
+            Ok(state) => {
+                let settings = state.settings_manager.load().unwrap_or_default();
+                let stats = state.indexer.get_statistics().unwrap_or_default();
+                let index_size = format!("{:.1} MB", (stats.total_size_bytes as f64) / 1_048_576.0);
+                let is_dark = matches!(settings.theme, crate::settings::Theme::Dark);
+                App { 
+                    state: Some(state), error: None, search_query: String::new(), results: Vec::new(), selected_index: None, 
+                    is_searching: false, settings, active_tab: Tab::Search,
+                    files_indexed: stats.total_documents as i32, index_size, is_dark,
+                    search_mode: SearchMode::FullText, filter_extension: String::new(),
+                    filter_size: String::new(), preview_content: None, is_loading_preview: false,
+                }
+            }
+            Err(err_msg) => {
+                App {
+                    state: None,
+                    error: Some(err_msg),
+                    search_query: String::new(),
+                    results: Vec::new(),
+                    selected_index: None,
+                    is_searching: false,
+                    settings: AppSettings::default(),
+                    active_tab: Tab::Search,
+                    files_indexed: 0,
+                    index_size: "0 MB".to_string(),
+                    is_dark: false,
+                    search_mode: SearchMode::FullText,
+                    filter_extension: String::new(),
+                    filter_size: String::new(),
+                    preview_content: None,
+                    is_loading_preview: false,
+                }
+            }
         }
+    }
+
+    fn state(&self) -> Option<&Arc<AppState>> {
+        self.state.as_ref()
     }
 
     fn parse_size_filter(size_str: &str) -> (Option<u64>, Option<u64>) {
@@ -152,8 +183,12 @@ impl App {
     }
 
     fn perform_search(&mut self) -> Task<Message> {
+        let state = match &self.state {
+            Some(s) => s.clone(),
+            None => return Task::none(),
+        };
+        
         let query = self.search_query.clone();
-        let state = self.state.clone();
         let max_results = self.settings.max_results;
         let mode = self.search_mode.clone();
         let extension = if self.filter_extension.is_empty() {
@@ -212,123 +247,153 @@ impl App {
         })
     }
 
-    fn save_settings(&self) { let _ = self.state.settings_manager.save(&self.settings); }
+    fn save_settings(&self) { 
+        if let Some(state) = &self.state {
+            let _ = state.settings_manager.save(&self.settings);
+        }
+    }
 }
 
 fn update(app: &mut App, message: Message) -> Task<Message> {
-    match message {
-        Message::SearchQueryChanged(q) => { app.search_query = q; Task::none() }
-        Message::SearchSubmitted => app.perform_search(),
-        Message::SearchResultsReceived(results) => { 
-            app.results = results; 
-            app.is_searching = false; 
-            if !app.results.is_empty() {
-                app.selected_index = Some(0);
-            }
-            app.load_preview()
-        }
-        Message::ResultSelected(idx) => { 
-            app.selected_index = Some(idx); 
-            app.load_preview()
-        }
-        Message::OpenFile(path) => { let _ = opener::open(PathBuf::from(path)); Task::none() }
-        Message::CopyPath(path) => {
-            if let Ok(mut clipboard) = arboard::Clipboard::new() {
-                let _ = clipboard.set_text(&path);
-            }
-            Task::none()
-        }
-        Message::TabChanged(tab) => { app.active_tab = tab; Task::none() }
-        Message::RebuildIndex => {
-            let state = app.state.clone();
-            let settings = app.settings.clone();
-            Task::future(async move {
-                let _ = state.indexer.clear();
-                let _ = state.indexer.commit();
-                let _ = state.metadata_db.clear();
-                for dir in settings.index_dirs {
-                    let _ = state.scanner.scan_directory(PathBuf::from(dir), settings.exclude_patterns.clone()).await;
-                }
-                Message::IndexRebuilt
-            })
-        }
-        Message::IndexRebuilt => {
-            let stats = app.state.indexer.get_statistics().unwrap_or_default();
-            app.files_indexed = stats.total_documents as i32;
-            app.index_size = format!("{:.1} MB", (stats.total_size_bytes as f64) / 1_048_576.0);
-            Task::none()
-        }
-        Message::AddFolder => {
-            if let Some(folder) = rfd::FileDialog::new().pick_folder() {
-                let f = folder.to_string_lossy().to_string();
-                if !app.settings.index_dirs.iter().any(|d| d == &f) { app.settings.index_dirs.push(f); }
-            }
-            Task::none()
-        }
-        Message::RemoveFolder(i) => { if i < app.settings.index_dirs.len() { app.settings.index_dirs.remove(i); } Task::none() }
-        Message::SaveSettings => { app.save_settings(); Task::none() }
-        Message::ToggleTheme => {
-            app.is_dark = !app.is_dark;
-            app.settings.theme = if app.is_dark { crate::settings::Theme::Dark } else { crate::settings::Theme::Light };
-            app.save_settings();
-            Task::none()
-        }
-        Message::ToggleSearchMode => {
-            app.search_mode = match app.search_mode {
-                SearchMode::FullText => SearchMode::Filename,
-                SearchMode::Filename => SearchMode::FullText,
-            };
-            if !app.search_query.is_empty() {
-                app.perform_search()
-            } else {
+    if app.error.is_some() {
+        match message {
+            Message::DismissError => {
+                app.error = None;
                 Task::none()
             }
+            _ => Task::none()
         }
-        Message::FilterExtensionChanged(ext) => { app.filter_extension = ext; Task::none() }
-        Message::FilterSizeChanged(size) => { app.filter_size = size; Task::none() }
-        Message::PreviewRequested(idx) => {
-            app.selected_index = Some(idx);
-            app.load_preview()
-        }
-        Message::PreviewLoaded(content) => {
-            app.preview_content = content;
-            app.is_loading_preview = false;
-            Task::none()
-        }
-        Message::MoveUp => {
-            if let Some(current) = app.selected_index {
-                if current > 0 {
-                    app.selected_index = Some(current - 1);
-                    return app.load_preview();
+    } else {
+        match message {
+            Message::SearchQueryChanged(q) => { app.search_query = q; Task::none() }
+            Message::SearchSubmitted => app.perform_search(),
+            Message::SearchResultsReceived(results) => { 
+                app.results = results; 
+                app.is_searching = false; 
+                if !app.results.is_empty() {
+                    app.selected_index = Some(0);
+                }
+                app.load_preview()
+            }
+            Message::ResultSelected(idx) => { 
+                app.selected_index = Some(idx); 
+                app.load_preview()
+            }
+            Message::OpenFile(path) => { let _ = opener::open(PathBuf::from(path)); Task::none() }
+            Message::CopyPath(path) => {
+                if let Ok(mut clipboard) = arboard::Clipboard::new() {
+                    let _ = clipboard.set_text(&path);
+                }
+                Task::none()
+            }
+            Message::TabChanged(tab) => { app.active_tab = tab; Task::none() }
+            Message::RebuildIndex => {
+                let state = match &app.state {
+                    Some(s) => s.clone(),
+                    None => return Task::none(),
+                };
+                let settings = app.settings.clone();
+                Task::future(async move {
+                    let _ = state.indexer.clear();
+                    let _ = state.indexer.commit();
+                    let _ = state.metadata_db.clear();
+                    for dir in settings.index_dirs {
+                        let _ = state.scanner.scan_directory(PathBuf::from(dir), settings.exclude_patterns.clone()).await;
+                    }
+                    Message::IndexRebuilt
+                })
+            }
+            Message::IndexRebuilt => {
+                let stats = app.state.as_ref().map(|s| s.indexer.get_statistics().unwrap_or_default()).unwrap_or_default();
+                app.files_indexed = stats.total_documents as i32;
+                app.index_size = format!("{:.1} MB", (stats.total_size_bytes as f64) / 1_048_576.0);
+                Task::none()
+            }
+            Message::AddFolder => {
+                if let Some(folder) = rfd::FileDialog::new().pick_folder() {
+                    let f = folder.to_string_lossy().to_string();
+                    if !app.settings.index_dirs.iter().any(|d| d == &f) { app.settings.index_dirs.push(f); }
+                }
+                Task::none()
+            }
+            Message::RemoveFolder(i) => { if i < app.settings.index_dirs.len() { app.settings.index_dirs.remove(i); } Task::none() }
+            Message::SaveSettings => { app.save_settings(); Task::none() }
+            Message::ToggleTheme => {
+                app.is_dark = !app.is_dark;
+                app.settings.theme = if app.is_dark { crate::settings::Theme::Dark } else { crate::settings::Theme::Light };
+                app.save_settings();
+                Task::none()
+            }
+            Message::ToggleSearchMode => {
+                app.search_mode = match app.search_mode {
+                    SearchMode::FullText => SearchMode::Filename,
+                    SearchMode::Filename => SearchMode::FullText,
+                };
+                if !app.search_query.is_empty() {
+                    app.perform_search()
+                } else {
+                    Task::none()
                 }
             }
-            Task::none()
-        }
-        Message::MoveDown => {
-            if let Some(current) = app.selected_index {
-                if current < app.results.len() - 1 {
-                    app.selected_index = Some(current + 1);
-                    return app.load_preview();
-                }
+            Message::FilterExtensionChanged(ext) => { app.filter_extension = ext; Task::none() }
+            Message::FilterSizeChanged(size) => { app.filter_size = size; Task::none() }
+            Message::PreviewRequested(idx) => {
+                app.selected_index = Some(idx);
+                app.load_preview()
             }
-            Task::none()
+            Message::PreviewLoaded(content) => {
+                app.preview_content = content;
+                app.is_loading_preview = false;
+                Task::none()
+            }
+            Message::MoveUp => {
+                if let Some(current) = app.selected_index {
+                    if current > 0 {
+                        app.selected_index = Some(current - 1);
+                        return app.load_preview();
+                    }
+                }
+                Task::none()
+            }
+            Message::MoveDown => {
+                if let Some(current) = app.selected_index {
+                    if current < app.results.len() - 1 {
+                        app.selected_index = Some(current + 1);
+                        return app.load_preview();
+                    }
+                }
+                Task::none()
+            }
+            Message::DismissError => Task::none(),
         }
     }
 }
 
 fn view(app: &App) -> Element<Message> {
+    if let Some(ref error) = app.error {
+        return error_view(error);
+    }
+    
     match app.active_tab {
         Tab::Search => search::search_view(app),
         Tab::Settings => settings::settings_view(app),
     }
 }
 
-pub fn run_ui(state: Arc<AppState>, _progress_rx: mpsc::Receiver<ProgressEvent>) {
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env()
-            .add_directive(tracing::Level::INFO.into()))
-        .init();
+fn error_view(error: &str) -> Element<Message> {
+    use iced::widget::{column, button, text};
+    
+    column![
+        text("Startup Error").size(24).style(iced::theme::Text::Color(iced::color!(1.0, 0.3, 0.3))),
+        text(error).size(14),
+        button("Quit").on_press(Message::DismissError)
+    ]
+    .spacing(20)
+    .padding(40)
+    .into()
+}
 
+pub fn run_ui(state: Result<std::sync::Arc<AppState>, String>, _progress_rx: mpsc::Receiver<ProgressEvent>) {
     let settings = Settings::default();
     let app = App::new(state);
     let is_dark = app.is_dark;

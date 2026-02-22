@@ -3,6 +3,7 @@ use crate::parsers::ParsedDocument;
 use std::sync::Mutex;
 use tantivy::schema::{Field, Schema};
 use tantivy::{Index, IndexWriter, TantivyDocument};
+use tracing::info;
 
 /// Manages writing documents to the Tantivy index with batch support
 pub struct IndexWriterManager {
@@ -60,7 +61,7 @@ impl IndexWriterManager {
 
         // Configure with adaptive heap size based on system resources
         let heap_size = Self::calculate_heap_size();
-        eprintln!(
+        info!(
             "Tantivy index writer heap size: {} MB",
             heap_size / 1_000_000
         );

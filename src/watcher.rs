@@ -43,7 +43,9 @@ impl WatcherManager {
                 tokio::time::sleep(Duration::from_millis(1000)).await; // Check every 1s
                 
                 let events = {
-                    let mut guard = buffer_for_task.lock().unwrap();
+                    let mut guard = buffer_for_task.lock().map_err(|e| {
+                        error!("Watcher lock poisoned: {}", e);
+                    })?;
                     if guard.is_empty() {
                         continue;
                     }
@@ -101,7 +103,13 @@ impl WatcherManager {
 
         let mut watcher = notify::recommended_watcher(move |res: notify::Result<Event>| {
             if let Ok(event) = res {
-                let mut guard = buffer_clone.lock().unwrap();
+                let mut guard = match buffer_clone.lock() {
+                    Ok(g) => g,
+                    Err(e) => {
+                        error!("Watcher lock poisoned: {}", e);
+                        return;
+                    }
+                };
                 
                 match event.kind {
                     EventKind::Modify(_) | EventKind::Create(_) | EventKind::Remove(_) => {

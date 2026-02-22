@@ -4,7 +4,7 @@ use std::sync::atomic::AtomicUsize;
 use tokio::sync::mpsc;
 use rayon::prelude::*;
 use ignore::WalkBuilder;
-use tracing::{info, instrument};
+use tracing::{info, instrument, warn};
 use crate::error::Result;
 use crate::indexer::IndexManager;
 use crate::metadata::MetadataDb;
@@ -82,10 +82,10 @@ impl Scanner {
             
             // Add overrides
             let mut override_builder = ignore::overrides::OverrideBuilder::new(&root_clone);
-            for pattern in &exclude_patterns {
+             for pattern in &exclude_patterns {
                 let ignore_pattern = format!("!{}", pattern);
                  if let Err(e) = override_builder.add(&ignore_pattern) {
-                    eprintln!("Invalid exclude pattern '{}': {}", pattern, e);
+                    warn!("Invalid exclude pattern '{}': {}", pattern, e);
                 }
             }
             if let Ok(overrides) = override_builder.build() {
