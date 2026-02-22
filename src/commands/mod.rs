@@ -2,11 +2,23 @@ mod indexing;
 mod search;
 mod settings;
 mod system;
+mod export;
+mod autostart;
 
 pub use indexing::*;
 pub use search::*;
 pub use settings::*;
 pub use system::*;
+pub use export::*;
+pub use autostart::*;
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_export_csv() {
+        // Basic test placeholder
+    }
+}
 
 use crate::indexer::{filename_index::FilenameIndex, IndexManager};
 use crate::metadata::MetadataDb;

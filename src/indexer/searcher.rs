@@ -281,15 +281,16 @@ impl IndexSearcher {
             // Generate snippet
             let snippet_generator = SnippetGenerator::create(&searcher, &*final_query, self.content_field)?;
             let snippet = snippet_generator.snippet_from_doc(&retrieved_doc);
-            // Use to_html() to get <b> tags for highlighting, which UI can parse or sanitize
-            let snippet_html = snippet.to_html(); 
+            // Get snippet as HTML then strip tags for plain text display
+            let snippet_html = snippet.to_html();
+            let snippet_text = snippet_html.replace("<b>", "").replace("</b>", "").replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&"); 
 
             results.push(SearchResult {
                 file_path,
                 title,
                 score,
                 matched_terms: highlight_terms.clone(),
-                snippet: Some(snippet_html),
+                snippet: Some(snippet_text),
             });
 
             if results.len() >= limit {
@@ -403,7 +404,7 @@ impl IndexSearcher {
         Ok(IndexStatistics {
             total_documents: total_docs,
             total_size_bytes: total_size,
-            last_updated: None,
+            last_updated: Some(chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()),
         })
     }
 }

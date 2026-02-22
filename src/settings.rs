@@ -220,10 +220,6 @@ impl SettingsManager {
 
         fs::write(&self.path, content).map_err(|e| FlashError::Io(e))
     }
-
-    pub fn save_settings(&self, settings: &AppSettings) -> Result<()> {
-        self.save(settings)
-    }
 }
 
 #[cfg(test)]

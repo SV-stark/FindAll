@@ -24,7 +24,7 @@ pub fn get_app_data_dir() -> PathBuf {
     });
     
     let mut path = path;
-    path.push("com.hp.flash-search");
+    path.push("com.flashsearch");
     path
 }
 

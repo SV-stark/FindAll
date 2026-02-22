@@ -8,6 +8,7 @@ use crate::indexer::IndexManager;
 use crate::metadata::MetadataDb;
 use crate::parsers::parse_file;
 use blake3;
+use tracing::{info, warn, error};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum WatcherAction {
@@ -64,16 +65,16 @@ impl WatcherManager {
                             needs_commit = true;
                         }
                     } else if let Err(e) = res {
-                        eprintln!("Watcher error processing {:?}: {}", path, e);
+                        error!("Watcher error processing {:?}: {}", path, e);
                     }
                 }
                 
                 if needs_commit {
                     if let Err(e) = indexer_for_task.commit() {
-                         eprintln!("Watcher failed to commit index: {}", e);
+                         error!("Watcher failed to commit index: {}", e);
                     } else {
                         indexer_for_task.invalidate_cache();
-                        // eprintln!("Watcher committed changes.");
+                        info!("Watcher committed changes");
                     }
                 }
             }
@@ -103,23 +104,21 @@ impl WatcherManager {
                 let mut guard = buffer_clone.lock().unwrap();
                 
                 match event.kind {
-                    EventKind::Modify(_) | EventKind::Create(_) => {
-                        for path in event.paths {
+                    EventKind::Modify(_) | EventKind::Create(_) | EventKind::Remove(_) => {
+                        for path in &event.paths {
                             if path.is_file() {
-                                guard.insert(path, WatcherAction::Index);
+                                match event.kind {
+                                    EventKind::Remove(_) => {
+                                        guard.insert(path.clone(), WatcherAction::Remove);
+                                    }
+                                    _ => {
+                                        guard.insert(path.clone(), WatcherAction::Remove);
+                                        guard.insert(path.clone(), WatcherAction::Index);
+                                    }
+                                }
                             }
                         }
                     }
-                    EventKind::Remove(_) => {
-                        for path in event.paths {
-                            guard.insert(path, WatcherAction::Remove);
-                        }
-                    }
-                    // Flatten Rename: treated as Remove(old) + Create(new) usually,
-                    // but notify might send Rename(Both) or separate events.
-                    // For simplicity, we handle explicit Create/Remove/Modify.
-                    // Rename often comes as Rename(From) then Rename(To).
-                    // We might miss renames if not handled carefully, but standard Modify/Create usually covers it.
                     _ => {}
                 }
             }
@@ -168,7 +167,7 @@ impl WatcherManager {
         let parsed = match parse_file(path) {
             Ok(p) => p,
             Err(e) => {
-                eprintln!("Failed to parse file {:?}: {}", path, e);
+                warn!("Failed to parse file {:?}: {}", path, e);
                 return Ok(false);
             }
         };
@@ -180,7 +179,7 @@ impl WatcherManager {
         
         metadata_db.update_metadata(path, modified, size, content_hash)?;
         
-        println!("Re-indexed file (watcher): {:?}", path);
+        info!("Re-indexed file (watcher): {:?}", path);
         
         Ok(true)
     }
@@ -194,7 +193,7 @@ impl WatcherManager {
         indexer.remove_document(&path_str)?;
         // NO commit here
         metadata_db.remove_file(path)?;
-        println!("Removed file (watcher): {:?}", path);
+        info!("Removed file (watcher): {:?}", path);
         Ok(true)
     }
 }

@@ -1,6 +1,6 @@
 use crate::commands::AppState;
-use crate::settings::SearchHistoryItem;
 use crate::settings::AppSettings;
+use crate::settings::SearchHistoryItem;
 use std::sync::Arc;
 
 pub fn get_settings_internal(state: &Arc<AppState>) -> Result<AppSettings, String> {
@@ -10,7 +10,7 @@ pub fn get_settings_internal(state: &Arc<AppState>) -> Result<AppSettings, Strin
 pub fn save_settings_internal(settings: AppSettings, state: &Arc<AppState>) -> Result<(), String> {
     state
         .settings_manager
-        .save_settings(&settings)
+        .save(&settings)
         .map_err(|e| e.to_string())?;
 
     let mut watcher = state.watcher.lock().unwrap();
@@ -37,7 +37,7 @@ pub fn add_recent_search_internal(query: String, state: &Arc<AppState>) -> Resul
     settings.recent_searches = Some(recent);
     state
         .settings_manager
-        .save_settings(&settings)
+        .save(&settings)
         .map_err(|e| e.to_string())?;
 
     Ok(())
@@ -48,7 +48,7 @@ pub fn clear_recent_searches_internal(state: &Arc<AppState>) -> Result<(), Strin
     settings.recent_searches = Some(vec![]);
     state
         .settings_manager
-        .save_settings(&settings)
+        .save(&settings)
         .map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -90,7 +90,7 @@ pub fn add_search_history_internal(query: String, state: &Arc<AppState>) -> Resu
     settings.search_history = Some(history);
     state
         .settings_manager
-        .save_settings(&settings)
+        .save(&settings)
         .map_err(|e| e.to_string())?;
 
     Ok(())
@@ -123,7 +123,7 @@ pub fn pin_file_internal(path: String, state: &Arc<AppState>) -> Result<(), Stri
         settings.pinned_files.push(path);
         state
             .settings_manager
-            .save_settings(&settings)
+            .save(&settings)
             .map_err(|e| e.to_string())?;
     }
     Ok(())
@@ -134,7 +134,7 @@ pub fn unpin_file_internal(path: String, state: &Arc<AppState>) -> Result<(), St
     settings.pinned_files.retain(|p| p != &path);
     state
         .settings_manager
-        .save_settings(&settings)
+        .save(&settings)
         .map_err(|e| e.to_string())?;
     Ok(())
 }

@@ -2,7 +2,7 @@
 name = "flash-search"
 version = "0.1.0"
 description = "Ultrafast local text search"
-authors = ["you"]
+authors = ["Flash Search Team"]
 edition = "2021"
 rust-version = "1.75"
 
@@ -60,6 +60,10 @@ arboard = "3.4"
 regex = "1"
 opener = "0.7"
 rfd = "0.14"
+ctrlc = "3.2"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.52"
 
 # Performance & Observability
 mimalloc = { version = "0.1", default-features = false }
@@ -75,7 +79,7 @@ tempfile = "3.0"
 
 [profile.release]
 opt-level = 3
-lto = true
+lto = "thin"
 codegen-units = 1
 strip = true
 panic = "abort"
