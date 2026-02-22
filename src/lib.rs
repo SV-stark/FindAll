@@ -7,6 +7,7 @@ pub mod models;
 pub mod parsers;
 pub mod scanner;
 pub mod settings;
+pub mod system;
 pub mod watcher;
 
 use crate::error::{Context, FlashError, Result};

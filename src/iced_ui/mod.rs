@@ -82,6 +82,10 @@ pub enum Message {
     ExcludePatternsChanged(String),
     PollProgressResult(Option<ProgressEvent>),
     StartPollingProgress,
+    PollTray,
+    ToggleMinimizeToTray(bool),
+    ToggleAutoStart(bool),
+    ToggleContextMenu(bool),
 }
 
 pub struct App {
@@ -105,6 +109,7 @@ pub struct App {
     rebuild_progress: Option<f32>,
     rebuild_status: Option<String>,
     progress_rx: Option<Arc<tokio::sync::Mutex<mpsc::Receiver<ProgressEvent>>>>,
+    _tray_icon: Option<tray_icon::TrayIcon>,
 }
 
 impl App {
@@ -121,7 +126,7 @@ impl App {
                     files_indexed: stats.total_documents as i32, index_size, is_dark,
                     search_mode: SearchMode::FullText, filter_extension: String::new(),
                     filter_size: String::new(), preview_content: None, is_loading_preview: false,
-                    rebuild_progress: None, rebuild_status: None, progress_rx: None,
+                    rebuild_progress: None, rebuild_status: None, progress_rx: None, _tray_icon: crate::system::tray::create_tray_icon().ok(),
                 }
             }
             Err(err_msg) => {
@@ -146,6 +151,7 @@ impl App {
                     rebuild_progress: None,
                     rebuild_status: None,
                     progress_rx: None,
+                    _tray_icon: crate::system::tray::create_tray_icon().ok(),
                 }
             }
         }
@@ -403,6 +409,23 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 app.save_settings();
                 Task::none()
             }
+            Message::ToggleMinimizeToTray(enabled) => {
+                app.settings.minimize_to_tray = enabled;
+                app.save_settings();
+                Task::none()
+            }
+            Message::ToggleAutoStart(enabled) => {
+                app.settings.auto_start_on_boot = enabled;
+                app.save_settings();
+                let _ = crate::system::startup::set_auto_start(enabled);
+                Task::none()
+            }
+            Message::ToggleContextMenu(enabled) => {
+                app.settings.context_menu_enabled = enabled;
+                app.save_settings();
+                let _ = crate::system::context_menu::register_context_menu(enabled);
+                Task::none()
+            }
             Message::ToggleSearchMode => {
                 app.search_mode = match app.search_mode {
                     SearchMode::FullText => SearchMode::Filename,
@@ -448,19 +471,37 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 std::process::exit(0);
             }
             Message::StartPollingProgress => Task::none(),
+            Message::PollTray => {
+                if let Ok(event) = tray_icon::menu::MenuEvent::receiver().try_recv() {
+                    if event.id.0 == "quit" {
+                        std::process::exit(0);
+                    } else if event.id.0 == "show" {
+                        // TODO: Map to actual window focus task if needed
+                    }
+                }
+                if let Ok(event) = tray_icon::TrayIconEvent::receiver().try_recv() {
+                    if event.click_type == tray_icon::ClickType::Left {
+                        // TODO: Map to actual window focus task if needed
+                    }
+                }
+                Task::none()
+            }
         }
     }
 }
 
 fn subscription(app: &App) -> Subscription<Message> {
+    let tray_sub = iced::time::every(std::time::Duration::from_millis(100)).map(|_| Message::PollTray);
+    
     if matches!(app.active_tab, Tab::Search) && !app.results.is_empty() {
-        iced::keyboard::on_key_press(|key, _modifiers| match key {
+        let keys_sub = iced::keyboard::on_key_press(|key, _modifiers| match key {
             iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowUp) => Some(Message::MoveUp),
             iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowDown) => Some(Message::MoveDown),
             _ => None,
-        })
+        });
+        Subscription::batch(vec![tray_sub, keys_sub])
     } else {
-        Subscription::none()
+        tray_sub
     }
 }
 

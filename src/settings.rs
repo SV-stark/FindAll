@@ -40,6 +40,7 @@ pub struct AppSettings {
     pub auto_start_on_boot: bool,
     pub double_click_action: DoubleClickAction,
     pub show_preview_panel: bool,
+    pub context_menu_enabled: bool,
 
     // Performance
     pub indexing_threads: u8,
@@ -179,6 +180,7 @@ impl Default for AppSettings {
             auto_start_on_boot: false,
             double_click_action: DoubleClickAction::default(),
             show_preview_panel: true,
+            context_menu_enabled: false,
 
             // Performance
             indexing_threads: 4,

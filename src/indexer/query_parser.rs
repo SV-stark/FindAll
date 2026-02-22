@@ -56,15 +56,15 @@ impl ParsedQuery {
             match operator.as_str() {
                 "ext" => {
                     extension = Some(value.trim_start_matches('.').to_lowercase());
-                    remaining = remaining.replace(cap.get(0).unwrap().as_str(), "");
+                    if let Some(m) = cap.get(0) { remaining = remaining.replace(m.as_str(), ""); }
                 }
                 "path" => {
                     path_filter = Some(value.to_lowercase());
-                    remaining = remaining.replace(cap.get(0).unwrap().as_str(), "");
+                    if let Some(m) = cap.get(0) { remaining = remaining.replace(m.as_str(), ""); }
                 }
                 "title" => {
                     title_filter = Some(value.to_lowercase());
-                    remaining = remaining.replace(cap.get(0).unwrap().as_str(), "");
+                    if let Some(m) = cap.get(0) { remaining = remaining.replace(m.as_str(), ""); }
                 }
                 "size" => {
                     // Handle size operators
@@ -95,7 +95,7 @@ impl ParsedQuery {
                         min_size = Some(size_val);
                         max_size = Some(size_val + 1);
                     }
-                    remaining = remaining.replace(cap.get(0).unwrap().as_str(), "");
+                    if let Some(m) = cap.get(0) { remaining = remaining.replace(m.as_str(), ""); }
                 }
                 _ => {}
             }

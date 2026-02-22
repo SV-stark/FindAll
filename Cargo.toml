@@ -62,6 +62,8 @@ regex = "1"
 opener = "0.7"
 rfd = "0.14"
 ctrlc = "3.2"
+tray-icon = "0.14"
+auto-launch = "0.5"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"

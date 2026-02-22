@@ -1,4 +1,4 @@
-use iced::widget::{button, column, container, row, text, TextInput, Space};
+use iced::widget::{button, column, container, row, text, TextInput, Space, checkbox};
 use iced::{Element, Length, Padding, Alignment};
 use iced::theme;
 use super::{App, Message, Tab};
@@ -40,6 +40,14 @@ pub fn settings_view(app: &App) -> Element<Message> {
     let add_btn = button(text("Add Folder").size(16)).on_press(Message::AddFolder).padding(12.0).style(iced::theme::Button::Secondary);
     let save_btn = button(text("Save Settings").size(16)).on_press(Message::SaveSettings).padding(14.0).style(iced::theme::Button::Primary);
     
+    let sys_int_label = text("System Integration").size(20);
+    let tray_toggle = checkbox("Minimize/Close to Tray", app.settings.minimize_to_tray)
+        .on_toggle(Message::ToggleMinimizeToTray);
+    let autostart_toggle = checkbox("Auto-start on Boot", app.settings.auto_start_on_boot)
+        .on_toggle(Message::ToggleAutoStart);
+    let context_toggle = checkbox("Enable Explorer Context Menu", app.settings.context_menu_enabled)
+        .on_toggle(Message::ToggleContextMenu);
+
     let settings_form = column![
         max_results_label,
         max_results_input,
@@ -50,6 +58,11 @@ pub fn settings_view(app: &App) -> Element<Message> {
         dirs_col,
         Space::with_height(Length::Fixed(8.0)),
         add_btn,
+        Space::with_height(Length::Fixed(24.0)),
+        sys_int_label,
+        tray_toggle,
+        autostart_toggle,
+        context_toggle,
         Space::with_height(Length::Fixed(40.0)),
         save_btn,
     ].spacing(8).width(Length::Fill);
