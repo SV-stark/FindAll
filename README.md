@@ -19,7 +19,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-000000?style=flat&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/Slint-230046?style=flat&logo=slint&logoColor=white" alt="Slint">
+  <img src="https://img.shields.io/badge/Iced-0.13-blue?style=flat&logo=rust&logoColor=white" alt="Iced">
   <img src="https://img.shields.io/badge/License-GPL--3.0-blue.svg" alt="License">
 </p>
 
@@ -35,7 +35,7 @@
 - **📊 Advanced Filters**: Filter by size (`size:>1MB`), extension (`ext:rs`), or path (`path:src`)
 - **🔄 Live Indexing**: Automatic file watching and incremental updates
 - **🎯 Smart Filtering**: .gitignore support, custom exclude patterns
-- **🌙 Native UI**: Beautiful dark/light themes using Slint's native toolkit
+- **🌙 Native UI**: Beautiful dark/light themes using Iced's high-performance renderer.
 
 ## 📥 Installation
 
@@ -101,7 +101,7 @@ cargo run
 | Component | Technology | Purpose |
 |-----------|------------|---------|
 | **Language** | Rust | Zero-overhead, memory-safe core |
-| **GUI** | Slint | Lightweight, native UI framework (<30MB RAM) |
+| **GUI** | Iced | High-performance, cross-platform UI framework (<30MB RAM) |
 | **Search Engine** | Tantivy | Full-text indexing with BM25 scoring |
 | **Metadata DB** | redb | Pure Rust key-value storage |
 | **Concurrency** | Rayon + Tokio | Parallel processing + async I/O |
@@ -145,7 +145,7 @@ Benchmarks on AMD Ryzen 7 5800X with NVMe SSD:
 ## 🗺️ Roadmap
 
 ### Phase 1: Core (Completed ✅)
-- [x] Project setup with Slint
+- [x] Project setup with Iced
 - [x] Basic file parsers (PDF, DOCX, TXT)
 - [x] Tantivy integration
 - [x] Parallel file scanning
@@ -195,7 +195,7 @@ This project is licensed under the GNU General Public License v3 - see the [LICE
 ## 🙏 Acknowledgments
 
 - [Tantivy](https://github.com/quickwit-oss/tantivy) - The blazing-fast search engine library
-- [Slint](https://slint.dev/) - The lightweight UI framework
+- [Iced](https://iced.rs/) - The cross-platform UI framework for Rust
 - [Redb](https://github.com/cberner/redb) - The pure Rust embedded database
 
 ---
