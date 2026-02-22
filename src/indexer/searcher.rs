@@ -99,6 +99,7 @@ pub struct IndexSearcher {
     title_field: Field,
     size_field: Field,
     content_field: Field,
+    extension_field: Field,
     cache: QueryCache,
     index_path: std::path::PathBuf,
 }
@@ -131,6 +132,9 @@ impl IndexSearcher {
         let content_field = schema
             .get_field("content")
             .map_err(|_| FlashError::index_field("content", "Field not found in schema"))?;
+        let extension_field = schema
+            .get_field("extension")
+            .map_err(|_| FlashError::index_field("extension", "Field not found in schema"))?;
 
         // Search across content, title, and file_path fields
         let default_fields: Vec<Field> = vec!["content", "title", "file_path"]
@@ -148,6 +152,7 @@ impl IndexSearcher {
             title_field,
             size_field,
             content_field,
+            extension_field,
             cache: QueryCache::new(),
             index_path,
         })
@@ -222,19 +227,9 @@ impl IndexSearcher {
                     .iter()
                     .filter_map(|ext| {
                         let ext_lower = ext.to_lowercase();
-                        let ext_with_dot = if ext_lower.starts_with('.') {
-                            ext_lower
-                        } else {
-                            format!(".{}", ext_lower)
-                        };
-                        // Use regex query for extension matching
-                        Some(
-                            tantivy::query::RegexQuery::from_pattern(
-                                &format!("{}$", regex::escape(&ext_with_dot)),
-                                self.path_field,
-                            )
-                            .ok()?,
-                        )
+                        // Use TermQuery for fast extension matching (much faster than RegexQuery)
+                        let term = tantivy::Term::from_field_text(self.extension_field, &ext_lower);
+                        Some(tantivy::query::TermQuery::new(term, IndexRecordOption::Basic))
                     })
                     .collect();
 
@@ -262,6 +257,9 @@ impl IndexSearcher {
 
         let mut results = Vec::with_capacity(top_docs.len().min(limit));
 
+        // Create snippet generator once outside the loop
+        let snippet_generator = SnippetGenerator::create(&searcher, &*final_query, self.content_field)?;
+
         for (score, doc_address) in top_docs {
             let retrieved_doc: TantivyDocument = searcher.doc(doc_address).map_err(|e| {
                 FlashError::search(query, format!("Failed to retrieve document: {}", e))
@@ -278,8 +276,7 @@ impl IndexSearcher {
                 .and_then(|f| f.as_str())
                 .map(|s: &str| s.to_string());
 
-            // Generate snippet
-            let snippet_generator = SnippetGenerator::create(&searcher, &*final_query, self.content_field)?;
+            // Generate snippet using the pre-created generator
             let snippet = snippet_generator.snippet_from_doc(&retrieved_doc);
             // Get snippet as HTML then strip tags for plain text display
             let snippet_html = snippet.to_html();

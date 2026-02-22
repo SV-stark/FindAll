@@ -340,6 +340,7 @@ impl MetadataDb {
     }
 
     /// Get recently modified files sorted by modification time
+    /// Note: This loads all files into memory. For large datasets, consider using a separate index.
     pub fn get_recent_files(
         &self,
         limit: usize,
@@ -363,9 +364,14 @@ impl MetadataDb {
             })
             .collect();
 
-        // Sort by modification time descending
-        files.sort_by(|a, b| b.1.cmp(&a.1));
-        files.truncate(limit);
+        // Use select_nth_unstable for O(n) partial sort instead of O(n log n) full sort
+        if files.len() > limit {
+            use std::cmp::Ordering;
+            files.select_nth_unstable_by(limit, |a, b| b.1.cmp(&a.1)); // Reverse order for max-heap behavior
+            files.truncate(limit);
+        } else {
+            files.sort_by(|a, b| b.1.cmp(&a.1));
+        }
 
         // Convert to the expected format (without titles for now, can be enhanced)
         Ok(files
@@ -416,10 +422,7 @@ impl RedbValue for FileMetadata {
         Self: 'a,
         Self: 'b,
     {
-        bincode::serialize(value).unwrap_or_else(|e| {
-            tracing::error!("Failed to serialize FileMetadata: {}", e);
-            Vec::new()
-        })
+        bincode::serialize(value).expect("FileMetadata serialization should never fail - this is a bug")
     }
 
     fn type_name() -> TypeName {

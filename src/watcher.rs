@@ -43,9 +43,13 @@ impl WatcherManager {
                 tokio::time::sleep(Duration::from_millis(1000)).await; // Check every 1s
                 
                 let events = {
-                    let mut guard = buffer_for_task.lock().map_err(|e| {
-                        error!("Watcher lock poisoned: {}", e);
-                    })?;
+                    let guard = match buffer_for_task.lock() {
+                        Ok(g) => g,
+                        Err(e) => {
+                            error!("Watcher lock poisoned: {}", e);
+                            continue;
+                        }
+                    };
                     if guard.is_empty() {
                         continue;
                     }
@@ -56,18 +60,41 @@ impl WatcherManager {
                 
                 let mut needs_commit = false;
                 
-                for (path, action) in events {
-                    let res = match action {
-                        WatcherAction::Index => Self::reindex_single_file(&path, &indexer_for_task, &metadata_db_for_task).await,
-                        WatcherAction::Remove => Self::remove_single_file(&path, &indexer_for_task, &metadata_db_for_task).await,
-                    };
-                    
+                // First pass: collect all paths that need to be removed
+                let remove_paths: Vec<PathBuf> = events
+                    .iter()
+                    .filter(|(_, action)| matches!(action, WatcherAction::Remove))
+                    .map(|(path, _)| path.clone())
+                    .collect();
+                
+                // Second pass: collect all paths that need to be indexed
+                let index_paths: Vec<PathBuf> = events
+                    .iter()
+                    .filter(|(_, action)| matches!(action, WatcherAction::Index))
+                    .map(|(path, _)| path.clone())
+                    .collect();
+                
+                // Process removes first
+                for path in remove_paths {
+                    let res = Self::remove_single_file(&path, &indexer_for_task, &metadata_db_for_task).await;
                     if let Ok(processed) = res {
                         if processed {
                             needs_commit = true;
                         }
                     } else if let Err(e) = res {
-                        error!("Watcher error processing {:?}: {}", path, e);
+                        error!("Watcher error removing {:?}: {}", path, e);
+                    }
+                }
+                
+                // Then process indexes
+                for path in index_paths {
+                    let res = Self::reindex_single_file(&path, &indexer_for_task, &metadata_db_for_task).await;
+                    if let Ok(processed) = res {
+                        if processed {
+                            needs_commit = true;
+                        }
+                    } else if let Err(e) = res {
+                        error!("Watcher error indexing {:?}: {}", path, e);
                     }
                 }
                 
@@ -120,7 +147,6 @@ impl WatcherManager {
                                         guard.insert(path.clone(), WatcherAction::Remove);
                                     }
                                     _ => {
-                                        guard.insert(path.clone(), WatcherAction::Remove);
                                         guard.insert(path.clone(), WatcherAction::Index);
                                     }
                                 }

@@ -56,6 +56,7 @@ pub enum Message {
     SearchQueryChanged(String),
     SearchSubmitted,
     SearchResultsReceived(Vec<FileItem>),
+    SearchError(String),
     ResultSelected(usize),
     OpenFile(String),
     CopyPath(String),
@@ -74,11 +75,15 @@ pub enum Message {
     MoveUp,
     MoveDown,
     DismissError,
+    Quit,
+    MaxResultsChanged(String),
+    ExcludePatternsChanged(String),
 }
 
 pub struct App {
     state: Option<Arc<AppState>>,
     error: Option<String>,
+    search_error: Option<String>,
     search_query: String,
     results: Vec<FileItem>,
     selected_index: Option<usize>,
@@ -104,7 +109,7 @@ impl App {
                 let index_size = format!("{:.1} MB", (stats.total_size_bytes as f64) / 1_048_576.0);
                 let is_dark = matches!(settings.theme, crate::settings::Theme::Dark);
                 App { 
-                    state: Some(state), error: None, search_query: String::new(), results: Vec::new(), selected_index: None, 
+                    state: Some(state), error: None, search_error: None, search_query: String::new(), results: Vec::new(), selected_index: None, 
                     is_searching: false, settings, active_tab: Tab::Search,
                     files_indexed: stats.total_documents as i32, index_size, is_dark,
                     search_mode: SearchMode::FullText, filter_extension: String::new(),
@@ -115,6 +120,7 @@ impl App {
                 App {
                     state: None,
                     error: Some(err_msg),
+                    search_error: None,
                     search_query: String::new(),
                     results: Vec::new(),
                     selected_index: None,
@@ -144,14 +150,14 @@ impl App {
             return (None, None);
         }
         
-        let (op, num_str) = if size_str.starts_with(">") {
-            (">", &size_str[1..])
-        } else if size_str.starts_with("<") {
-            ("<", &size_str[1..])
-        } else if size_str.starts_with(">=") {
+        let (op, num_str) = if size_str.starts_with(">=") {
             (">=", &size_str[2..])
         } else if size_str.starts_with("<=") {
             ("<=", &size_str[2..])
+        } else if size_str.starts_with(">") {
+            (">", &size_str[1..])
+        } else if size_str.starts_with("<") {
+            ("<", &size_str[1..])
         } else {
             (">=", size_str)
         };
@@ -203,23 +209,23 @@ impl App {
         self.preview_content = None;
         
         Task::future(async move {
-            let items = match mode {
+            let result = match mode {
                 SearchMode::Filename => {
                     match search_filenames_internal(query, max_results, &state).await {
-                        Ok(results) => results.into_iter().map(FileItem::from).collect(),
-                        Err(_) => Vec::new(),
+                        Ok(results) => Message::SearchResultsReceived(results.into_iter().map(FileItem::from).collect()),
+                        Err(e) => Message::SearchError(e.to_string()),
                     }
                 }
                 SearchMode::FullText => {
                     match search_query_internal(
                         query, max_results, &state, min_size, max_size, extension
                     ).await {
-                        Ok(results) => results.into_iter().map(FileItem::from).collect(),
-                        Err(_) => Vec::new(),
+                        Ok(results) => Message::SearchResultsReceived(results.into_iter().map(FileItem::from).collect()),
+                        Err(e) => Message::SearchError(e.to_string()),
                     }
                 }
             };
-            Message::SearchResultsReceived(items)
+            result
         })
     }
 
@@ -261,6 +267,9 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 app.error = None;
                 Task::none()
             }
+            Message::Quit => {
+                std::process::exit(0);
+            }
             _ => Task::none()
         }
     } else {
@@ -269,11 +278,18 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             Message::SearchSubmitted => app.perform_search(),
             Message::SearchResultsReceived(results) => { 
                 app.results = results; 
-                app.is_searching = false; 
+                app.is_searching = false;
+                app.search_error = None;
                 if !app.results.is_empty() {
                     app.selected_index = Some(0);
                 }
                 app.load_preview()
+            }
+            Message::SearchError(err) => {
+                app.search_error = Some(err);
+                app.is_searching = false;
+                app.results.clear();
+                Task::none()
             }
             Message::ResultSelected(idx) => { 
                 app.selected_index = Some(idx); 
@@ -318,6 +334,16 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             }
             Message::RemoveFolder(i) => { if i < app.settings.index_dirs.len() { app.settings.index_dirs.remove(i); } Task::none() }
             Message::SaveSettings => { app.save_settings(); Task::none() }
+            Message::MaxResultsChanged(val) => {
+                if let Ok(num) = val.parse() {
+                    app.settings.max_results = num;
+                }
+                Task::none()
+            }
+            Message::ExcludePatternsChanged(val) => {
+                app.settings.exclude_patterns = val.split(',').map(|s| s.trim().to_string()).collect();
+                Task::none()
+            }
             Message::ToggleTheme => {
                 app.is_dark = !app.is_dark;
                 app.settings.theme = if app.is_dark { crate::settings::Theme::Dark } else { crate::settings::Theme::Light };
@@ -357,7 +383,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             }
             Message::MoveDown => {
                 if let Some(current) = app.selected_index {
-                    if current < app.results.len() - 1 {
+                    if !app.results.is_empty() && current < app.results.len() - 1 {
                         app.selected_index = Some(current + 1);
                         return app.load_preview();
                     }
@@ -365,6 +391,9 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 Task::none()
             }
             Message::DismissError => Task::none(),
+            Message::Quit => {
+                std::process::exit(0);
+            }
         }
     }
 }
@@ -386,7 +415,7 @@ fn error_view(error: &str) -> Element<Message> {
     column![
         text("Startup Error").size(24).style(iced::theme::Text::Color(iced::color!(1.0, 0.3, 0.3))),
         text(error).size(14),
-        button("Quit").on_press(Message::DismissError)
+        button("Quit").on_press(Message::Quit)
     ]
     .spacing(20)
     .padding(40)

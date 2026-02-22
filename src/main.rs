@@ -3,7 +3,8 @@
 use mimalloc::MiMalloc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tracing::{error, info, Level};
+use tracing::{error, info};
+use tracing_appender::non_blocking::WorkerGuard;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
@@ -16,7 +17,7 @@ pub fn is_shutting_down() -> bool {
     SHUTDOWN_FLAG.load(Ordering::SeqCst)
 }
 
-fn init_logging() {
+fn init_logging() -> WorkerGuard {
     let log_dir = dirs::data_local_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join("com.flashsearch")
@@ -30,7 +31,7 @@ fn init_logging() {
         "flash-search.log",
     );
 
-    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
     let env_filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new("info"));
@@ -42,11 +43,13 @@ fn init_logging() {
         .init();
 
     info!("Flash Search starting up");
+    
+    guard
 }
 
 #[tokio::main]
 async fn main() {
-    init_logging();
+    let _guard = init_logging();
 
     let args: Vec<String> = std::env::args().collect();
     

@@ -24,6 +24,9 @@ pub fn create_schema() -> Schema {
 
     // File size - indexed for range queries
     schema_builder.add_u64_field("size", FAST | INDEXED);
+    
+    // File extension - indexed as keyword for fast filtering
+    schema_builder.add_text_field("extension", STRING | STORED);
 
     schema_builder.build()
 }

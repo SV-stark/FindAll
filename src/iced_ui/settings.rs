@@ -13,12 +13,14 @@ pub fn settings_view(app: &App) -> Element<Message> {
     let max_results_label = text("Max Results:").size(16);
     let max_results_val = app.settings.max_results.to_string();
     let max_results_input = TextInput::new("100", &max_results_val)
-        .padding(10.0).size(16).width(Length::Fixed(150.0));
+        .padding(10.0).size(16).width(Length::Fixed(150.0))
+        .on_input(Message::MaxResultsChanged);
     
     let exclude_label = text("Exclude Patterns (comma separated):").size(16);
     let exclude_val = app.settings.exclude_patterns.join(", ");
     let exclude_input = TextInput::new("*.git, target, node_modules", &exclude_val)
-        .padding(10.0).size(16).width(Length::Fill);
+        .padding(10.0).size(16).width(Length::Fill)
+        .on_input(Message::ExcludePatternsChanged);
     
     let mut dirs_col = column![text("Index Directories").size(20)].spacing(10);
     for (i, dir) in app.settings.index_dirs.iter().enumerate() {

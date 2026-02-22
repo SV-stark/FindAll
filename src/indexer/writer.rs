@@ -15,6 +15,7 @@ pub struct IndexWriterManager {
     title_field: Field,
     modified_field: Field,
     size_field: Field,
+    extension_field: Field,
 }
 
 impl IndexWriterManager {
@@ -85,6 +86,9 @@ impl IndexWriterManager {
         let size_field = schema
             .get_field("size")
             .map_err(|_| FlashError::index_field("size", "Field not found in schema"))?;
+        let extension_field = schema
+            .get_field("extension")
+            .map_err(|_| FlashError::index_field("extension", "Field not found in schema"))?;
 
         Ok(Self {
             writer: Mutex::new(writer),
@@ -94,6 +98,7 @@ impl IndexWriterManager {
             title_field,
             modified_field,
             size_field,
+            extension_field,
         })
     }
 
@@ -155,6 +160,14 @@ impl IndexWriterManager {
         let modified_date = tantivy::DateTime::from_timestamp_secs(modified as i64);
         document.add_date(self.modified_field, modified_date);
         document.add_u64(self.size_field, size);
+        
+        // Index file extension for fast filtering
+        if let Some(ext) = std::path::Path::new(&doc.path)
+            .extension()
+            .and_then(|e| e.to_str())
+        {
+            document.add_text(self.extension_field, &ext.to_lowercase());
+        }
 
         document
     }

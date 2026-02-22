@@ -186,8 +186,9 @@ impl Scanner {
                     }
                 }
 
-                doc_batch.push((task.doc.clone(), task.modified, task.size));
-                meta_batch.push((task.doc.path.clone(), task.modified, task.size, task.content_hash));
+                // Take ownership instead of cloning
+                doc_batch.push((task.doc, task.modified, task.size));
+                meta_batch.push((task.doc.path, task.modified, task.size, task.content_hash));
                 processed += 1;
 
                 // Flush batch when full

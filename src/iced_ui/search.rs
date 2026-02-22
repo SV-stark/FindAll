@@ -26,6 +26,15 @@ pub fn search_view(app: &App) -> Element<Message> {
         .width(Length::Fill)
         .align_items(Alignment::Center);
 
+    // Search error display
+    let error_display = if let Some(ref err) = app.search_error {
+        container(
+            text(err).size(14).style(theme::Text::Color(iced::Color::from_rgb(1.0, 0.3, 0.3)))
+        ).padding(8.0).into()
+    } else {
+        Space::with_height(Length::Fixed(0.0)).into()
+    };
+
     // Filters and Toolbar
     let filter_ext = TextInput::new("ext:pdf", &app.filter_extension)
         .on_input(Message::FilterExtensionChanged)
@@ -72,8 +81,15 @@ pub fn search_view(app: &App) -> Element<Message> {
         let items: Vec<_> = app.results.iter().enumerate().map(|(i, item)| {
             let ext_str = item.extension.as_deref().unwrap_or("");
             
+            // Extract directory from path
+            let dir = std::path::Path::new(&item.path)
+                .parent()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+            
             let item_content = row![
                 text(&item.title).size(15).width(Length::Fill),
+                text(&dir).size(12).style(theme::Text::Color(iced::Color::from_rgb(0.4, 0.4, 0.4))).width(Length::Fixed(300.0)),
                 text(ext_str).size(13).style(theme::Text::Color(iced::Color::from_rgb(0.5, 0.5, 0.5))),
             ].spacing(10).align_items(Alignment::Center);
             

@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 use thiserror::Error;
 
+pub use anyhow::Context;
+
 #[derive(Error, Debug)]
 pub enum FlashError {
     #[error("IO error: {0}")]
