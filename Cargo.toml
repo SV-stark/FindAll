@@ -15,7 +15,7 @@ winres = "0.1"
 [dependencies]
 # UI Framework
 iced = { version = "0.14", features = ["image", "svg", "tokio"] }
-iced_aw = { version = "0.13.0", default-features = false, features = ["card"] }
+iced_aw = { version = "0.13", default-features = false, features = ["card"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
