@@ -186,9 +186,10 @@ impl Scanner {
                     }
                 }
 
-                // Take ownership instead of cloning
+                // Clone path before moving doc
+                let doc_path = task.doc.path.clone();
                 doc_batch.push((task.doc, task.modified, task.size));
-                meta_batch.push((task.doc.path, task.modified, task.size, task.content_hash));
+                meta_batch.push((doc_path, task.modified, task.size, task.content_hash));
                 processed += 1;
 
                 // Flush batch when full

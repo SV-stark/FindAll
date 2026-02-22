@@ -48,6 +48,24 @@ pub enum FlashError {
         resource: String,
         identifier: String,
     },
+    #[error("{context}: {source}")]
+    WithContext {
+        context: String,
+        source: Box<FlashError>,
+    },
+}
+
+pub trait Contextualize<T> {
+    fn context(self, msg: &str) -> std::result::Result<T, FlashError>;
+}
+
+impl<T, E: Into<FlashError>> Contextualize<T> for std::result::Result<T, E> {
+    fn context(self, msg: &str) -> std::result::Result<T, FlashError> {
+        self.map_err(|e| FlashError::WithContext {
+            context: msg.to_string(),
+            source: Box::new(e.into()),
+        })
+    }
 }
 
 pub type Result<T> = std::result::Result<T, FlashError>;

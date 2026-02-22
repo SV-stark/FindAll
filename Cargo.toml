@@ -10,6 +10,7 @@ rust-version = "1.75"
 name = "flash_search"
 
 [build-dependencies]
+winres = "0.1"
 
 [dependencies]
 # UI Framework

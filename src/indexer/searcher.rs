@@ -5,7 +5,7 @@ use std::ops::Bound;
 use std::time::{Duration, Instant};
 use tantivy::collector::TopDocs;
 use tantivy::query::{BooleanQuery, FuzzyTermQuery, Occur, QueryParser, RangeQuery};
-use tantivy::schema::{Field, Schema, Value};
+use tantivy::schema::{Field, Schema, Value, IndexRecordOption};
 use tantivy::Term;
 use tantivy::{Index, IndexReader, ReloadPolicy, TantivyDocument};
 use tantivy::snippet::SnippetGenerator;

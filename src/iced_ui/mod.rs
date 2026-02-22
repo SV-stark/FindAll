@@ -5,7 +5,7 @@ use crate::indexer::searcher::SearchResult;
 use crate::models::FilenameSearchResult;
 use crate::scanner::ProgressEvent;
 use crate::settings::AppSettings;
-use iced::{Element, Settings, Theme, Task};
+use iced::{Element, Settings, Theme, Task, Subscription, window};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -479,7 +479,7 @@ fn error_view(error: &str) -> Element<Message> {
     use iced::widget::{column, button, text};
     
     column![
-        text("Startup Error").size(24).style(iced::theme::Text::Color(iced::color!(1.0, 0.3, 0.3))),
+        text("Startup Error").size(24).style(iced::theme::Text::danger),
         text(error).size(14),
         button("Quit").on_press(Message::Quit)
     ]
@@ -489,7 +489,13 @@ fn error_view(error: &str) -> Element<Message> {
 }
 
 pub fn run_ui(state: Result<std::sync::Arc<AppState>, String>, progress_rx: mpsc::Receiver<ProgressEvent>) {
-    let settings = Settings::default();
+    let mut settings = Settings::default();
+    
+    // Set window icon
+    let icon_data = include_bytes!("../../assets/logo.png");
+    if let Ok(icon) = window::icon::from_file_data(icon_data, None) {
+        settings.window.icon = Some(icon);
+    }
     let mut app = App::new(state);
     let is_dark = app.is_dark;
     app.progress_rx = Some(Arc::new(tokio::sync::Mutex::new(progress_rx)));

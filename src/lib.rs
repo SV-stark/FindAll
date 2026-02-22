@@ -35,7 +35,7 @@ pub fn setup_app() -> std::result::Result<(Arc<AppState>, tokio::sync::mpsc::Rec
     
     if !app_data_dir.exists() {
         std::fs::create_dir_all(&app_data_dir)
-            .map_err(|e| FlashError::Io(e).context("Failed to create app data directory"))?;
+            .context("Failed to create app data directory")?;
     }
 
     info!("App data directory: {:?}", app_data_dir);
@@ -93,7 +93,7 @@ pub fn run_ui() -> std::result::Result<(), FlashError> {
     });
     
     if let Err(e) = result {
-        iced_ui::run_ui(Err(e.to_string()), tokio::sync::mpsc::channel().1);
+        iced_ui::run_ui(Err(e.to_string()), tokio::sync::mpsc::channel(1).1);
     }
     
     Ok(())

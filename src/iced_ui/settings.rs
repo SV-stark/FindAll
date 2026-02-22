@@ -6,8 +6,8 @@ use super::{App, Message, Tab};
 pub fn settings_view(app: &App) -> Element<Message> {
     let title = text("Settings").size(28);
     let tabs = row![
-        button("Search").on_press(Message::TabChanged(Tab::Search)).padding(8.0).style(theme::Button::Secondary),
-        button("Settings").on_press(Message::TabChanged(Tab::Settings)).padding(8.0).style(theme::Button::Primary)
+        button("Search").on_press(Message::TabChanged(Tab::Search)).padding(8.0).style(iced::theme::Button::Secondary),
+        button("Settings").on_press(Message::TabChanged(Tab::Settings)).padding(8.0).style(iced::theme::Button::Primary)
     ].spacing(12);
     
     let max_results_label = text("Max Results:").size(16);
@@ -27,18 +27,18 @@ pub fn settings_view(app: &App) -> Element<Message> {
         let row_item = container(
             row![
                 text(dir).size(15).width(Length::Fill),
-                button("Remove").on_press(Message::RemoveFolder(i)).padding(6.0).style(theme::Button::Destructive)
-            ].spacing(16).align_items(Alignment::Center)
+                button("Remove").on_press(Message::RemoveFolder(i)).padding(6.0).style(iced::theme::Button::Destructive)
+            ].spacing(16).align_x(Alignment::Center)
         )
         .padding(12.0)
-        .style(theme::Container::Box)
+        .style(iced::theme::Container::Box)
         .width(Length::Fill);
         
         dirs_col = dirs_col.push(row_item);
     }
     
-    let add_btn = button(text("Add Folder").size(16)).on_press(Message::AddFolder).padding(12.0).style(theme::Button::Secondary);
-    let save_btn = button(text("Save Settings").size(16)).on_press(Message::SaveSettings).padding(14.0).style(theme::Button::Primary);
+    let add_btn = button(text("Add Folder").size(16)).on_press(Message::AddFolder).padding(12.0).style(iced::theme::Button::Secondary);
+    let save_btn = button(text("Save Settings").size(16)).on_press(Message::SaveSettings).padding(14.0).style(iced::theme::Button::Primary);
     
     let settings_form = column![
         max_results_label,
@@ -67,7 +67,7 @@ pub fn settings_view(app: &App) -> Element<Message> {
             center_content
         ]
         .width(Length::Fill)
-        .align_items(Alignment::Center)
+        .align_x(Alignment::Center)
     )
     .padding(40)
     .width(Length::Fill)
