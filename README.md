@@ -41,20 +41,20 @@
 
 ### Prerequisites
 
-- **Windows**: Windows 10/11 with WebView2 Runtime
-- **macOS**: macOS 10.13+ 
-- **Linux**: WebKit2GTK 4.0+
+- **Windows**: Windows 10/11
+- **macOS**: macOS 10.15+
+- **Linux**: Vulkan-compatible drivers & development tools (pkg-config, libfontconfig1-dev)
 
 ### Download
 
-Download the latest release for your platform from the [Releases](https://github.com/yourusername/flash-search/releases) page.
+Download the latest release for your platform from the [Releases](https://github.com/SV-stark/FindAll/releases) page.
 
 ### Build from Source
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/flash-search.git
-cd flash-search
+git clone https://github.com/SV-stark/FindAll.git
+cd FindAll
 
 # Build the application
 cargo build --release
@@ -181,8 +181,8 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 # Clone and setup
-git clone https://github.com/yourusername/flash-search.git
-cd flash-search
+git clone https://github.com/SV-stark/FindAll.git
+cd FindAll
 
 # Run development server
 cargo run
