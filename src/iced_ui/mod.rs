@@ -503,29 +503,45 @@ fn subscription(app: &App) -> Subscription<Message> {
     } else {
         tray_sub
     }
-}
-
 fn view(app: &App) -> Element<Message> {
-    if let Some(ref error) = app.error {
-        return error_view(error);
-    }
-    
-    match app.active_tab {
+    let main_content = match app.active_tab {
         Tab::Search => search::search_view(app),
         Tab::Settings => settings::settings_view(app),
+    };
+
+    if app.error.is_some() || app.search_error.is_some() {
+        let error_msg = app.error.as_deref().or(app.search_error.as_deref()).unwrap_or("Unknown error");
+        iced_aw::Modal::new(
+            main_content,
+            error_view(error_msg)
+        )
+        .on_esc(Message::DismissError)
+        .into()
+    } else {
+        main_content
     }
 }
 
-fn error_view(error: &str) -> Element<Message> {
-    use iced::widget::{column, button, text};
+fn error_view<'a>(error: &str) -> Element<'a, Message> {
+    use iced::widget::{column, button, text, container};
+    use iced_aw::Card;
     
-    column![
-        text("Startup Error").size(24).style(iced::theme::Text::danger),
+    let content = column![
         text(error).size(14),
-        button("Quit").on_press(Message::Quit)
-    ]
-    .spacing(20)
-    .padding(40)
+    ].spacing(20);
+
+    Card::new(
+        text("Error").size(20).style(iced::theme::Text::danger),
+        content
+    )
+    .foot(
+        iced::widget::row![
+            iced::widget::Space::with_width(iced::Length::Fill),
+            button("Dismiss").on_press(Message::DismissError).padding(8).style(iced::theme::Button::Secondary),
+            button("Quit").on_press(Message::Quit).padding(8).style(iced::theme::Button::Destructive)
+        ].spacing(10)
+    )
+    .max_width(500.0)
     .into()
 }
 

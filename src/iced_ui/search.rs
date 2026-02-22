@@ -1,5 +1,6 @@
 use iced::widget::{button, column, container, row, text, Space, Scrollable, TextInput};
 use iced::{Element, Length, Alignment, Padding};
+use iced_aw::Card;
 use iced::theme;
 use super::{App, Message, SearchMode, Tab};
 
@@ -95,16 +96,22 @@ pub fn search_view(app: &App) -> Element<Message> {
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_default();
             
-            let item_content = row![
-                text(&item.title).size(15).width(Length::Fill),
-                text(&dir).size(12).style(iced::theme::Text::Color(iced::Color::from_rgb(0.4, 0.4, 0.4))).width(Length::Fixed(300.0)),
+            let header_row = row![
+                text(&item.title).size(15).weight(iced::font::Weight::Bold),
+                Space::with_width(Length::Fill),
                 text(ext_str).size(13).style(iced::theme::Text::Color(iced::Color::from_rgb(0.5, 0.5, 0.5))),
-            ].spacing(10).align_y(Alignment::Center);
-            
-            let mut btn = button(item_content)
+            ].align_y(Alignment::Center);
+
+            let body_text = text(&dir).size(12).style(iced::theme::Text::Color(iced::Color::from_rgb(0.4, 0.4, 0.4)));
+
+            let card = Card::new(header_row, body_text)
+                .padding(10.0)
+                .width(Length::Fill);
+
+            let mut btn = button(card)
                 .on_press(Message::ResultSelected(i))
                 .width(Length::Fill)
-                .padding(Padding::from([10.0, 16.0]));
+                .padding(0);
             
             if Some(i) == app.selected_index {
                 btn = btn.style(iced::theme::Button::Primary);
