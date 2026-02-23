@@ -1,0 +1,164 @@
+   Compiling flash-search v0.2.0 (E:\findall)
+warning: unused import: `std::path::PathBuf`
+ --> src\commands\export.rs:4:5
+  |
+4 | use std::path::PathBuf;
+  |     ^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `crate::error::FlashError`
+ --> src\iced_ui\mod.rs:3:5
+  |
+3 | use crate::error::FlashError;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `Color`
+ --> src\iced_ui\search.rs:3:23
+  |
+3 | use iced::{Alignment, Color, Element, Length, Padding};
+  |                       ^^^^^
+
+warning: unused import: `std::cmp::Ordering`
+   --> src\metadata\db.rs:369:17
+    |
+369 |             use std::cmp::Ordering;
+    |                 ^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `Context` and `Result`
+  --> src\lib.rs:13:20
+   |
+13 | use crate::error::{Context, FlashError, Result};
+   |                    ^^^^^^^              ^^^^^^
+
+error[E0063]: missing field `snap` in initializer of `iced::widget::container::Style`
+ --> src\iced_ui\theme.rs:7:5
+  |
+7 |     container::Style {
+  |     ^^^^^^^^^^^^^^^^ missing `snap`
+
+error[E0063]: missing field `snap` in initializer of `iced::widget::container::Style`
+  --> src\iced_ui\theme.rs:31:5
+   |
+31 |     container::Style {
+   |     ^^^^^^^^^^^^^^^^ missing `snap`
+
+error[E0063]: missing field `snap` in initializer of `iced::widget::container::Style`
+  --> src\iced_ui\theme.rs:43:5
+   |
+43 |     container::Style {
+   |     ^^^^^^^^^^^^^^^^ missing `snap`
+
+error[E0063]: missing field `snap` in initializer of `iced::widget::container::Style`
+  --> src\iced_ui\theme.rs:72:5
+   |
+72 |     container::Style {
+   |     ^^^^^^^^^^^^^^^^ missing `snap`
+
+error[E0063]: missing field `snap` in initializer of `iced::widget::container::Style`
+   --> src\iced_ui\theme.rs:101:5
+    |
+101 |     container::Style {
+    |     ^^^^^^^^^^^^^^^^ missing `snap`
+
+warning: unused variable: `error_display`
+  --> src\iced_ui\search.rs:29:9
+   |
+29 |     let error_display: Element<Message> = if let Some(ref err) = app.search_error {
+   |         ^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_error_display`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+error: implementation of `FnOnce` is not general enough
+   --> src\iced_ui\mod.rs:508:5
+    |
+508 | /     iced::application(
+509 | |         move || {
+510 | |             let mut app = App::new(state.clone());
+511 | |             app.progress_rx = Some(progress_mutex.clone());
+...   |
+517 | |     .title(|_| String::from("Flash Search"))
+518 | |     .theme(|app: &App| if app.is_dark { iced::Theme::Dark } else { iced::Theme::Light })
+    | |________________________________________________________________________________________^ implementation of `FnOnce` is not general enough
+    |
+    = note: closure with signature `fn(&'2 App) -> std::string::String` must implement `FnOnce<(&'1 App,)>`, for any lifetime `'1`...
+    = note: ...but it actually implements `FnOnce<(&'2 App,)>`, for some specific lifetime `'2`
+
+error: implementation of `std::ops::Fn` is not general enough
+   --> src\iced_ui\mod.rs:508:5
+    |
+508 | /     iced::application(
+509 | |         move || {
+510 | |             let mut app = App::new(state.clone());
+511 | |             app.progress_rx = Some(progress_mutex.clone());
+...   |
+517 | |     .title(|_| String::from("Flash Search"))
+518 | |     .theme(|app: &App| if app.is_dark { iced::Theme::Dark } else { iced::Theme::Light })
+    | |________________________________________________________________________________________^ implementation of `std::ops::Fn` is not general enough
+    |
+    = note: closure with signature `fn(&'2 App) -> std::string::String` must implement `std::ops::Fn<(&'1 App,)>`, for any lifetime `'1`...
+    = note: ...but it actually implements `std::ops::Fn<(&'2 App,)>`, for some specific lifetime `'2`
+
+error: implementation of `FnOnce` is not general enough
+   --> src\iced_ui\mod.rs:508:5
+    |
+508 | /     iced::application(
+509 | |         move || {
+510 | |             let mut app = App::new(state.clone());
+511 | |             app.progress_rx = Some(progress_mutex.clone());
+...   |
+522 | |         ..Default::default()
+523 | |     })
+    | |______^ implementation of `FnOnce` is not general enough
+    |
+    = note: closure with signature `fn(&'2 App) -> std::string::String` must implement `FnOnce<(&'1 App,)>`, for any lifetime `'1`...
+    = note: ...but it actually implements `FnOnce<(&'2 App,)>`, for some specific lifetime `'2`
+
+error: implementation of `std::ops::Fn` is not general enough
+   --> src\iced_ui\mod.rs:508:5
+    |
+508 | /     iced::application(
+509 | |         move || {
+510 | |             let mut app = App::new(state.clone());
+511 | |             app.progress_rx = Some(progress_mutex.clone());
+...   |
+522 | |         ..Default::default()
+523 | |     })
+    | |______^ implementation of `std::ops::Fn` is not general enough
+    |
+    = note: closure with signature `fn(&'2 App) -> std::string::String` must implement `std::ops::Fn<(&'1 App,)>`, for any lifetime `'1`...
+    = note: ...but it actually implements `std::ops::Fn<(&'2 App,)>`, for some specific lifetime `'2`
+
+error: implementation of `FnOnce` is not general enough
+   --> src\iced_ui\mod.rs:508:5
+    |
+508 | /     iced::application(
+509 | |         move || {
+510 | |             let mut app = App::new(state.clone());
+511 | |             app.progress_rx = Some(progress_mutex.clone());
+...   |
+523 | |     })
+524 | |     .run()
+    | |__________^ implementation of `FnOnce` is not general enough
+    |
+    = note: closure with signature `fn(&'2 App) -> std::string::String` must implement `FnOnce<(&'1 App,)>`, for any lifetime `'1`...
+    = note: ...but it actually implements `FnOnce<(&'2 App,)>`, for some specific lifetime `'2`
+
+error: implementation of `std::ops::Fn` is not general enough
+   --> src\iced_ui\mod.rs:508:5
+    |
+508 | /     iced::application(
+509 | |         move || {
+510 | |             let mut app = App::new(state.clone());
+511 | |             app.progress_rx = Some(progress_mutex.clone());
+...   |
+523 | |     })
+524 | |     .run()
+    | |__________^ implementation of `std::ops::Fn` is not general enough
+    |
+    = note: closure with signature `fn(&'2 App) -> std::string::String` must implement `std::ops::Fn<(&'1 App,)>`, for any lifetime `'1`...
+    = note: ...but it actually implements `std::ops::Fn<(&'2 App,)>`, for some specific lifetime `'2`
+
+For more information about this error, try `rustc --explain E0063`.
+warning: `flash-search` (lib) generated 6 warnings
+error: could not compile `flash-search` (lib) due to 11 previous errors; 6 warnings emitted

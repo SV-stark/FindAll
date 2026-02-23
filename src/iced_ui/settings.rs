@@ -1,16 +1,16 @@
-use super::{App, Message, Tab};
-use iced::widget::{button, checkbox, column, container, row, text, Space, TextInput};
+use super::{theme, App, Message, Tab};
+use iced::widget::{button, checkbox, column, container, row, text, Scrollable, Space, TextInput};
 use iced::{Alignment, Element, Length, Padding};
 
 pub fn settings_view(app: &App) -> Element<Message> {
     let title = text("Settings").size(28);
     let tabs = row![
-        button("Search")
+        button(text("Search").size(16))
             .on_press(Message::TabChanged(Tab::Search))
-            .padding(Padding::from(8.0)),
-        button("Settings")
+            .padding(Padding::from([8.0, 16.0])),
+        button(text("Settings").size(16))
             .on_press(Message::TabChanged(Tab::Settings))
-            .padding(Padding::from(8.0))
+            .padding(Padding::from([8.0, 16.0]))
     ]
     .spacing(12);
 
@@ -37,12 +37,13 @@ pub fn settings_view(app: &App) -> Element<Message> {
                 text(dir).size(15).width(Length::Fill),
                 button("Remove")
                     .on_press(Message::RemoveFolder(i))
-                    .padding(Padding::from(6.0))
+                    .padding(Padding::from(8.0))
             ]
             .spacing(16)
             .align_y(Alignment::Center),
         )
-        .padding(Padding::from(12.0))
+        .style(theme::padded_card_container)
+        .padding(Padding::from(16.0))
         .width(Length::Fill);
 
         dirs_col = dirs_col.push(row_item);
@@ -88,19 +89,22 @@ pub fn settings_view(app: &App) -> Element<Message> {
         .width(Length::Fixed(800.0))
         .center_x(Length::Fill);
 
-    container(
+    let scroll = Scrollable::new(
         column![
             tabs,
-            Space::new().height(Length::Fixed(16.0)),
+            Space::new().height(Length::Fixed(24.0)),
             title,
             Space::new().height(Length::Fixed(32.0)),
             center_content
         ]
         .width(Length::Fill)
         .align_x(Alignment::Center),
-    )
-    .padding(Padding::from(40.0))
-    .width(Length::Fill)
-    .height(Length::Fill)
-    .into()
+    );
+
+    container(scroll)
+        .style(theme::main_content_container)
+        .padding(Padding::from(40.0))
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
 }

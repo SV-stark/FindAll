@@ -2,9 +2,6 @@ import os
 import subprocess
 
 def find_iced_signature():
-    # Use rustc to output the docs or we can just search local crates cache
-    registry_path = os.path.expanduser('~/.cargo/registry/src')
-    # Windows cargo registry
     cargo_home = os.environ.get('CARGO_HOME', os.path.expanduser('~/.cargo'))
     registry_src = os.path.join(cargo_home, 'registry', 'src')
     
@@ -17,8 +14,8 @@ def find_iced_signature():
                     print(f"Found {filepath}")
                     lines = content.split('\n')
                     for i, l in enumerate(lines):
-                        if 'pub fn application' in l:
-                            print("\n".join(lines[i:i+10]))
+                        if 'pub fn application<' in l or 'pub fn application(' in l:
+                            print("\n".join(lines[i-2:i+15]))
                             return
     print("Could not find iced application source.")
 

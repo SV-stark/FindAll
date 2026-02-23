@@ -47,8 +47,7 @@ fn init_logging() -> WorkerGuard {
     guard
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
     let _guard = init_logging();
 
     let args: Vec<String> = std::env::args().collect();
@@ -58,11 +57,22 @@ async fn main() {
         return;
     }
     
+    // We must create a tokio runtime for background tasks (like Watcher), but we CANNOT 
+    // use #[tokio::main] because Iced uses winit to hijack the main thread and blocks it.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let _rt_guard = rt.enter();
+    
     if args.iter().any(|arg| arg == "--cli" || arg == "-c") {
         let query = args.get(2).cloned();
-        if let Err(e) = flash_search::run_cli(query, None).await {
-            error!("CLI Error: {}", e);
-        }
+        
+        rt.block_on(async {
+            if let Err(e) = flash_search::run_cli(query, None).await {
+                error!("CLI Error: {}", e);
+            }
+        });
         return;
     }
 
@@ -71,6 +81,7 @@ async fn main() {
         SHUTDOWN_FLAG.store(true, Ordering::SeqCst);
     }).expect("Error setting Ctrl-C handler");
 
+    // Iced requires running on the main thread and runs its own executor
     match flash_search::run_ui() {
         Ok(_) => {}
         Err(e) => {

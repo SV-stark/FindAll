@@ -12,6 +12,7 @@ use tokio::sync::mpsc;
 
 pub mod search;
 pub mod settings;
+pub mod theme;
 
 #[derive(Clone, Debug)]
 pub struct FileItem {
@@ -489,9 +490,11 @@ fn subscription(_app: &App) -> Subscription<Message> {
     Subscription::none()
 }
 
-fn view(_app: &App) -> Element<Message> {
-    use iced::widget::text;
-    text("UI unavailable").into()
+fn view(app: &App) -> Element<Message> {
+    match app.active_tab {
+        Tab::Search => search::search_view(app),
+        Tab::Settings => settings::settings_view(app),
+    }
 }
 
 fn error_view(_error: &str) -> Element<'_, Message> {
@@ -499,6 +502,33 @@ fn error_view(_error: &str) -> Element<'_, Message> {
     text("Error display unavailable").into()
 }
 
-pub fn run_ui(state: Result<std::sync::Arc<AppState>, String>, _progress_rx: mpsc::Receiver<ProgressEvent>) {
-    eprintln!("UI startup - state: {:?}", state.is_ok());
+fn app_title(_app: &App) -> String {
+    String::from("Flash Search")
+}
+
+fn app_theme(app: &App) -> iced::Theme {
+    if app.is_dark { iced::Theme::Dark } else { iced::Theme::Light }
+}
+
+pub fn run_ui(state: Result<std::sync::Arc<AppState>, String>, progress_rx: mpsc::Receiver<ProgressEvent>) {
+    let progress_mutex = Arc::new(tokio::sync::Mutex::new(progress_rx));
+    
+    iced::application(
+        move || {
+            let mut app = App::new(state.clone());
+            app.progress_rx = Some(progress_mutex.clone());
+            (app, Task::none())
+        }, 
+        update, 
+        view
+    )
+    .title(app_title)
+    .theme(app_theme)
+    .window(iced::window::Settings {
+        size: iced::Size::new(1000.0, 700.0),
+        position: iced::window::Position::Centered,
+        ..Default::default()
+    })
+    .run()
+    .unwrap();
 }

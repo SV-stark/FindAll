@@ -1,4 +1,4 @@
-use super::{App, Message, SearchMode, Tab};
+use super::{theme, App, Message, SearchMode, Tab};
 use iced::widget::{button, column, container, row, text, Scrollable, Space, TextInput};
 use iced::{Alignment, Color, Element, Length, Padding};
 use iced_aw::Card;
@@ -99,11 +99,12 @@ pub fn search_view(app: &App) -> Element<Message> {
             .spacing(16)
             .align_x(Alignment::Center),
     )
+    .style(theme::top_bar_container)
     .padding(iced::Padding {
-        top: 10.0,
-        right: 0.0,
+        top: 20.0,
+        right: 30.0,
         bottom: 20.0,
-        left: 0.0,
+        left: 30.0,
     })
     .width(Length::Fill);
 
@@ -157,8 +158,9 @@ pub fn search_view(app: &App) -> Element<Message> {
                     .into()
             })
             .collect();
-        let list = Scrollable::new(column(items).spacing(4)).height(Length::Fill);
+        let list = Scrollable::new(column(items).spacing(8)).height(Length::Fill);
         container(list)
+            .padding(Padding::from(10.0))
             .width(Length::Fill)
             .height(Length::Fill)
             .into()
@@ -194,16 +196,18 @@ pub fn search_view(app: &App) -> Element<Message> {
             .into()
     };
 
+    let preview_panel_container = container(preview_panel)
+        .style(theme::sidebar_container)
+        .width(Length::FillPortion(3))
+        .height(Length::Fill);
+
     // Split pane: Left takes 2/5, Right takes 3/5
     let split_pane = row![
         container(results_panel)
             .width(Length::FillPortion(2))
             .height(Length::Fill),
-        container(preview_panel)
-            .width(Length::FillPortion(3))
-            .height(Length::Fill)
+        preview_panel_container
     ]
-    .spacing(20)
     .width(Length::Fill)
     .height(Length::Fill);
 
@@ -213,7 +217,7 @@ pub fn search_view(app: &App) -> Element<Message> {
             .width(Length::Fill)
             .height(Length::Fill),
     )
-    .padding(30)
+    .style(theme::main_content_container)
     .width(Length::Fill)
     .height(Length::Fill)
     .into()
