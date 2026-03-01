@@ -1,4 +1,3 @@
-use memchr::memchr;
 use regex::Regex;
 use std::sync::OnceLock;
 
@@ -166,40 +165,12 @@ impl ParsedQuery {
 pub fn extract_highlight_terms(query: &str) -> Vec<String> {
     let parsed = ParsedQuery::new(query);
 
-    let mut terms = Vec::new();
-    let bytes = parsed.text_query.as_bytes();
-    let mut last_end = 0;
-
-    let mut iter = memchr(b' ', bytes);
-    while let Some(relative_pos) = iter {
-        let pos = if last_end == 0 { relative_pos } else { last_end + relative_pos };
-        
-        if pos > last_end {
-            let term = &bytes[last_end..pos];
-            if !term.is_empty() {
-                let term_str = String::from_utf8_lossy(term).to_lowercase();
-                if !term_str.is_empty() && term_str != "*" {
-                    terms.push(term_str);
-                }
-            }
-        }
-        last_end = pos + 1;
-        if last_end >= bytes.len() {
-            break;
-        }
-        iter = memchr(b' ', &bytes[last_end..]);
-    }
-
-    // Handle last segment
-    if last_end < bytes.len() {
-        let term = &bytes[last_end..];
-        if !term.is_empty() {
-            let term_str = String::from_utf8_lossy(term).to_lowercase();
-            if !term_str.is_empty() && term_str != "*" {
-                terms.push(term_str);
-            }
-        }
-    }
+    let mut terms: Vec<String> = parsed
+        .text_query
+        .split_whitespace()
+        .filter(|t| *t != "*")
+        .map(|t| t.to_lowercase())
+        .collect();
 
     if terms.is_empty() && parsed.text_query == "*" {
         terms.push("*".to_string());

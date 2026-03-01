@@ -45,7 +45,6 @@ pdfium-render = "0.8"
 # Performance Libraries
 moka = { version = "0.12", features = ["sync"] }
 phf = { version = "0.11", features = ["macros"] }
-memchr = "2.5"
 fst = "0.4"
 nucleo-matcher = "0.2"
 compact_str = { version = "0.6", features = ["serde"] }
