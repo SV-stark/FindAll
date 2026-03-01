@@ -46,6 +46,10 @@ fn read_with_mmap(path: &Path) -> Result<Vec<u8>> {
     let file = File::open(path)
         .map_err(|e| FlashError::parse(path, format!("Failed to open file: {}", e)))?;
 
+    // SAFETY: Memory mapping a file is unsafe because another process could modify it
+    // while we are reading, potentially violating Rust's memory safety guarantees.
+    // For a local desktop search engine, this risk is acceptable and typically results
+    // in a process crash rather than an exploitable vulnerability.
     let mmap = unsafe {
         Mmap::map(&file)
             .map_err(|e| FlashError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?

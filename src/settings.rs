@@ -12,6 +12,9 @@ pub struct SearchHistoryItem {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
+    #[serde(default = "default_settings_version")]
+    pub version: u32,
+
     // Indexing
     pub index_dirs: Vec<String>,
     pub exclude_patterns: Vec<String>,
@@ -63,6 +66,10 @@ pub struct DefaultFilters {
 
 fn default_global_hotkey() -> String {
     "Alt+Space".to_string()
+}
+
+fn default_settings_version() -> u32 {
+    1
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -147,6 +154,7 @@ impl Default for DefaultFilters {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
+            version: default_settings_version(),
             // Indexing
             index_dirs: Vec::new(),
             exclude_patterns: vec![

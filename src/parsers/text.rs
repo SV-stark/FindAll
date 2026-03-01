@@ -62,7 +62,9 @@ fn parse_with_mmap(path: &Path) -> Result<String> {
     let file = File::open(path)
         .map_err(|e| FlashError::parse(path, format!("Failed to open file: {}", e)))?;
 
-    // Memory map the file
+    // SAFETY: Memory mapping a file is unsafe because another process could modify it
+    // while we are reading, potentially violating Rust's memory safety guarantees.
+    // We only read the data and accept this risk for performance reasons.
     let mmap = unsafe {
         Mmap::map(&file)
             .map_err(|e| FlashError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?

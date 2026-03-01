@@ -22,6 +22,7 @@ pub fn create_tray_icon() -> Result<TrayIcon> {
     let _ = tray_menu.append(&quit_i);
 
     let tray_icon = TrayIconBuilder::new()
+        .with_id("com.flashsearch")
         .with_menu(Box::new(tray_menu))
         .with_tooltip("Flash Search")
         .with_icon(icon)

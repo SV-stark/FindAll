@@ -334,7 +334,15 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 app.selected_index = Some(idx); 
                 app.load_preview()
             }
-            Message::OpenFile(path) => { let _ = opener::open(PathBuf::from(path)); Task::none() }
+            Message::OpenFile(path) => { 
+                let p = PathBuf::from(&path);
+                if p.is_absolute() && p.exists() {
+                    let _ = opener::open(p);
+                } else {
+                    tracing::warn!("Blocked attempt to open invalid or relative path: {}", path);
+                }
+                Task::none() 
+            }
             Message::CopyPath(path) => {
                 if let Ok(mut clipboard) = arboard::Clipboard::new() {
                     let _ = clipboard.set_text(&path);

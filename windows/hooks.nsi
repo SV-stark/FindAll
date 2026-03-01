@@ -38,6 +38,9 @@
   
   WriteRegExpandStr HKCU "Environment" "Path" "$0"
   SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
+
+  DetailPrint "Removing auto-launch registry entry..."
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "com.flashsearch"
 !macroend
 
 # Simple StrContains function for NSIS

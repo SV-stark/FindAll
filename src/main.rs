@@ -69,8 +69,58 @@ fn prune_old_logs(log_dir: &std::path::Path) {
     }
 }
 
+fn spawn_update_checker() {
+    std::thread::spawn(|| {
+        tracing::info!("Checking for updates...");
+        // Placeholder repo config for self_update
+        let result = self_update::backends::github::Update::configure()
+            .repo_owner("example-owner")
+            .repo_name("flash-search")
+            .bin_name("flash-search")
+            .show_download_progress(true)
+            .current_version(env!("CARGO_PKG_VERSION"))
+            .build();
+
+        if let Ok(updater) = result {
+            match updater.update() {
+                Ok(status) => {
+                    if status.updated() {
+                        tracing::info!("Updated to version: {}", status.version());
+                    } else {
+                        tracing::info!("Flash Search is up to date.");
+                    }
+                }
+                Err(e) => tracing::warn!("Update check failed: {}", e),
+            }
+        }
+    });
+}
+
 fn main() {
+    let app_dir = dirs::data_local_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("com.flashsearch");
+    std::fs::create_dir_all(&app_dir).ok();
+
+    let lock_path = app_dir.join("flashsearch.lock");
+    let lock_file = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .open(&lock_path);
+
+    if let Ok(file) = lock_file {
+        use fs2::FileExt;
+        if file.try_lock_exclusive().is_err() {
+            eprintln!("Flash Search is already running.");
+            std::process::exit(1);
+        }
+        // Leak the file handle so the lock is held for the lifetime of the process
+        std::mem::forget(file);
+    }
+
     let _guard = init_logging();
+
+    spawn_update_checker();
 
     let args: Vec<String> = std::env::args().collect();
     
