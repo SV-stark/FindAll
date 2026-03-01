@@ -1,0 +1,36 @@
+   Compiling flash-search v0.2.0 (E:\findall)
+error[E0433]: failed to resolve: use of undeclared type `WatcherManager`
+   --> src\watcher.rs:253:27
+    |
+253 |         let mut watcher = WatcherManager::new(indexer, metadata);
+    |                           ^^^^^^^^^^^^^^ use of undeclared type `WatcherManager`
+    |
+help: consider importing this struct
+    |
+241 +     use crate::watcher::WatcherManager;
+    |
+
+warning: unused import: `Schema`
+ --> src\indexer\searcher.rs:9:49
+  |
+9 | use tantivy::schema::{Field, IndexRecordOption, Schema, Value};
+  |                                                 ^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+error[E0560]: struct `IndexSearcher` has no field named `schema`
+   --> src\indexer\searcher.rs:153:13
+    |
+153 |             schema,
+    |             ^^^^^^ `IndexSearcher` does not have this field
+    |
+    = note: all struct fields are already assigned
+
+For more information about this error, try `rustc --explain E0560`.
+warning: `flash-search` (lib) generated 1 warning (1 duplicate)
+error: could not compile `flash-search` (lib) due to 1 previous error; 1 warning emitted
+warning: build failed, waiting for other jobs to finish...
+Some errors have detailed explanations: E0433, E0560.
+For more information about an error, try `rustc --explain E0433`.
+warning: `flash-search` (lib test) generated 1 warning
+error: could not compile `flash-search` (lib test) due to 2 previous errors; 1 warning emitted

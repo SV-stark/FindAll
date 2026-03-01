@@ -30,7 +30,7 @@ pub fn parse_docx(path: &Path) -> Result<ParsedDocument> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    // use super::*;
 
     #[test]
     fn test_docx_parsing_placeholder() {}

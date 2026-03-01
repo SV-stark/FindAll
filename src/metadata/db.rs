@@ -1,16 +1,16 @@
 use crate::error::{FlashError, Result};
-use rkyv::{Archive, Deserialize, Serialize};
 use redb::{Database, ReadableTable, TableDefinition};
+use rkyv::{Archive, Deserialize, Serialize};
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::SystemTime;
-use tracing::warn;
+// use tracing::warn;
 
 const FILES_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("files");
 
 #[derive(Debug, Clone, Archive, Serialize, Deserialize)]
-#[rkyv(check_bytes)] // Enables check_archived_root
+#[archive(check_bytes)]
 pub struct FileMetadata {
     pub path: String,
     pub modified: u64,          // Unix timestamp
@@ -119,10 +119,9 @@ impl MetadataDb {
             Some(metadata) => {
                 let bytes = metadata.value();
                 self.metrics.read_operations.fetch_add(1, Ordering::Relaxed);
-                self.metrics.bytes_read.fetch_add(
-                    bytes.len() as u64,
-                    Ordering::Relaxed,
-                );
+                self.metrics
+                    .bytes_read
+                    .fetch_add(bytes.len() as u64, Ordering::Relaxed);
                 // Zero-copy read and validate
                 if let Ok(meta) = rkyv::check_archived_root::<FileMetadata>(bytes) {
                     meta.modified != modified || meta.size != size
@@ -165,7 +164,11 @@ impl MetadataDb {
             };
 
             let bytes = rkyv::to_bytes::<_, 256>(&metadata).map_err(|e| {
-                FlashError::database("database_operation", "files_table", format!("Serialization error: {}", e))
+                FlashError::database(
+                    "database_operation",
+                    "files_table",
+                    format!("Serialization error: {}", e),
+                )
             })?;
 
             table
@@ -192,10 +195,11 @@ impl MetadataDb {
             let mut table = txn.open_table(FILES_TABLE).map_err(|e| {
                 FlashError::database("database_operation", "files_table", e.to_string())
             })?;
-            
+
             let path_str = path.to_str().unwrap_or("");
-            let removed = table.remove(path_str)
-                .map_err(|e| FlashError::database("database_operation", "files_table", e.to_string()))?;
+            let removed = table.remove(path_str).map_err(|e| {
+                FlashError::database("database_operation", "files_table", e.to_string())
+            })?;
             removed.is_some()
         };
 
@@ -221,7 +225,7 @@ impl MetadataDb {
             // Actually, open_table in next usage will recreate it if we create it here?
             // Safer to just open it again to ensure it exists empty.
             let _ = txn.open_table(FILES_TABLE).map_err(|e| {
-                 FlashError::database("database_operation", "files_table", e.to_string())
+                FlashError::database("database_operation", "files_table", e.to_string())
             })?;
         }
 
@@ -253,7 +257,7 @@ impl MetadataDb {
                 } else {
                     None
                 }
-            },
+            }
             None => None,
         };
 
@@ -296,7 +300,11 @@ impl MetadataDb {
                 };
 
                 let bytes = rkyv::to_bytes::<_, 256>(&metadata).map_err(|e| {
-                    FlashError::database("database_operation", "files_table", format!("Serialization error: {}", e))
+                    FlashError::database(
+                        "database_operation",
+                        "files_table",
+                        format!("Serialization error: {}", e),
+                    )
                 })?;
 
                 total_bytes_written += bytes.len() as u64;
@@ -393,7 +401,7 @@ impl MetadataDb {
 
         // Use select_nth_unstable for O(n) partial sort instead of O(n log n) full sort
         if files.len() > limit {
-            use std::cmp::Ordering;
+            // use std::cmp::Ordering;
             files.select_nth_unstable_by(limit, |a, b| b.1.cmp(&a.1)); // Reverse order for max-heap behavior
             files.truncate(limit);
         } else {
@@ -407,4 +415,3 @@ impl MetadataDb {
             .collect())
     }
 }
-

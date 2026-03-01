@@ -44,7 +44,7 @@ pub struct AppSettings {
     pub double_click_action: DoubleClickAction,
     pub show_preview_panel: bool,
     pub context_menu_enabled: bool,
-    
+
     #[serde(default = "default_global_hotkey")]
     pub global_hotkey: String,
 
@@ -256,8 +256,9 @@ mod tests {
 
         manager.save(&settings).unwrap();
         let loaded = manager.load().unwrap();
-
-    #[test]
+        assert_eq!(loaded.max_results, 100);
+        assert!(matches!(loaded.theme, Theme::Dark));
+    }
     fn test_settings_unknown_fields() {
         let temp_dir = tempdir().unwrap();
         let manager = SettingsManager::new(temp_dir.path());

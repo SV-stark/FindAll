@@ -204,7 +204,7 @@ pub fn parse_zip_content(path: &Path) -> Result<ParsedDocument> {
             }
         }
         if all_text.len() >= max_size {
-            break; 
+            break;
         }
     }
 
@@ -262,7 +262,10 @@ pub fn parse_legacy_office(path: &Path) -> Result<ParsedDocument> {
     let metadata = memory_map::get_file_size(path)?;
     Ok(ParsedDocument {
         path: path.to_string_lossy().to_string(),
-        content: format!("Legacy Office Document (Litchi disabled): {} bytes.", metadata),
+        content: format!(
+            "Legacy Office Document (Litchi disabled): {} bytes.",
+            metadata
+        ),
         title: None,
     })
 }

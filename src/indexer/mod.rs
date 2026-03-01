@@ -27,8 +27,7 @@ fn read_schema_version(index_path: &Path) -> Option<String> {
 }
 
 fn write_schema_version(index_path: &Path, version: &str) -> Result<()> {
-    std::fs::write(get_schema_version_path(index_path), version)
-        .map_err(|e| FlashError::Io(e))
+    std::fs::write(get_schema_version_path(index_path), version).map_err(|e| FlashError::Io(e))
 }
 
 /// Central manager for the Tantivy search index
@@ -53,7 +52,10 @@ impl IndexManager {
         let stored_version = read_schema_version(index_path);
         if let Some(ref ver) = stored_version {
             if ver != SCHEMA_VERSION {
-                warn!("Schema version mismatch: stored={}, current={}. Rebuilding index...", ver, SCHEMA_VERSION);
+                warn!(
+                    "Schema version mismatch: stored={}, current={}. Rebuilding index...",
+                    ver, SCHEMA_VERSION
+                );
                 std::fs::remove_dir_all(index_path).map_err(|e| FlashError::Io(e))?;
                 std::fs::create_dir_all(index_path).map_err(|e| FlashError::Io(e))?;
                 write_schema_version(index_path, SCHEMA_VERSION)?;
@@ -76,7 +78,11 @@ impl IndexManager {
         let index = Index::open_or_create(directory, schema.clone())
             .map_err(|e| FlashError::index(format!("Failed to open or create index: {}", e)))?;
 
-        info!("Opened index at {} with schema version {}", index_path.display(), SCHEMA_VERSION);
+        info!(
+            "Opened index at {} with schema version {}",
+            index_path.display(),
+            SCHEMA_VERSION
+        );
 
         let writer = IndexWriterManager::new(&index, memory_limit_mb)?;
         let searcher = IndexSearcher::new(&index, index_path.to_path_buf())?;

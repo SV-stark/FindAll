@@ -1,16 +1,16 @@
+mod autostart;
+mod export;
 mod indexing;
 mod search;
 mod settings;
 mod system;
-mod export;
-mod autostart;
 
+pub use autostart::*;
+pub use export::*;
 pub use indexing::*;
 pub use search::*;
 pub use settings::*;
 pub use system::*;
-pub use export::*;
-pub use autostart::*;
 
 #[cfg(test)]
 mod tests {
@@ -24,8 +24,8 @@ use crate::indexer::{filename_index::FilenameIndex, IndexManager};
 use crate::metadata::MetadataDb;
 use crate::settings::SettingsManager;
 use crate::watcher::WatcherManager;
-use tokio::sync::mpsc;
 use std::sync::Arc;
+use tokio::sync::mpsc;
 
 pub struct AppState {
     pub indexer: Arc<IndexManager>,

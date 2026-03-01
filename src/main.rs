@@ -22,19 +22,14 @@ fn init_logging() -> WorkerGuard {
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join("com.flashsearch")
         .join("logs");
-    
+
     std::fs::create_dir_all(&log_dir).ok();
 
-    let file_appender = RollingFileAppender::new(
-        Rotation::DAILY,
-        log_dir,
-        "flash-search.log",
-    );
+    let file_appender = RollingFileAppender::new(Rotation::DAILY, &log_dir, "flash-search.log");
 
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
-    let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info"));
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
     tracing_subscriber::registry()
         .with(env_filter)
@@ -43,10 +38,10 @@ fn init_logging() -> WorkerGuard {
         .init();
 
     info!("Flash Search starting up");
-    
+
     // Prune logs older than 30 days
     prune_old_logs(&log_dir);
-    
+
     guard
 }
 
@@ -123,20 +118,20 @@ fn main() {
     spawn_update_checker();
 
     let args: Vec<String> = std::env::args().collect();
-    
+
     if args.iter().any(|arg| arg == "--version" || arg == "-V") {
         println!("flash-search {}", env!("CARGO_PKG_VERSION"));
         return;
     }
-    
-    // We must create a tokio runtime for background tasks (like Watcher), but we CANNOT 
+
+    // We must create a tokio runtime for background tasks (like Watcher), but we CANNOT
     // use #[tokio::main] because Iced uses winit to hijack the main thread and blocks it.
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .unwrap();
     let _rt_guard = rt.enter();
-    
+
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         println!("Flash Search - Ultrafast local full-text search\n");
         println!("Usage: flash-search [OPTIONS]");
@@ -152,7 +147,7 @@ fn main() {
         let query_index = args.iter().position(|a| a == "--cli" || a == "-c").unwrap();
         let query = args.get(query_index + 1).cloned();
         let is_json = args.iter().any(|a| a == "--json");
-        
+
         rt.block_on(async {
             if let Err(e) = flash_search::run_cli(query, is_json, None).await {
                 error!("CLI Error: {}", e);
@@ -164,7 +159,8 @@ fn main() {
     ctrlc::set_handler(|| {
         info!("Shutdown signal received, committing index...");
         SHUTDOWN_FLAG.store(true, Ordering::SeqCst);
-    }).expect("Error setting Ctrl-C handler");
+    })
+    .expect("Error setting Ctrl-C handler");
 
     // Iced requires running on the main thread and runs its own executor
     match flash_search::run_ui() {

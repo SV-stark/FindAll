@@ -1,11 +1,12 @@
 use crate::commands::AppState;
-use crate::commands::{search_query_internal, search_filenames_internal, get_file_preview_highlighted_internal};
-use crate::error::FlashError;
+use crate::commands::{
+    get_file_preview_highlighted_internal, search_filenames_internal, search_query_internal,
+};
 use crate::indexer::searcher::SearchResult;
 use crate::models::FilenameSearchResult;
 use crate::scanner::ProgressEvent;
 use crate::settings::AppSettings;
-use iced::{Element, Task, Subscription};
+use iced::{Element, Subscription, Task};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -26,7 +27,12 @@ impl From<SearchResult> for FileItem {
     fn from(r: SearchResult) -> Self {
         let ext = r.file_path.split('.').last().map(String::from);
         FileItem {
-            title: r.file_path.split(['\\', '/']).last().unwrap_or("Unknown").to_string(),
+            title: r
+                .file_path
+                .split(['\\', '/'])
+                .last()
+                .unwrap_or("Unknown")
+                .to_string(),
             path: r.file_path,
             score: r.score,
             extension: ext,
@@ -47,10 +53,16 @@ impl From<FilenameSearchResult> for FileItem {
 }
 
 #[derive(Clone, Debug)]
-pub enum Tab { Search, Settings }
+pub enum Tab {
+    Search,
+    Settings,
+}
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum SearchMode { FullText, Filename }
+pub enum SearchMode {
+    FullText,
+    Filename,
+}
 
 #[derive(Clone, Debug)]
 pub enum Message {
@@ -124,46 +136,20 @@ impl App {
                 let stats = state.indexer.get_statistics().unwrap_or_default();
                 let index_size = format!("{:.1} MB", (stats.total_size_bytes as f64) / 1_048_576.0);
                 let is_dark = matches!(settings.theme, crate::settings::Theme::Dark);
-                App { 
-                    state: Some(state), error: None, search_error: None, search_query: String::new(), results: Vec::new(), selected_index: None, 
-                    is_searching: false, settings, active_tab: Tab::Search,
-                    files_indexed: stats.total_documents as i32, index_size, is_dark,
-                    search_mode: SearchMode::FullText, filter_extension: String::new(),
-                    filter_size: String::new(), preview_content: None, is_loading_preview: false,
-                    rebuild_progress: None, rebuild_status: None, progress_rx: None, tray_icon: crate::system::tray::create_tray_icon().ok(),
-                    hotkey_manager: None,
-                };
-                
-                if let Ok(manager) = global_hotkey::GlobalHotKeyManager::new() {
-                    if let Ok(hotkey) = settings.global_hotkey.parse::<global_hotkey::hotkey::HotKey>() {
-                        if manager.register(hotkey).is_err() {
-                            app.error = Some(format!(
-                                "Hotkey conflict: '{}' is already registered by another application. Please choose an alternative in Settings.",
-                                settings.global_hotkey
-                            ));
-                        }
-                    } else if !settings.global_hotkey.is_empty() {
-                        app.error = Some(format!("Invalid hotkey format: '{}'", settings.global_hotkey));
-                    }
-                    app.hotkey_manager = Some(manager);
-                }
-                
-                app
-            }
-            Err(err_msg) => {
-                App {
-                    state: None,
-                    error: Some(err_msg),
+
+                let mut app = App {
+                    state: Some(state),
+                    error: None,
                     search_error: None,
                     search_query: String::new(),
                     results: Vec::new(),
                     selected_index: None,
                     is_searching: false,
-                    settings: AppSettings::default(),
+                    settings: settings.clone(),
                     active_tab: Tab::Search,
-                    files_indexed: 0,
-                    index_size: "0 MB".to_string(),
-                    is_dark: false,
+                    files_indexed: stats.total_documents as i32,
+                    index_size,
+                    is_dark,
                     search_mode: SearchMode::FullText,
                     filter_extension: String::new(),
                     filter_size: String::new(),
@@ -174,21 +160,64 @@ impl App {
                     progress_rx: None,
                     tray_icon: crate::system::tray::create_tray_icon().ok(),
                     hotkey_manager: None,
+                };
+
+                if let Ok(manager) = global_hotkey::GlobalHotKeyManager::new() {
+                    if let Ok(hotkey) = settings
+                        .global_hotkey
+                        .parse::<global_hotkey::hotkey::HotKey>()
+                    {
+                        if manager.register(hotkey).is_err() {
+                            app.error = Some(format!(
+                                "Hotkey conflict: '{}' is already registered by another application. Please choose an alternative in Settings.",
+                                settings.global_hotkey
+                            ));
+                        }
+                    } else if !settings.global_hotkey.is_empty() {
+                        app.error = Some(format!(
+                            "Invalid hotkey format: '{}'",
+                            settings.global_hotkey
+                        ));
+                    }
+                    app.hotkey_manager = Some(manager);
                 }
+
+                app
             }
+            Err(err_msg) => App {
+                state: None,
+                error: Some(err_msg),
+                search_error: None,
+                search_query: String::new(),
+                results: Vec::new(),
+                selected_index: None,
+                is_searching: false,
+                settings: AppSettings::default(),
+                active_tab: Tab::Search,
+                files_indexed: 0,
+                index_size: "0 MB".to_string(),
+                is_dark: false,
+                search_mode: SearchMode::FullText,
+                filter_extension: String::new(),
+                filter_size: String::new(),
+                preview_content: None,
+                is_loading_preview: false,
+                rebuild_progress: None,
+                rebuild_status: None,
+                progress_rx: None,
+                tray_icon: crate::system::tray::create_tray_icon().ok(),
+                hotkey_manager: None,
+            },
         }
     }
 
-    fn state(&self) -> Option<&Arc<AppState>> {
-        self.state.as_ref()
-    }
 
     fn parse_size_filter(size_str: &str) -> (Option<u64>, Option<u64>) {
         let size_str = size_str.trim();
         if size_str.is_empty() {
             return (None, None);
         }
-        
+
         let (op, num_str) = if size_str.starts_with(">=") {
             (">=", &size_str[2..])
         } else if size_str.starts_with("<=") {
@@ -200,7 +229,7 @@ impl App {
         } else {
             (">=", size_str)
         };
-        
+
         let num_str = num_str.trim();
         let multiplier: u64 = if num_str.ends_with("KB") {
             1024
@@ -211,13 +240,13 @@ impl App {
         } else {
             1
         };
-        
+
         let num: u64 = num_str
             .trim_end_matches(|c: char| c.is_alphabetic())
             .parse()
             .unwrap_or(0);
         let bytes = num * multiplier;
-        
+
         match op {
             ">" => (Some(bytes + 1), None),
             "<" => (None, Some(bytes.saturating_sub(1))),
@@ -232,7 +261,7 @@ impl App {
             Some(s) => s.clone(),
             None => return Task::none(),
         };
-        
+
         let query = self.search_query.clone();
         let max_results = self.settings.max_results;
         let mode = self.search_mode.clone();
@@ -242,24 +271,35 @@ impl App {
             Some(vec![self.filter_extension.clone()])
         };
         let (min_size, max_size) = Self::parse_size_filter(&self.filter_size);
-        
+
         self.is_searching = true;
         self.results.clear();
         self.preview_content = None;
-        
+
         Task::future(async move {
             let result = match mode {
                 SearchMode::Filename => {
                     match search_filenames_internal(query, max_results, &state).await {
-                        Ok(results) => Message::SearchResultsReceived(results.into_iter().map(FileItem::from).collect()),
+                        Ok(results) => Message::SearchResultsReceived(
+                            results.into_iter().map(FileItem::from).collect(),
+                        ),
                         Err(e) => Message::SearchError(e.to_string()),
                     }
                 }
                 SearchMode::FullText => {
                     match search_query_internal(
-                        query, max_results, &state, min_size, max_size, extension
-                    ).await {
-                        Ok(results) => Message::SearchResultsReceived(results.into_iter().map(FileItem::from).collect()),
+                        query,
+                        max_results,
+                        &state,
+                        min_size,
+                        max_size,
+                        extension,
+                    )
+                    .await
+                    {
+                        Ok(results) => Message::SearchResultsReceived(
+                            results.into_iter().map(FileItem::from).collect(),
+                        ),
                         Err(e) => Message::SearchError(e.to_string()),
                     }
                 }
@@ -273,16 +313,16 @@ impl App {
             Some(i) => i,
             None => return Task::none(),
         };
-        
+
         let item = match self.results.get(idx) {
             Some(i) => i.clone(),
             None => return Task::none(),
         };
-        
+
         let path = item.path.clone();
         let query = self.search_query.clone();
         self.is_loading_preview = true;
-        
+
         Task::future(async move {
             let preview = match get_file_preview_highlighted_internal(path, query).await {
                 Ok(result) => Some(result.content),
@@ -292,7 +332,7 @@ impl App {
         })
     }
 
-    fn save_settings(&self) { 
+    fn save_settings(&self) {
         if let Some(state) = &self.state {
             let _ = state.settings_manager.save(&self.settings);
         }
@@ -309,14 +349,17 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             Message::Quit => {
                 std::process::exit(0);
             }
-            _ => Task::none()
+            _ => Task::none(),
         }
     } else {
         match message {
-            Message::SearchQueryChanged(q) => { app.search_query = q; Task::none() }
+            Message::SearchQueryChanged(q) => {
+                app.search_query = q;
+                Task::none()
+            }
             Message::SearchSubmitted => app.perform_search(),
-            Message::SearchResultsReceived(results) => { 
-                app.results = results; 
+            Message::SearchResultsReceived(results) => {
+                app.results = results;
                 app.is_searching = false;
                 app.search_error = None;
                 if !app.results.is_empty() {
@@ -330,18 +373,18 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 app.results.clear();
                 Task::none()
             }
-            Message::ResultSelected(idx) => { 
-                app.selected_index = Some(idx); 
+            Message::ResultSelected(idx) => {
+                app.selected_index = Some(idx);
                 app.load_preview()
             }
-            Message::OpenFile(path) => { 
+            Message::OpenFile(path) => {
                 let p = PathBuf::from(&path);
                 if p.is_absolute() && p.exists() {
                     let _ = opener::open(p);
                 } else {
                     tracing::warn!("Blocked attempt to open invalid or relative path: {}", path);
                 }
-                Task::none() 
+                Task::none()
             }
             Message::CopyPath(path) => {
                 if let Ok(mut clipboard) = arboard::Clipboard::new() {
@@ -349,7 +392,10 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 }
                 Task::none()
             }
-            Message::TabChanged(tab) => { app.active_tab = tab; Task::none() }
+            Message::TabChanged(tab) => {
+                app.active_tab = tab;
+                Task::none()
+            }
             Message::RebuildIndex => {
                 let state = match &app.state {
                     Some(s) => s.clone(),
@@ -369,18 +415,27 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         let _ = state.indexer.commit();
                         let _ = state.metadata_db.clear();
                         for dir in settings.index_dirs {
-                            let _ = state.scanner.scan_directory(PathBuf::from(dir), settings.exclude_patterns.clone()).await;
+                            let _ = state
+                                .scanner
+                                .scan_directory(
+                                    PathBuf::from(dir),
+                                    settings.exclude_patterns.clone(),
+                                )
+                                .await;
                         }
                         Message::IndexRebuilt
                     }),
-                    Task::perform(async move {
-                        if let Some(r) = rx {
-                            let mut g = r.lock().await;
-                            g.recv().await
-                        } else {
-                            None
-                        }
-                    }, Message::PollProgressResult)
+                    Task::perform(
+                        async move {
+                            if let Some(r) = rx {
+                                let mut g = r.lock().await;
+                                g.recv().await
+                            } else {
+                                None
+                            }
+                        },
+                        Message::PollProgressResult,
+                    ),
                 ])
             }
             Message::PollProgressResult(Some(event)) => {
@@ -392,21 +447,28 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 app.rebuild_progress = Some(p);
                 app.rebuild_status = Some(event.status.clone());
                 app.files_indexed = event.processed as i32;
-                
+
                 let rx = app.progress_rx.clone();
-                Task::perform(async move {
-                    if let Some(r) = rx {
-                        let mut g = r.lock().await;
-                        g.recv().await
-                    } else {
-                        None
-                    }
-                }, Message::PollProgressResult)
+                Task::perform(
+                    async move {
+                        if let Some(r) = rx {
+                            let mut g = r.lock().await;
+                            g.recv().await
+                        } else {
+                            None
+                        }
+                    },
+                    Message::PollProgressResult,
+                )
             }
             Message::PollProgressResult(None) => Task::none(),
             Message::RebuildProgress(_) => Task::none(), // Fallback
             Message::IndexRebuilt => {
-                let stats = app.state.as_ref().map(|s| s.indexer.get_statistics().unwrap_or_default()).unwrap_or_default();
+                let stats = app
+                    .state
+                    .as_ref()
+                    .map(|s| s.indexer.get_statistics().unwrap_or_default())
+                    .unwrap_or_default();
                 app.files_indexed = stats.total_documents as i32;
                 app.index_size = format!("{:.1} MB", (stats.total_size_bytes as f64) / 1_048_576.0);
                 if let Some(tray) = &app.tray_icon {
@@ -416,9 +478,15 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 app.rebuild_status = None;
                 Task::none()
             }
-            Message::AddFolder => {
-                Task::perform(async { rfd::AsyncFileDialog::new().pick_folder().await.map(|p| p.path().to_string_lossy().to_string()) }, Message::FolderPicked)
-            }
+            Message::AddFolder => Task::perform(
+                async {
+                    rfd::AsyncFileDialog::new()
+                        .pick_folder()
+                        .await
+                        .map(|p| p.path().to_string_lossy().to_string())
+                },
+                Message::FolderPicked,
+            ),
             Message::FolderPicked(Some(f)) => {
                 if !app.settings.index_dirs.iter().any(|d| d == &f) {
                     app.settings.index_dirs.push(f);
@@ -427,8 +495,16 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 Task::none()
             }
             Message::FolderPicked(None) => Task::none(),
-            Message::RemoveFolder(i) => { if i < app.settings.index_dirs.len() { app.settings.index_dirs.remove(i); } Task::none() }
-            Message::SaveSettings => { app.save_settings(); Task::none() }
+            Message::RemoveFolder(i) => {
+                if i < app.settings.index_dirs.len() {
+                    app.settings.index_dirs.remove(i);
+                }
+                Task::none()
+            }
+            Message::SaveSettings => {
+                app.save_settings();
+                Task::none()
+            }
             Message::MaxResultsChanged(val) => {
                 if let Ok(num) = val.parse() {
                     app.settings.max_results = num;
@@ -436,12 +512,17 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 Task::none()
             }
             Message::ExcludePatternsChanged(val) => {
-                app.settings.exclude_patterns = val.split(',').map(|s| s.trim().to_string()).collect();
+                app.settings.exclude_patterns =
+                    val.split(',').map(|s| s.trim().to_string()).collect();
                 Task::none()
             }
             Message::ToggleTheme => {
                 app.is_dark = !app.is_dark;
-                app.settings.theme = if app.is_dark { crate::settings::Theme::Dark } else { crate::settings::Theme::Light };
+                app.settings.theme = if app.is_dark {
+                    crate::settings::Theme::Dark
+                } else {
+                    crate::settings::Theme::Light
+                };
                 app.save_settings();
                 Task::none()
             }
@@ -473,8 +554,14 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     Task::none()
                 }
             }
-            Message::FilterExtensionChanged(ext) => { app.filter_extension = ext; Task::none() }
-            Message::FilterSizeChanged(size) => { app.filter_size = size; Task::none() }
+            Message::FilterExtensionChanged(ext) => {
+                app.filter_extension = ext;
+                Task::none()
+            }
+            Message::FilterSizeChanged(size) => {
+                app.filter_size = size;
+                Task::none()
+            }
             Message::PreviewRequested(idx) => {
                 app.selected_index = Some(idx);
                 app.load_preview()
@@ -516,7 +603,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     // Hotkey pressed, we just log it or toggle search window focus
                     tracing::info!("Global hotkey pressed: {:?}", event);
                     // To truly bring Iced to front, we'd need to use Iced window commands,
-                    // but since iced 0.13 removed some easy window visibility toggles without IDs, 
+                    // but since iced 0.13 removed some easy window visibility toggles without IDs,
                     // we'll just focus the search query for now, or just let OS handle if hooked.
                 }
                 Task::none()
@@ -535,13 +622,15 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
     }
 }
 
-fn subscription(app: &App) -> Subscription<Message> {
+fn subscription(_app: &App) -> Subscription<Message> {
     let mut subs = Vec::new();
-    
+
     // Always poll hotkey and tray every 100ms
-    subs.push(iced::time::every(std::time::Duration::from_millis(100)).map(|_| Message::PollHotkey));
+    subs.push(
+        iced::time::every(std::time::Duration::from_millis(100)).map(|_| Message::PollHotkey),
+    );
     subs.push(iced::time::every(std::time::Duration::from_millis(100)).map(|_| Message::PollTray));
-    
+
     Subscription::batch(subs)
 }
 
@@ -555,17 +644,18 @@ fn view(app: &App) -> Element<Message> {
 fn error_view(error: &str) -> Element<'_, Message> {
     use iced::widget::{button, column, container, text, Space};
     use iced::{Alignment, Length, Padding};
-    
+
     container(
         column![
             text("An Error Occurred").size(24),
             Space::new().height(Length::Fixed(16.0)),
             text(error).size(14),
             Space::new().height(Length::Fixed(24.0)),
-            button(text("Dismiss")).on_press(Message::DismissError)
+            button(text("Dismiss"))
+                .on_press(Message::DismissError)
                 .padding(Padding::new(12.0))
         ]
-        .align_x(Alignment::Center)
+        .align_x(Alignment::Center),
     )
     .width(Length::Fill)
     .height(Length::Fill)
@@ -579,20 +669,27 @@ fn app_title(_app: &App) -> String {
 }
 
 fn app_theme(app: &App) -> iced::Theme {
-    if app.is_dark { iced::Theme::Dark } else { iced::Theme::Light }
+    if app.is_dark {
+        iced::Theme::Dark
+    } else {
+        iced::Theme::Light
+    }
 }
 
-pub fn run_ui(state: Result<std::sync::Arc<AppState>, String>, progress_rx: mpsc::Receiver<ProgressEvent>) {
+pub fn run_ui(
+    state: Result<std::sync::Arc<AppState>, String>,
+    progress_rx: mpsc::Receiver<ProgressEvent>,
+) {
     let progress_mutex = Arc::new(tokio::sync::Mutex::new(progress_rx));
-    
+
     iced::application(
         move || {
             let mut app = App::new(state.clone());
             app.progress_rx = Some(progress_mutex.clone());
             (app, Task::none())
-        }, 
-        update, 
-        view
+        },
+        update,
+        view,
     )
     .title(app_title)
     .theme(app_theme)

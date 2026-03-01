@@ -28,7 +28,7 @@ pub fn parse_pdf(path: &Path) -> Result<ParsedDocument> {
     let content = match std::panic::catch_unwind(|| -> std::result::Result<String, String> {
         let bind = Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path("./"))
             .or_else(|_| Pdfium::bind_to_system_library());
-            
+
         let pdfium = match bind {
             Ok(b) => Pdfium::new(b),
             Err(e) => return Err(format!("Failed to bind: {}", e)),
@@ -54,7 +54,10 @@ pub fn parse_pdf(path: &Path) -> Result<ParsedDocument> {
             String::new()
         }
         Err(_) => {
-            warn!("PDF extraction panicked for {}. File may be corrupted or encrypted.", path.display());
+            warn!(
+                "PDF extraction panicked for {}. File may be corrupted or encrypted.",
+                path.display()
+            );
             String::new()
         }
     };

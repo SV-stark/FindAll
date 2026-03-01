@@ -22,6 +22,6 @@ pub fn set_auto_start(enable: bool) -> Result<()> {
                 .map_err(|e| FlashError::config("auto_start_disable", e.to_string()))?;
         }
     }
-    
+
     Ok(())
 }

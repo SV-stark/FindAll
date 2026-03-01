@@ -264,9 +264,22 @@ pub fn error_container(_theme: &Theme) -> container::Style {
     }
 }
 
-pub fn error_text(_theme: &Theme) -> container::Style {
+pub fn error_container_style() -> container::Style {
     container::Style {
-        text_color: Some(Color::from_rgb8(239, 68, 68)),
+        background: Some(iced::Background::Color(iced::Color::from_rgba8(
+            239, 68, 68, 0.1,
+        ))),
+        border: iced::Border {
+            color: iced::Color::from_rgb8(239, 68, 68),
+            width: 1.0,
+            radius: iced::border::Radius::from(8.0),
+        },
         ..Default::default()
+    }
+}
+
+pub fn error_text_style() -> iced::widget::text::Style {
+    iced::widget::text::Style {
+        color: Some(iced::Color::from_rgb8(239, 68, 68)),
     }
 }

@@ -62,11 +62,16 @@ pub fn search_view(app: &App) -> Element<Message> {
     let error_display: Element<Message> = if let Some(ref err) = app.search_error {
         container(
             row![
-                container(load_icon("settings")).style(theme::error_text),
-                text(err).size(13).style(theme::error_text),
+                container(load_icon("settings")).style(|_theme| theme::error_container_style()),
+                text(err).size(13).style(|_theme| theme::error_text_style()),
                 Space::new().width(Length::Fill),
-                button("Dismiss").on_press(Message::DismissError).padding(Padding::new(4.0)).style(theme::secondary_button())
-            ].spacing(8).align_y(Alignment::Center)
+                button("Dismiss")
+                    .on_press(Message::DismissError)
+                    .padding(Padding::new(4.0))
+                    .style(theme::secondary_button())
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center),
         )
         .padding(Padding::new(12.0))
         .style(theme::error_container)

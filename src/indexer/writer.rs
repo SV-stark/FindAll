@@ -30,7 +30,9 @@ impl IndexWriterManager {
             .unwrap_or_else(|| {
                 // Default calculation: use 5% of system memory, capped at 256MB
                 // This is a heuristic - in production, use sysinfo to get actual memory
-                let mut sys = sysinfo::System::new_with_specifics(sysinfo::RefreshKind::new().with_memory()); let system_memory = sys.total_memory() as usize;
+                let mut sys = sysinfo::System::new_all();
+                sys.refresh_memory();
+                let system_memory = sys.total_memory() as usize;
 
                 (system_memory / 20).min(256_000_000).max(32_000_000)
             });
@@ -38,7 +40,7 @@ impl IndexWriterManager {
         available_memory.min(256_000_000).max(32_000_000)
     }
 
-    pub fn new(index: &Index) -> Result<Self> {
+    pub fn new(index: &Index, _memory_limit_mb: u32) -> Result<Self> {
         let schema = index.schema();
 
         // Configure with adaptive heap size based on system resources
@@ -141,7 +143,7 @@ impl IndexWriterManager {
         let modified_date = tantivy::DateTime::from_timestamp_secs(modified as i64);
         document.add_date(self.modified_field, modified_date);
         document.add_u64(self.size_field, size);
-        
+
         // Index file extension for fast filtering
         if let Some(ext) = std::path::Path::new(&doc.path)
             .extension()

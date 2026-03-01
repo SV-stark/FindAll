@@ -1,6 +1,6 @@
 use crate::error::Result;
-use fst::{IntoStreamer, Streamer};
 use fst::automaton::Subsequence;
+use fst::{IntoStreamer, Streamer};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::Arc;
@@ -130,11 +130,11 @@ impl FilenameIndex {
                     name: e.name.clone(),
                 })
                 .collect();
-                
+
             if let Ok(mut fst_guard) = self.fst_map.write() {
                 *fst_guard = Self::build_fst(&data);
             }
-            
+
             std::thread::spawn(move || {
                 Self::save_to_disk_sync(&data, &data_path);
             });
@@ -144,11 +144,13 @@ impl FilenameIndex {
     }
 
     fn build_fst(entries: &[FilenameEntry]) -> Vec<u8> {
-        let mut items: Vec<(String, u64)> = entries.iter().enumerate()
+        let mut items: Vec<(String, u64)> = entries
+            .iter()
+            .enumerate()
             .map(|(i, e)| (format!("{}\0{}", e.name.to_lowercase(), i), i as u64))
             .collect();
         items.sort_by(|a, b| a.0.cmp(&b.0));
-        
+
         let mut build = fst::MapBuilder::memory();
         for (k, v) in items {
             let _ = build.insert(k, v);
@@ -170,31 +172,32 @@ impl FilenameIndex {
 
     pub fn search(&self, query: &str, limit: usize) -> Result<Vec<FilenameSearchResult>> {
         let fst_bytes = self.fst_map.read().unwrap();
-        if fst_bytes.is_empty() { return Ok(Vec::new()); }
-        
+        if fst_bytes.is_empty() {
+            return Ok(Vec::new());
+        }
+
         // FST Map
         let map = match fst::Map::new(fst_bytes.clone()) {
             Ok(m) => m,
             Err(_) => return Ok(Vec::new()),
         };
-        
+
         // Fuzzy / Subsequence matching
         let query_lower = query.to_lowercase();
-        let aut = match Subsequence::new(&query_lower) {
-            Ok(a) => a,
-            Err(_) => return Ok(Vec::new()),
-        };
-        
+        let aut = Subsequence::new(&query_lower);
+
         let mut stream = map.search(aut).into_stream();
-        
+
         let entries_lock = match self.entries.read() {
             Ok(g) => g,
             Err(_) => return Ok(Vec::new()),
         };
-        
+
         let mut results = Vec::new();
         while let Some((_, v)) = stream.next() {
-            if results.len() >= limit { break; }
+            if results.len() >= limit {
+                break;
+            }
             if let Some(entry) = entries_lock.get(v as usize) {
                 results.push(FilenameSearchResult {
                     file_path: entry.path.clone(),
@@ -262,11 +265,11 @@ impl FilenameIndex {
                     name: e.name.clone(),
                 })
                 .collect();
-                
+
             if let Ok(mut fst_guard) = self.fst_map.write() {
                 *fst_guard = Self::build_fst(&data);
             }
-            
+
             std::thread::spawn(move || {
                 Self::save_to_disk_sync(&data, &data_path);
             });

@@ -112,7 +112,9 @@ pub fn settings_view(app: &App) -> Element<Message> {
         Space::new().height(Length::Fixed(6.0)),
         exclude_input,
         Space::new().height(Length::Fixed(16.0)),
-        row![hotkey_label, hotkey_input].spacing(12).align_y(Alignment::Center),
+        row![hotkey_label, hotkey_input]
+            .spacing(12)
+            .align_y(Alignment::Center),
         Space::new().height(Length::Fixed(24.0)),
         dirs_section,
         dirs_col,

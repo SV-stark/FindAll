@@ -1,7 +1,6 @@
 use crate::indexer::searcher::SearchResult;
 use std::fs::File;
 use std::io::Write;
-use std::path::PathBuf;
 
 pub fn export_results_csv(results: &[SearchResult], path: &str) -> Result<(), String> {
     let mut file = File::create(path).map_err(|e| e.to_string())?;

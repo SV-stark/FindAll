@@ -1,0 +1,136 @@
+   Compiling flash-search v0.2.0 (E:\findall)
+error[E0425]: cannot find function `error_text_style` in module `theme`
+  --> src\iced_ui\search.rs:66:58
+   |
+66 |                 text(err).size(13).style(|_theme| theme::error_text_style()),
+   |                                                          ^^^^^^^^^^^^^^^^ not found in `theme`
+
+warning: unused import: `std::path::PathBuf`
+ --> src\commands\export.rs:4:5
+  |
+4 | use std::path::PathBuf;
+  |     ^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `crate::error::FlashError`
+ --> src\iced_ui\mod.rs:5:5
+  |
+5 | use crate::error::FlashError;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `tracing::warn`
+ --> src\metadata\db.rs:8:5
+  |
+8 | use tracing::warn;
+  |     ^^^^^^^^^^^^^
+
+warning: unused import: `std::cmp::Ordering`
+   --> src\metadata\db.rs:404:17
+    |
+404 |             use std::cmp::Ordering;
+    |                 ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `Path`
+ --> src\scanner\mod.rs:8:17
+  |
+8 | use std::path::{Path, PathBuf};
+  |                 ^^^^
+
+warning: unused imports: `Context` and `Result`
+  --> src\lib.rs:13:20
+   |
+13 | use crate::error::{Context, FlashError, Result};
+   |                    ^^^^^^^              ^^^^^^
+
+error[E0382]: use of partially moved value: `settings`
+   --> src\commands\indexing.rs:21:18
+    |
+ 15 |     for folder in settings.exclude_folders {
+    |                   ------------------------ `settings.exclude_folders` partially moved due to this implicit call to `.into_iter()`
+...
+ 21 |     tokio::spawn(async move {
+    |                  ^^^^^^^^^^ value used here after partial move
+...
+ 27 |             settings,
+    |             -------- use occurs due to use in coroutine
+    |
+note: `std::iter::IntoIterator::into_iter` takes ownership of the receiver `self`, which moves `settings.exclude_folders`
+   --> C:\Users\suyas\.rustup\toolchains\stable-x86_64-pc-windows-msvc\lib/rustlib/src/rust\library\core\src\iter\traits\collect.rs:310:18
+    |
+310 |     fn into_iter(self) -> Self::IntoIter;
+    |                  ^^^^
+    = note: partial move occurs because `settings.exclude_folders` has type `std::vec::Vec<std::string::String>`, which does not implement the `Copy` trait
+help: consider iterating over a slice of the `std::vec::Vec<std::string::String>`'s content to avoid moving into the `for` loop
+    |
+ 15 |     for folder in &settings.exclude_folders {
+    |                   +
+
+error[E0308]: mismatched types
+   --> src\indexer\filename_index.rs:188:13
+    |
+187 |         let aut = match Subsequence::new(&query_lower) {
+    |                         ------------------------------ this expression has type `Subsequence<'_>`
+188 |             Ok(a) => a,
+    |             ^^^^^ expected `Subsequence<'_>`, found `Result<_, _>`
+    |
+    = note: expected struct `Subsequence<'_>`
+                 found enum `std::result::Result<_, _>`
+
+error[E0308]: mismatched types
+   --> src\indexer\filename_index.rs:189:13
+    |
+187 |         let aut = match Subsequence::new(&query_lower) {
+    |                         ------------------------------ this expression has type `Subsequence<'_>`
+188 |             Ok(a) => a,
+189 |             Err(_) => return Ok(Vec::new()),
+    |             ^^^^^^ expected `Subsequence<'_>`, found `Result<_, _>`
+    |
+    = note: expected struct `Subsequence<'_>`
+                 found enum `std::result::Result<_, _>`
+
+error[E0061]: this method takes 1 argument but 0 arguments were supplied
+    --> src\indexer\writer.rs:34:85
+     |
+  34 |                     sysinfo::System::new_with_specifics(sysinfo::RefreshKind::new().with_memory());
+     |                                                                                     ^^^^^^^^^^^-- argument #1 of type `MemoryRefreshKind` is missing
+     |
+note: method defined here
+    --> E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\sysinfo-0.30.13\src\common.rs:1940:9
+     |
+1940 |         with_memory,
+     |         ^^^^^^^^^^^
+help: provide the argument
+     |
+  34 |                     sysinfo::System::new_with_specifics(sysinfo::RefreshKind::new().with_memory(/* MemoryRefreshKind */));
+     |                                                                                                 +++++++++++++++++++++++
+
+error[E0061]: this function takes 1 argument but 2 arguments were supplied
+  --> src\indexer\mod.rs:87:22
+   |
+87 |         let writer = IndexWriterManager::new(&index, memory_limit_mb)?;
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^         --------------- unexpected argument #2 of type `u32`
+   |
+note: associated function defined here
+  --> src\indexer\writer.rs:43:12
+   |
+43 |     pub fn new(index: &Index) -> Result<Self> {
+   |            ^^^
+help: remove the extra argument
+   |
+87 -         let writer = IndexWriterManager::new(&index, memory_limit_mb)?;
+87 +         let writer = IndexWriterManager::new(&index)?;
+   |
+
+warning: unused variable: `app`
+   --> src\iced_ui\mod.rs:629:17
+    |
+629 | fn subscription(app: &App) -> Subscription<Message> {
+    |                 ^^^ help: if this is intentional, prefix it with an underscore: `_app`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+Some errors have detailed explanations: E0061, E0308, E0382, E0425.
+For more information about an error, try `rustc --explain E0061`.
+warning: `flash-search` (lib) generated 7 warnings
+error: could not compile `flash-search` (lib) due to 6 previous errors; 7 warnings emitted

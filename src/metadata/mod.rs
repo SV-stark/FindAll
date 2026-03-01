@@ -1,3 +1,3 @@
 pub mod db;
 
-pub use db::{MetadataDb, FileMetadata, ConnectionMetricsSnapshot};
+pub use db::{ConnectionMetricsSnapshot, FileMetadata, MetadataDb};

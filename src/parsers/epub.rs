@@ -5,8 +5,8 @@ use quick_xml::events::Event;
 use quick_xml::Reader;
 use std::io::Read;
 use std::path::Path;
-use zip::ZipArchive;
 use tracing::warn;
+use zip::ZipArchive;
 
 const MAX_HTML_SIZE: usize = 50 * 1024 * 1024;
 const MAX_TOTAL_TEXT_SIZE: usize = 200 * 1024 * 1024;

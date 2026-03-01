@@ -1,14 +1,14 @@
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
-use notify::{Watcher, RecursiveMode, Event, EventKind, RecommendedWatcher};
 use crate::error::{FlashError, Result};
 use crate::indexer::IndexManager;
 use crate::metadata::MetadataDb;
 use crate::parsers::parse_file;
 use blake3;
-use tracing::{info, warn, error};
+use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use tracing::{error, info, warn};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum WatcherAction {
@@ -19,30 +19,28 @@ enum WatcherAction {
 /// Manages active file system watching with debouncing
 pub struct WatcherManager {
     watcher: Option<RecommendedWatcher>,
-    indexer: Arc<IndexManager>,
-    metadata_db: Arc<MetadataDb>,
-    runtime_handle: tokio::runtime::Handle,
+    _indexer: Arc<IndexManager>,
+    _metadata_db: Arc<MetadataDb>,
+    _runtime_handle: tokio::runtime::Handle,
     // Buffer for pending events: Map<Path, Action>
     // WARNING: Do not hold this Mutex across .await points to avoid deadlocks.
     event_buffer: Arc<Mutex<HashMap<PathBuf, WatcherAction>>>,
 }
 
 impl WatcherManager {
-    pub fn new(
-        indexer: Arc<IndexManager>,
-        metadata_db: Arc<MetadataDb>,
-    ) -> Self {
-        let buffer: Arc<Mutex<HashMap<PathBuf, WatcherAction>>> = Arc::new(Mutex::new(HashMap::new()));
+    pub fn new(indexer: Arc<IndexManager>, metadata_db: Arc<MetadataDb>) -> Self {
+        let buffer: Arc<Mutex<HashMap<PathBuf, WatcherAction>>> =
+            Arc::new(Mutex::new(HashMap::new()));
         let buffer_for_task = buffer.clone();
         let indexer_for_task = indexer.clone();
         let metadata_db_for_task = metadata_db.clone();
         let runtime_handle = tokio::runtime::Handle::current();
-        
+
         // Spawn background processor for debounced events
         runtime_handle.spawn(async move {
             loop {
                 tokio::time::sleep(Duration::from_millis(1000)).await; // Check every 1s
-                
+
                 let events = {
                     let mut guard = match buffer_for_task.lock() {
                         Ok(g) => g,
@@ -58,23 +56,23 @@ impl WatcherManager {
                     let events: HashMap<PathBuf, WatcherAction> = std::mem::take(&mut *guard);
                     events
                 };
-                
+
                 let mut needs_commit = false;
-                
+
                 // First pass: collect all paths that need to be removed
                 let remove_paths: Vec<PathBuf> = events
                     .iter()
                     .filter(|(_, action)| matches!(action, WatcherAction::Remove))
                     .map(|(path, _)| path.clone())
                     .collect();
-                
+
                 // Second pass: collect all paths that need to be indexed
                 let index_paths: Vec<PathBuf> = events
                     .iter()
                     .filter(|(_, action)| matches!(action, WatcherAction::Index))
                     .map(|(path, _)| path.clone())
                     .collect();
-                
+
                 // Process removes first
                 for path in remove_paths {
                     let path_str = path.to_string_lossy();
@@ -88,7 +86,7 @@ impl WatcherManager {
                         _ => {}
                     }
                 }
-                
+
                 // Then process indexes
                 let mut docs_to_add = Vec::new();
                 let mut meta_to_update = Vec::new();
@@ -117,10 +115,10 @@ impl WatcherManager {
                     }
                     needs_commit = true;
                 }
-                
+
                 if needs_commit {
                     if let Err(e) = indexer_for_task.commit() {
-                         error!("Watcher failed to commit index: {}", e);
+                        error!("Watcher failed to commit index: {}", e);
                     } else {
                         indexer_for_task.invalidate_cache();
                         info!("Watcher committed changes");
@@ -131,9 +129,9 @@ impl WatcherManager {
 
         Self {
             watcher: None,
-            indexer,
-            metadata_db,
-            runtime_handle,
+            _indexer: indexer,
+            _metadata_db: metadata_db,
+            _runtime_handle: runtime_handle,
             event_buffer: buffer,
         }
     }
@@ -157,7 +155,7 @@ impl WatcherManager {
                         return;
                     }
                 };
-                
+
                 match event.kind {
                     EventKind::Modify(_) | EventKind::Create(_) | EventKind::Remove(_) => {
                         for path in &event.paths {
@@ -176,47 +174,53 @@ impl WatcherManager {
                     _ => {}
                 }
             }
-        }).map_err(|e| FlashError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+        })
+        .map_err(|e| FlashError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
 
         for dir in dirs {
             let path = Path::new(&dir);
             if path.exists() {
-                watcher.watch(path, RecursiveMode::Recursive)
-                    .map_err(|e| FlashError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+                watcher.watch(path, RecursiveMode::Recursive).map_err(|e| {
+                    FlashError::Io(std::io::Error::new(std::io::ErrorKind::Other, e))
+                })?;
             }
         }
 
         self.watcher = Some(watcher);
         Ok(())
     }
-    
+
     // Returns parsed document data if file needs re-indexing
     async fn reindex_single_file(
         path: &Path,
         metadata_db: &Arc<MetadataDb>,
     ) -> Result<Option<(crate::parsers::ParsedDocument, u64, u64, [u8; 32])>> {
         if !path.exists() {
-             return Ok(None);
+            return Ok(None);
         }
 
         let metadata = match std::fs::metadata(path) {
             Ok(m) => m,
             Err(_) => return Ok(None), // Ignore if cannot read metadata
         };
-        
-        let modified = metadata.modified()
+
+        let modified = metadata
+            .modified()
             .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
             .duration_since(std::time::SystemTime::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
         let size = metadata.len();
-        
+
         // Skip check? If watcher said it changed, it probably did.
         // But checking db saves re-hashing if it was a false alarm.
-        if !metadata_db.needs_reindex(path, modified, size).unwrap_or(true) {
+        if !metadata_db
+            .needs_reindex(path, modified, size)
+            .unwrap_or(true)
+        {
             return Ok(None);
         }
-        
+
         let parsed = match parse_file(path) {
             Ok(p) => p,
             Err(e) => {
@@ -224,9 +228,9 @@ impl WatcherManager {
                 return Ok(None);
             }
         };
-        
+
         let content_hash: [u8; 32] = blake3::hash(parsed.content.as_bytes()).into();
-        
+
         Ok(Some((parsed, modified, size, content_hash)))
     }
 }
@@ -237,24 +241,26 @@ mod tests {
     use crate::indexer::IndexManager;
     use crate::metadata::MetadataDb;
     use std::fs;
-    use tempfile::tempdir;
     use std::sync::Arc;
+    use tempfile::tempdir;
 
     #[tokio::test]
     async fn test_watcher_manager_creation() {
         let temp = tempdir().unwrap();
-        let indexer = Arc::new(IndexManager::new(temp.path()).unwrap());
-        let metadata = Arc::new(MetadataDb::new(temp.path()).unwrap());
+        let indexer = Arc::new(IndexManager::open(temp.path(), 256).unwrap());
+        let metadata = Arc::new(MetadataDb::open(&temp.path().join("metadata.db")).unwrap());
 
         let mut watcher = WatcherManager::new(indexer, metadata);
-        
+
         // Add a directory to watch
         let watch_dir = temp.path().join("watch_me");
         fs::create_dir(&watch_dir).unwrap();
-        
-        assert!(watcher.update_watch_list(vec![watch_dir.to_string_lossy().to_string()]).is_ok());
+
+        assert!(watcher
+            .update_watch_list(vec![watch_dir.to_string_lossy().to_string()])
+            .is_ok());
         assert!(watcher.watcher.is_some());
-        
+
         // Empty list should remove watcher
         assert!(watcher.update_watch_list(vec![]).is_ok());
         assert!(watcher.watcher.is_none());
