@@ -41,6 +41,9 @@ pub struct AppSettings {
     pub double_click_action: DoubleClickAction,
     pub show_preview_panel: bool,
     pub context_menu_enabled: bool,
+    
+    #[serde(default = "default_global_hotkey")]
+    pub global_hotkey: String,
 
     // Performance
     pub indexing_threads: u8,
@@ -56,6 +59,10 @@ pub struct DefaultFilters {
     pub min_size_mb: Option<u32>,
     pub max_size_mb: Option<u32>,
     pub modified_within_days: Option<u32>,
+}
+
+fn default_global_hotkey() -> String {
+    "Alt+Space".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -181,6 +188,7 @@ impl Default for AppSettings {
             double_click_action: DoubleClickAction::default(),
             show_preview_panel: true,
             context_menu_enabled: false,
+            global_hotkey: default_global_hotkey(),
 
             // Performance
             indexing_threads: 4,
@@ -241,7 +249,51 @@ mod tests {
         manager.save(&settings).unwrap();
         let loaded = manager.load().unwrap();
 
-        assert_eq!(loaded.max_results, 100);
+    #[test]
+    fn test_settings_unknown_fields() {
+        let temp_dir = tempdir().unwrap();
+        let manager = SettingsManager::new(temp_dir.path());
+
+        // Create a JSON string with an unknown field "future_feature_flag"
+        let json_with_unknown = r#"{
+            "max_results": 150,
+            "theme": "dark",
+            "future_feature_flag": true,
+            "index_dirs": [],
+            "exclude_patterns": [],
+            "exclude_folders": [],
+            "auto_index_on_startup": true,
+            "index_file_size_limit_mb": 100,
+            "search_history_enabled": true,
+            "fuzzy_matching": true,
+            "case_sensitive": false,
+            "default_filters": {
+                "file_types": [],
+                "min_size_mb": null,
+                "max_size_mb": null,
+                "modified_within_days": null
+            },
+            "recent_searches": null,
+            "search_history": null,
+            "filename_index_enabled": true,
+            "font_size": "medium",
+            "show_file_extensions": true,
+            "results_per_page": 50,
+            "minimize_to_tray": true,
+            "auto_start_on_boot": false,
+            "double_click_action": "open_file",
+            "show_preview_panel": true,
+            "context_menu_enabled": false,
+            "global_hotkey": "Alt+Space",
+            "indexing_threads": 4,
+            "memory_limit_mb": 512,
+            "pinned_files": []
+        }"#;
+
+        fs::write(manager.path.clone(), json_with_unknown).unwrap();
+
+        let loaded = manager.load().expect("Should tolerate unknown fields");
+        assert_eq!(loaded.max_results, 150);
         assert!(matches!(loaded.theme, Theme::Dark));
     }
 }

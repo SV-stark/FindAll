@@ -47,6 +47,7 @@ pub struct Scanner {
     metadata_db: Arc<MetadataDb>,
     filename_index: Option<Arc<crate::indexer::filename_index::FilenameIndex>>,
     progress_tx: Option<mpsc::Sender<ProgressEvent>>,
+    settings: crate::settings::AppSettings,
 }
 
 impl Scanner {
@@ -55,12 +56,14 @@ impl Scanner {
         metadata_db: Arc<MetadataDb>,
         filename_index: Option<Arc<crate::indexer::filename_index::FilenameIndex>>,
         progress_tx: Option<mpsc::Sender<ProgressEvent>>,
+        settings: crate::settings::AppSettings,
     ) -> Self {
         Self {
             indexer,
             metadata_db,
             filename_index,
             progress_tx,
+            settings,
         }
     }
     
@@ -158,13 +161,21 @@ impl Scanner {
         let progress_tx_clone = self.progress_tx.clone();
         let total_files = total.clone();
 
+        // Configure Rayon thread pool based on settings limit
+        let threads = self.settings.indexing_threads as usize;
+        let pool = rayon::ThreadPoolBuilder::new().num_threads(threads).build().unwrap_or_else(|_| rayon::ThreadPoolBuilder::new().build().unwrap());
+        let file_size_limit_mb = self.settings.index_file_size_limit_mb;
+
         // --- Stage 2a: Parallel parsing (Rayon) → sends IndexTask into channel ---
         let parser_handle = tokio::task::spawn_blocking(move || {
-            info!("Stage 2a: Parallel Parsing");
-            path_rx.into_iter().par_bridge().for_each(|path: PathBuf| {
-                if let Some(task) = Scanner::process_file(&path, &metadata_db_for_parser) {
-                    let _ = task_tx.send(task);
-                }
+            info!("Stage 2a: Parallel Parsing ({} threads)", threads);
+            
+            pool.install(|| {
+                path_rx.into_iter().par_bridge().for_each(|path: PathBuf| {
+                    if let Some(task) = Scanner::process_file(&path, &metadata_db_for_parser, file_size_limit_mb) {
+                        let _ = task_tx.send(task);
+                    }
+                });
             });
             // task_tx is dropped here, closing the channel
         });
@@ -264,6 +275,7 @@ impl Scanner {
     fn process_file(
         path: &Path,
         metadata_db: &Arc<MetadataDb>,
+        file_size_limit_mb: u32,
     ) -> Option<IndexTask> {
         let metadata = std::fs::metadata(path).ok()?;
         let modified = metadata.modified().ok()?
@@ -272,10 +284,19 @@ impl Scanner {
             .as_secs();
         let size = metadata.len();
         
+        let limit_bytes = (file_size_limit_mb as u64) * 1024 * 1024;
+        if size > limit_bytes {
+            warn!("Skipping large file: {} ({} bytes > limit of {} bytes)", path.display(), size, limit_bytes);
+            return None;
+        }
+        
         if !metadata_db.needs_reindex(path, modified, size).unwrap_or(true) {
             return None;
         }
         
+        // Wrap parsing with a rudimentary deadline check since pure blocking tasks can't easily timeout
+        // But doing an actual robust timeout across FFI/parsers usually requires spawning processes.
+        // For now, size guards offer the best protection against blocking parses.
         let parsed = parse_file(path).ok()?;
         let content_hash = blake3::hash(parsed.content.as_bytes()).into();
         

@@ -234,3 +234,33 @@ impl WatcherManager {
         Ok(Some((parsed, modified, size, content_hash)))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::indexer::IndexManager;
+    use crate::metadata::MetadataDb;
+    use std::fs;
+    use tempfile::tempdir;
+    use std::sync::Arc;
+
+    #[tokio::test]
+    async fn test_watcher_manager_creation() {
+        let temp = tempdir().unwrap();
+        let indexer = Arc::new(IndexManager::new(temp.path()).unwrap());
+        let metadata = Arc::new(MetadataDb::new(temp.path()).unwrap());
+
+        let mut watcher = WatcherManager::new(indexer, metadata);
+        
+        // Add a directory to watch
+        let watch_dir = temp.path().join("watch_me");
+        fs::create_dir(&watch_dir).unwrap();
+        
+        assert!(watcher.update_watch_list(vec![watch_dir.to_string_lossy().to_string()]).is_ok());
+        assert!(watcher.watcher.is_some());
+        
+        // Empty list should remove watcher
+        assert!(watcher.update_watch_list(vec![]).is_ok());
+        assert!(watcher.watcher.is_none());
+    }
+}

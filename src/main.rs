@@ -44,7 +44,29 @@ fn init_logging() -> WorkerGuard {
 
     info!("Flash Search starting up");
     
+    // Prune logs older than 30 days
+    prune_old_logs(&log_dir);
+    
     guard
+}
+
+fn prune_old_logs(log_dir: &std::path::Path) {
+    if let Ok(entries) = std::fs::read_dir(log_dir) {
+        let now = std::time::SystemTime::now();
+        let max_age = std::time::Duration::from_secs(30 * 24 * 60 * 60);
+
+        for entry in entries.flatten() {
+            if let Ok(metadata) = entry.metadata() {
+                if let Ok(modified) = metadata.modified() {
+                    if let Ok(age) = now.duration_since(modified) {
+                        if age > max_age {
+                            let _ = std::fs::remove_file(entry.path());
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn main() {
@@ -65,11 +87,24 @@ fn main() {
         .unwrap();
     let _rt_guard = rt.enter();
     
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        println!("Flash Search - Ultrafast local full-text search\n");
+        println!("Usage: flash-search [OPTIONS]");
+        println!("Options:");
+        println!("  -V, --version       Print version");
+        println!("  -h, --help          Print help");
+        println!("  -c, --cli <query>   Perform a search from the command line");
+        println!("  --json              Output CLI search results as JSON");
+        return;
+    }
+
     if args.iter().any(|arg| arg == "--cli" || arg == "-c") {
-        let query = args.get(2).cloned();
+        let query_index = args.iter().position(|a| a == "--cli" || a == "-c").unwrap();
+        let query = args.get(query_index + 1).cloned();
+        let is_json = args.iter().any(|a| a == "--json");
         
         rt.block_on(async {
-            if let Err(e) = flash_search::run_cli(query, None).await {
+            if let Err(e) = flash_search::run_cli(query, is_json, None).await {
                 error!("CLI Error: {}", e);
             }
         });

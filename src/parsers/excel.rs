@@ -122,4 +122,17 @@ mod tests {
         assert_eq!(format_cell_value(&calamine::Data::Int(42)), "42");
         assert_eq!(format_cell_value(&calamine::Data::Bool(true)), "true");
     }
+
+    #[test]
+    fn test_parse_excel_corrupted() {
+        use std::fs;
+        use tempfile::tempdir;
+
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("corrupted.xlsx");
+        fs::write(&path, b"not a valid excel file").unwrap();
+
+        let result = parse_excel(&path);
+        assert!(result.is_err());
+    }
 }

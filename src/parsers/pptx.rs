@@ -41,7 +41,16 @@ pub fn parse_pptx(path: &Path) -> Result<ParsedDocument> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use tempfile::tempdir;
 
     #[test]
-    fn test_pptx_parsing_placeholder() {}
+    fn test_pptx_parsing_corrupted() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("corrupted.pptx");
+        fs::write(&path, b"not a valid pptx").unwrap();
+
+        let result = parse_pptx(&path);
+        assert!(result.is_err());
+    }
 }

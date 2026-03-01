@@ -42,8 +42,9 @@ pub fn setup_app() -> std::result::Result<(Arc<AppState>, tokio::sync::mpsc::Rec
     info!("App data directory: {:?}", app_data_dir);
 
     let settings_manager = settings::SettingsManager::new(&app_data_dir);
+    let settings = settings_manager.load().unwrap_or_default();
     let index_path = app_data_dir.join("index");
-    let indexer = indexer::IndexManager::open(&index_path)
+    let indexer = indexer::IndexManager::open(&index_path, settings.memory_limit_mb)
         .map_err(|e| FlashError::Index { msg: format!("Failed to open search index: {}", e), field: None })?;
     let db_path = app_data_dir.join("metadata.redb");
     let metadata_db = metadata::MetadataDb::open(&db_path)
@@ -73,6 +74,7 @@ pub fn setup_app() -> std::result::Result<(Arc<AppState>, tokio::sync::mpsc::Rec
         metadata_db_shared.clone(),
         filename_index.clone(),
         Some(progress_tx.clone()),
+        settings.clone(),
     ));
 
     let state = Arc::new(AppState::new(
@@ -100,13 +102,27 @@ pub fn run_ui() -> std::result::Result<(), FlashError> {
     Ok(())
 }
 
-pub async fn run_cli(query: Option<String>, _index_path: Option<String>) -> crate::error::Result<()> {
+pub async fn run_cli(query: Option<String>, is_json: bool, _index_path: Option<String>) -> crate::error::Result<()> {
     if let Some(query_str) = query {
         let (state, _) = setup_app()?;
         let results = state.indexer.search(&query_str, 20, None, None, None).await?;
-        for res in results {
-            println!("{} | {}", res.score, res.file_path);
+        
+        if is_json {
+            let json_results: Vec<serde_json::Value> = results.into_iter().map(|res| {
+                serde_json::json!({
+                    "score": res.score,
+                    "path": res.file_path,
+                    "title": res.title
+                })
+            }).collect();
+            println!("{}", serde_json::to_string_pretty(&json_results).unwrap_or_default());
+        } else {
+            for res in results {
+                println!("{} | {}", res.score, res.file_path);
+            }
         }
+    } else {
+        println!("Usage: flash-search --cli <query> [--json]");
     }
     Ok(())
 }

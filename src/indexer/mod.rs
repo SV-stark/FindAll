@@ -41,7 +41,7 @@ pub struct IndexManager {
 
 impl IndexManager {
     /// Open or create index at the specified path
-    pub fn open(index_path: &Path) -> Result<Self> {
+    pub fn open(index_path: &Path, memory_limit_mb: u32) -> Result<Self> {
         let schema = create_schema();
 
         // Ensure directory exists
@@ -78,7 +78,7 @@ impl IndexManager {
 
         info!("Opened index at {} with schema version {}", index_path.display(), SCHEMA_VERSION);
 
-        let writer = IndexWriterManager::new(&index)?;
+        let writer = IndexWriterManager::new(&index, memory_limit_mb)?;
         let searcher = IndexSearcher::new(&index, index_path.to_path_buf())?;
 
         Ok(Self {

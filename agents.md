@@ -2,20 +2,19 @@
 
 ## Project Overview
 
-**Flash Search** is an ultrafast local full-text search application built with Rust (backend) and Svelte (frontend). This document provides comprehensive instructions for AI coding agents working on this codebase.
+**Flash Search** is an ultrafast local full-text search application built purely with Rust. This document provides comprehensive instructions for AI coding agents working on this codebase.
 
 ## Architecture Overview
 
 ┌─────────────────────────────────────────────────────────────┐
 │                     Flash Search                             │
 ├─────────────────────────────────────────────────────────────┤
-│  UI (Slint)                                                 │
-│  ├── components/    - Reusable Slint widgets                │
-│  ├── main.slint     - Main window definition                │
-│  └── globals.slint  - Global properties and types           │
+│  UI (Iced)                                                  │
+│  ├── iced_ui/       - High-performance GUI components       │
+│  ├── search.rs      - Search view and logic bindings        │
+│  └── settings.rs    - Settings view and logic bindings      │
 ├─────────────────────────────────────────────────────────────┤
 │  Rust Backend (Glue & Logic)                                │
-│  ├── slint_ui.rs    - Slint window orchestration & callbacks│
 │  ├── commands/      - Business logic handlers               │
 │  └── state/         - Application state management          │
 ├─────────────────────────────────────────────────────────────┤
@@ -33,15 +32,17 @@ flash-search/
 ├── src/
 │   ├── main.rs              # Application entry point
 │   ├── lib.rs               # Library exports
-│   ├── slint_ui.rs          # Slint UI glue code
 │   ├── error.rs             # Error types
 │   ├── models.rs            # Data models
 │   ├── settings.rs          # Settings management
 │   ├── commands/            # Business logic (AppState)
+│   ├── iced_ui/             # Iced UI implementation
+│   │   ├── mod.rs           # UI entry and core state
+│   │   ├── search.rs        # Search screen UI
+│   │   └── settings.rs      # Settings screen UI
 │   ├── parsers/
 │   │   ├── mod.rs           # Parser dispatch
 │   │   ├── docx.rs          # DOCX parser
-│   │   ├── pdf.rs           # PDF parser
 │   │   └── ...              # Other parsers
 │   ├── indexer/
 │   │   ├── mod.rs           # Indexer module
@@ -50,10 +51,6 @@ flash-search/
 │   └── metadata/
 │       ├── mod.rs           # Metadata DB interface
 │       └── db.rs            # redb definitions
-├── ui/
-│   ├── main.slint           # Main UI definition
-│   ├── globals.slint        # Global types/properties
-│   └── components/          # Reusable Slint widgets
 ├── Cargo.toml               # Project dependencies
 └── README.md
 ```
@@ -67,12 +64,11 @@ flash-search/
 - **Memory**: Keep RAM usage under 30MB at idle
 - **Speed**: Search results must return in <50ms
 - **I/O**: Use memory-mapped files for parsing
-- **UI Responsiveness**: Never block the Slint event loop
+- **UI Responsiveness**: Never block the Iced event loop
 
 **DON'Ts:**
-- Don't perform heavy computations in Slint callbacks (use `tokio::spawn`)
-- Don't update the UI directly from background threads (use `slint::invoke_from_event_loop`)
-- Don't load large datasets into Slint models at once (use pagination or lazy loading if needed)
+- Don't perform heavy computations in Iced `update` methods (use `Command::perform` or `tokio::spawn`)
+- Don't load large datasets into the UI at once (use pagination or lazy loading if needed)
 
 ### 2. Error Handling
 
@@ -254,60 +250,61 @@ impl MetadataDb {
 }
 ```
 
-### 7. Slint Integration (Glue Code)
+### 7. Iced Integration (UI Glue)
 
 ```rust
-pub fn run_slint_ui(state: Arc<AppState>) {
-    let ui = AppWindow::new().unwrap();
-    let ui_weak = ui.as_weak();
-    
-    // Set up search callback
-    let state_search = state.clone();
-    ui.on_perform_search(move |query| {
-        let Some(ui_handle) = ui_weak.upgrade() else { return };
-        let state = state_search.clone();
-        
-        // Spawn async task for search
-        tokio::spawn(async move {
-            let results = state.indexer.search(&query).await.unwrap_or_default();
-            
-            // Convert to Slint model
-            let slint_results: Vec<FileItem> = results.into_iter().map(|r| {
-                FileItem {
-                    title: r.title.unwrap_or_default().into(),
-                    path: r.file_path.into(),
-                    // ...
-                }
-            }).collect();
-            
-            // Update UI on event loop
-            slint::invoke_from_event_loop(move || {
-                if let Some(ui) = ui_handle.upgrade() {
-                    ui.set_results(ModelRc::from(Rc::new(VecModel::from(slint_results))));
-                }
-            }).unwrap();
-        });
-    });
+use iced::{Application, Command, Element};
 
-    ui.run().unwrap();
+pub struct SearchApp {
+    state: Arc<AppState>,
+    search_query: String,
+    results: Vec<FileItem>,
 }
-```
 
-### 8. Slint Component Patterns
+#[derive(Debug, Clone)]
+pub enum Message {
+    SearchInputChanged(String),
+    PerformSearch,
+    SearchResultsReceived(Vec<FileItem>),
+}
 
-```slint
-// ui/components/SearchBar.slint
-export component SearchBar inherits Rectangle {
-    callback perform-search(string);
-    in property <bool> is-searching;
-    
-    TextInput {
-        accepted(text) => {
-            root.perform-search(text);
+impl Application for SearchApp {
+    type Message = Message;
+    // ...
+
+    fn update(&mut self, message: Message) -> Command<Message> {
+        match message {
+            Message::SearchInputChanged(query) => {
+                self.search_query = query;
+                Command::none()
+            }
+            Message::PerformSearch => {
+                let state = self.state.clone();
+                let query = self.search_query.clone();
+                
+                // Offload search to async command
+                Command::perform(async move {
+                    let results = state.indexer.search(&query).await.unwrap_or_default();
+                    results.into_iter().map(FileItem::from).collect()
+                }, Message::SearchResultsReceived)
+            }
+            Message::SearchResultsReceived(results) => {
+                self.results = results;
+                Command::none()
+            }
         }
+    }
+
+    fn view(&self) -> Element<Message> {
+        // ... Iced view layout construction ...
+        iced::widget::text("Search View").into()
     }
 }
 ```
+
+### 8. Iced Component Patterns
+
+Follow the standard Elm architecture when creating view components in Iced. Keep state isolated where appropriate and fire clear descriptive messages.
 
 ## Common Tasks
 
@@ -326,12 +323,12 @@ export component SearchBar inherits Rectangle {
 3. Consider migration strategy for existing users
 4. Bump index version in constants
 
-### Adding a New Slint Callback
+### Adding a New Iced Message
 
-1. Define callback in `ui/main.slint`
-2. Implement listener in `src/slint_ui.rs`
-3. Use `ui.as_weak()` to capture the UI handle safely
-4. Use `slint::invoke_from_event_loop` to send data back to UI
+1. Define the message variant in the relevant `Message` enum (e.g., in `src/iced_ui/mod.rs`)
+2. Handle the message in the `update()` function
+3. Return an async `Command::perform` for any IO/backend work
+4. Ensure the view triggers the matching message on user interactions
 
 ## Testing Guidelines
 
@@ -394,7 +391,7 @@ cargo test
 
 ## Resources
 
-- [Slint Documentation](https://slint.dev/docs/rust/slint/)
+- [Iced Documentation](https://docs.rs/iced/latest/iced/)
 - [Tantivy Documentation](https://docs.rs/tantivy/latest/tantivy/)
 - [Redb Documentation](https://docs.rs/redb/latest/redb/)
 - [Rayon Documentation](https://docs.rs/rayon/latest/rayon/)

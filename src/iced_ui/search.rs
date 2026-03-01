@@ -60,9 +60,18 @@ pub fn search_view(app: &App) -> Element<Message> {
         .width(Length::Fill);
 
     let error_display: Element<Message> = if let Some(ref err) = app.search_error {
-        container(text(err).size(13))
-            .padding(Padding::new(8.0))
-            .into()
+        container(
+            row![
+                container(load_icon("settings")).style(theme::error_text),
+                text(err).size(13).style(theme::error_text),
+                Space::new().width(Length::Fill),
+                button("Dismiss").on_press(Message::DismissError).padding(Padding::new(4.0)).style(theme::secondary_button())
+            ].spacing(8).align_y(Alignment::Center)
+        )
+        .padding(Padding::new(12.0))
+        .style(theme::error_container)
+        .width(Length::Fill)
+        .into()
     } else {
         Space::new().height(Length::Fixed(0.0)).into()
     };
@@ -153,7 +162,28 @@ pub fn search_view(app: &App) -> Element<Message> {
     .padding(Padding::new(16.0))
     .width(Length::Fill);
 
-    let results_panel: Element<Message> = if app.is_searching {
+    let results_panel: Element<Message> = if app.settings.index_dirs.is_empty() {
+        container(
+            column![
+                container(load_icon("settings")),
+                Space::new().height(Length::Fixed(16.0)),
+                text("Add a folder to get started").size(24),
+                Space::new().height(Length::Fixed(8.0)),
+                text("Configure your indexed directories in Settings.").size(14),
+                Space::new().height(Length::Fixed(24.0)),
+                button(text("Go to Settings").size(16))
+                    .on_press(Message::TabChanged(Tab::Settings))
+                    .padding(Padding::new(14.0))
+                    .style(theme::primary_button()),
+            ]
+            .align_x(Alignment::Center),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .center_x(Length::Fill)
+        .center_y(Length::Fill)
+        .into()
+    } else if app.is_searching {
         container(column![text("Searching...").size(14),].align_x(Alignment::Center))
             .width(Length::Fill)
             .height(Length::Fill)

@@ -38,7 +38,16 @@ pub fn parse_odf(path: &Path) -> Result<ParsedDocument> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use tempfile::tempdir;
 
     #[test]
-    fn test_odf_parsing_placeholder() {}
+    fn test_odf_parsing_corrupted() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("corrupted.odt");
+        fs::write(&path, b"not a valid odf").unwrap();
+
+        let result = parse_odf(&path);
+        assert!(result.is_err());
+    }
 }

@@ -40,6 +40,14 @@ pub fn settings_view(app: &App) -> Element<Message> {
         .on_input(Message::ExcludePatternsChanged)
         .style(theme::search_input());
 
+    let hotkey_label = text("Global Hotkey").size(14);
+    let hotkey_input = TextInput::new("Alt+Space / Control+Shift+F", &app.settings.global_hotkey)
+        .padding(Padding::new(10.0))
+        .size(14)
+        .width(Length::Fixed(200.0))
+        .on_input(Message::GlobalHotkeyChanged)
+        .style(theme::small_input());
+
     let dirs_section = column![text("Index Directories").size(18)].spacing(12);
     let mut dirs_col = column!().spacing(8);
     for (i, dir) in app.settings.index_dirs.iter().enumerate() {
@@ -103,6 +111,8 @@ pub fn settings_view(app: &App) -> Element<Message> {
         exclude_label,
         Space::new().height(Length::Fixed(6.0)),
         exclude_input,
+        Space::new().height(Length::Fixed(16.0)),
+        row![hotkey_label, hotkey_input].spacing(12).align_y(Alignment::Center),
         Space::new().height(Length::Fixed(24.0)),
         dirs_section,
         dirs_col,

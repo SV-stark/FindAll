@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.2.0] - 2024
+## [0.2.0] - 2024-03-01
 
 ### Added
 - Structured logging with tracing and log file rotation

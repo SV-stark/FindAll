@@ -251,3 +251,22 @@ pub fn tab_active() -> impl Fn(&Theme, button::Status) -> button::Style {
 pub fn tab_inactive() -> impl Fn(&Theme, button::Status) -> button::Style {
     tab_button(false)
 }
+
+pub fn error_container(_theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(Color::from_rgba8(239, 68, 68, 0.1))),
+        border: Border {
+            color: Color::from_rgb8(239, 68, 68),
+            width: 1.0,
+            radius: Radius::from(8.0),
+        },
+        ..Default::default()
+    }
+}
+
+pub fn error_text(_theme: &Theme) -> container::Style {
+    container::Style {
+        text_color: Some(Color::from_rgb8(239, 68, 68)),
+        ..Default::default()
+    }
+}

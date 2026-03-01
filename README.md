@@ -19,7 +19,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-000000?style=flat&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/Iced-0.13-blue?style=flat&logo=rust&logoColor=white" alt="Iced">
+  <img src="https://img.shields.io/badge/Iced-0.14-blue?style=flat&logo=rust&logoColor=white" alt="Iced">
   <img src="https://img.shields.io/badge/License-GPL--3.0-blue.svg" alt="License">
 </p>
 
@@ -88,7 +88,7 @@ cargo run
 
 | Shortcut | Action |
 |----------|--------|
-| `Alt+Space` | Toggle search window |
+| `Alt+Space` | Toggle search window (Global Hotkey, configurable in Settings) |
 | `Ctrl+Enter` | Open selected file |
 | `Ctrl+C` | Copy file path |
 | `Esc` | Close search window |

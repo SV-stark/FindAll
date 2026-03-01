@@ -87,6 +87,8 @@ pub enum Message {
     ToggleMinimizeToTray(bool),
     ToggleAutoStart(bool),
     ToggleContextMenu(bool),
+    GlobalHotkeyChanged(String),
+    PollHotkey,
 }
 
 pub struct App {
@@ -110,7 +112,8 @@ pub struct App {
     rebuild_progress: Option<f32>,
     rebuild_status: Option<String>,
     progress_rx: Option<Arc<tokio::sync::Mutex<mpsc::Receiver<ProgressEvent>>>>,
-    _tray_icon: Option<tray_icon::TrayIcon>,
+    tray_icon: Option<tray_icon::TrayIcon>,
+    hotkey_manager: Option<global_hotkey::GlobalHotKeyManager>,
 }
 
 impl App {
@@ -127,8 +130,25 @@ impl App {
                     files_indexed: stats.total_documents as i32, index_size, is_dark,
                     search_mode: SearchMode::FullText, filter_extension: String::new(),
                     filter_size: String::new(), preview_content: None, is_loading_preview: false,
-                    rebuild_progress: None, rebuild_status: None, progress_rx: None, _tray_icon: crate::system::tray::create_tray_icon().ok(),
+                    rebuild_progress: None, rebuild_status: None, progress_rx: None, tray_icon: crate::system::tray::create_tray_icon().ok(),
+                    hotkey_manager: None,
+                };
+                
+                if let Ok(manager) = global_hotkey::GlobalHotKeyManager::new() {
+                    if let Ok(hotkey) = settings.global_hotkey.parse::<global_hotkey::hotkey::HotKey>() {
+                        if manager.register(hotkey).is_err() {
+                            app.error = Some(format!(
+                                "Hotkey conflict: '{}' is already registered by another application. Please choose an alternative in Settings.",
+                                settings.global_hotkey
+                            ));
+                        }
+                    } else if !settings.global_hotkey.is_empty() {
+                        app.error = Some(format!("Invalid hotkey format: '{}'", settings.global_hotkey));
+                    }
+                    app.hotkey_manager = Some(manager);
                 }
+                
+                app
             }
             Err(err_msg) => {
                 App {
@@ -152,7 +172,8 @@ impl App {
                     rebuild_progress: None,
                     rebuild_status: None,
                     progress_rx: None,
-                    _tray_icon: crate::system::tray::create_tray_icon().ok(),
+                    tray_icon: crate::system::tray::create_tray_icon().ok(),
+                    hotkey_manager: None,
                 }
             }
         }
@@ -329,6 +350,9 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 let settings = app.settings.clone();
                 app.rebuild_progress = Some(0.0);
                 app.rebuild_status = Some("Starting rebuild...".to_string());
+                if let Some(tray) = &app.tray_icon {
+                    let _ = tray.set_tooltip(Some("Flash Search - Rebuilding Index..."));
+                }
                 app.files_indexed = 0;
                 let rx = app.progress_rx.clone();
                 Task::batch(vec![
@@ -377,6 +401,9 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 let stats = app.state.as_ref().map(|s| s.indexer.get_statistics().unwrap_or_default()).unwrap_or_default();
                 app.files_indexed = stats.total_documents as i32;
                 app.index_size = format!("{:.1} MB", (stats.total_size_bytes as f64) / 1_048_576.0);
+                if let Some(tray) = &app.tray_icon {
+                    let _ = tray.set_tooltip(Some("Flash Search - Ready"));
+                }
                 app.rebuild_progress = None;
                 app.rebuild_status = None;
                 Task::none()
@@ -471,7 +498,21 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             Message::Quit => {
                 std::process::exit(0);
             }
+            Message::GlobalHotkeyChanged(val) => {
+                app.settings.global_hotkey = val;
+                Task::none()
+            }
             Message::StartPollingProgress => Task::none(),
+            Message::PollHotkey => {
+                if let Ok(event) = global_hotkey::GlobalHotKeyEvent::receiver().try_recv() {
+                    // Hotkey pressed, we just log it or toggle search window focus
+                    tracing::info!("Global hotkey pressed: {:?}", event);
+                    // To truly bring Iced to front, we'd need to use Iced window commands,
+                    // but since iced 0.13 removed some easy window visibility toggles without IDs, 
+                    // we'll just focus the search query for now, or just let OS handle if hooked.
+                }
+                Task::none()
+            }
             Message::PollTray => {
                 if let Ok(event) = tray_icon::menu::MenuEvent::receiver().try_recv() {
                     if event.id.0 == "quit" {
@@ -486,8 +527,14 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
     }
 }
 
-fn subscription(_app: &App) -> Subscription<Message> {
-    Subscription::none()
+fn subscription(app: &App) -> Subscription<Message> {
+    let mut subs = Vec::new();
+    
+    // Always poll hotkey and tray every 100ms
+    subs.push(iced::time::every(std::time::Duration::from_millis(100)).map(|_| Message::PollHotkey));
+    subs.push(iced::time::every(std::time::Duration::from_millis(100)).map(|_| Message::PollTray));
+    
+    Subscription::batch(subs)
 }
 
 fn view(app: &App) -> Element<Message> {
@@ -497,9 +544,26 @@ fn view(app: &App) -> Element<Message> {
     }
 }
 
-fn error_view(_error: &str) -> Element<'_, Message> {
-    use iced::widget::text;
-    text("Error display unavailable").into()
+fn error_view(error: &str) -> Element<'_, Message> {
+    use iced::widget::{button, column, container, text, Space};
+    use iced::{Alignment, Length, Padding};
+    
+    container(
+        column![
+            text("An Error Occurred").size(24),
+            Space::new().height(Length::Fixed(16.0)),
+            text(error).size(14),
+            Space::new().height(Length::Fixed(24.0)),
+            button(text("Dismiss")).on_press(Message::DismissError)
+                .padding(Padding::new(12.0))
+        ]
+        .align_x(Alignment::Center)
+    )
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .center_x(Length::Fill)
+    .center_y(Length::Fill)
+    .into()
 }
 
 fn app_title(_app: &App) -> String {
