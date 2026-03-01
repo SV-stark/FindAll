@@ -1,7 +1,6 @@
 use crate::error::Result;
-use nucleo_matcher::pattern::{CaseMatching, Pattern};
-use nucleo_matcher::Config;
-use nucleo_matcher::Matcher;
+use fst::{IntoStreamer, Streamer};
+use fst::automaton::Subsequence;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::Arc;
@@ -33,6 +32,7 @@ const LEGACY_INDEX_FILENAME: &str = "filenames.json";
 pub struct FilenameIndex {
     entries: Arc<RwLock<Vec<FilenameEntry>>>,
     data_path: std::path::PathBuf,
+    fst_map: Arc<RwLock<Vec<u8>>>,
 }
 
 impl FilenameIndex {
@@ -86,9 +86,12 @@ impl FilenameIndex {
             Vec::new()
         };
 
+        let fst_map = Arc::new(RwLock::new(Self::build_fst(&entries)));
+
         Ok(Self {
             entries: Arc::new(RwLock::new(entries)),
             data_path,
+            fst_map,
         })
     }
 
@@ -127,12 +130,30 @@ impl FilenameIndex {
                     name: e.name.clone(),
                 })
                 .collect();
+                
+            if let Ok(mut fst_guard) = self.fst_map.write() {
+                *fst_guard = Self::build_fst(&data);
+            }
+            
             std::thread::spawn(move || {
                 Self::save_to_disk_sync(&data, &data_path);
             });
         }
 
         Ok(())
+    }
+
+    fn build_fst(entries: &[FilenameEntry]) -> Vec<u8> {
+        let mut items: Vec<(String, u64)> = entries.iter().enumerate()
+            .map(|(i, e)| (format!("{}\0{}", e.name.to_lowercase(), i), i as u64))
+            .collect();
+        items.sort_by(|a, b| a.0.cmp(&b.0));
+        
+        let mut build = fst::MapBuilder::memory();
+        for (k, v) in items {
+            let _ = build.insert(k, v);
+        }
+        build.into_inner().unwrap_or_default()
     }
 
     /// Save entries to disk using bincode (P3: replaces JSON for ~10x smaller + faster)
@@ -148,39 +169,33 @@ impl FilenameIndex {
     }
 
     pub fn search(&self, query: &str, limit: usize) -> Result<Vec<FilenameSearchResult>> {
-        // P4: Hold the read lock for the duration of the search instead of cloning
-        let entries_lock = self.entries.clone();
-
-        let guard = match entries_lock.read() {
-            Ok(guard) => guard,
+        let fst_bytes = self.fst_map.read().unwrap();
+        if fst_bytes.is_empty() { return Ok(Vec::new()); }
+        
+        // FST Map
+        let map = match fst::Map::new(fst_bytes.clone()) {
+            Ok(m) => m,
             Err(_) => return Ok(Vec::new()),
         };
-
-        if guard.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let names: Vec<&str> = guard.iter().map(|e| e.name.as_str()).collect();
-
-        let mut matcher = Matcher::new(Config::DEFAULT.match_paths());
-        let pattern = Pattern::parse(query, CaseMatching::Ignore);
-
-        let matches: Vec<_> = pattern.match_list(&names, &mut matcher);
-
-        let mut results = Vec::with_capacity(matches.len().min(limit));
-
-        // B3 fix: `match_list` returns (&str, score) pairs sorted by score.
-        // The returned &str borrows from our `names` slice, so we can find
-        // the original index by comparing pointers instead of string values.
-        for (matched_name, _score) in matches.into_iter() {
-            if results.len() >= limit {
-                break;
-            }
-
-            // Find the entry whose name matches the returned reference.
-            // Use pointer comparison for O(1) matching when possible.
-            let matched_ptr = matched_name.as_ptr();
-            if let Some(entry) = guard.iter().find(|e| e.name.as_str().as_ptr() == matched_ptr) {
+        
+        // Fuzzy / Subsequence matching
+        let query_lower = query.to_lowercase();
+        let aut = match Subsequence::new(&query_lower) {
+            Ok(a) => a,
+            Err(_) => return Ok(Vec::new()),
+        };
+        
+        let mut stream = map.search(aut).into_stream();
+        
+        let entries_lock = match self.entries.read() {
+            Ok(g) => g,
+            Err(_) => return Ok(Vec::new()),
+        };
+        
+        let mut results = Vec::new();
+        while let Some((_, v)) = stream.next() {
+            if results.len() >= limit { break; }
+            if let Some(entry) = entries_lock.get(v as usize) {
                 results.push(FilenameSearchResult {
                     file_path: entry.path.clone(),
                     file_name: entry.name.clone(),
@@ -247,6 +262,11 @@ impl FilenameIndex {
                     name: e.name.clone(),
                 })
                 .collect();
+                
+            if let Ok(mut fst_guard) = self.fst_map.write() {
+                *fst_guard = Self::build_fst(&data);
+            }
+            
             std::thread::spawn(move || {
                 Self::save_to_disk_sync(&data, &data_path);
             });

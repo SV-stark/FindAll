@@ -153,7 +153,7 @@ impl Scanner {
         // --- Stage 2: Content Indexing (Batched) ---
         // Parse files in parallel via Rayon, collect results via mpsc,
         // then batch-write to the index and metadata DB.
-        let (task_tx, task_rx) = std::sync::mpsc::sync_channel::<IndexTask>(BATCH_SIZE * 2);
+        let (task_tx, task_rx) = std::sync::mpsc::sync_channel::<IndexTask>(BATCH_SIZE * 8);
         let metadata_db_for_parser = self.metadata_db.clone();
         let metadata_db_for_writer = self.metadata_db.clone();
         let indexer_clone = self.indexer.clone();
@@ -171,11 +171,17 @@ impl Scanner {
             info!("Stage 2a: Parallel Parsing ({} threads)", threads);
             
             pool.install(|| {
-                path_rx.into_iter().par_bridge().for_each(|path: PathBuf| {
-                    if let Some(task) = Scanner::process_file(&path, &metadata_db_for_parser, file_size_limit_mb) {
-                        let _ = task_tx.send(task);
+                let mut chunk = Vec::with_capacity(200);
+                for path in path_rx.into_iter() {
+                    chunk.push(path);
+                    if chunk.len() >= 200 {
+                        Scanner::process_chunk(&chunk, &metadata_db_for_parser, file_size_limit_mb, &task_tx);
+                        chunk.clear();
                     }
-                });
+                }
+                if !chunk.is_empty() {
+                    Scanner::process_chunk(&chunk, &metadata_db_for_parser, file_size_limit_mb, &task_tx);
+                }
             });
             // task_tx is dropped here, closing the channel
         });
@@ -272,39 +278,58 @@ impl Scanner {
     }
 
     
-    fn process_file(
-        path: &Path,
+    fn process_chunk(
+        chunk: &[PathBuf],
         metadata_db: &Arc<MetadataDb>,
         file_size_limit_mb: u32,
-    ) -> Option<IndexTask> {
-        let metadata = std::fs::metadata(path).ok()?;
-        let modified = metadata.modified().ok()?
-            .duration_since(std::time::SystemTime::UNIX_EPOCH)
-            .ok()?
-            .as_secs();
-        let size = metadata.len();
-        
+        task_tx: &std::sync::mpsc::SyncSender<IndexTask>,
+    ) {
         let limit_bytes = (file_size_limit_mb as u64) * 1024 * 1024;
-        if size > limit_bytes {
-            warn!("Skipping large file: {} ({} bytes > limit of {} bytes)", path.display(), size, limit_bytes);
-            return None;
+        let mut batch_entries = Vec::with_capacity(chunk.len());
+        let mut valid_paths = Vec::with_capacity(chunk.len());
+
+        for path in chunk {
+            let metadata = match std::fs::metadata(path) {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+
+            let size = metadata.len();
+            if size > limit_bytes {
+                warn!("Skipping large file: {} ({} bytes > limit of {} bytes)", path.display(), size, limit_bytes);
+                continue;
+            }
+
+            let modified = metadata.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+
+            batch_entries.push((path.to_string_lossy().to_string(), modified, size));
+            valid_paths.push((path.clone(), modified, size));
         }
-        
-        if !metadata_db.needs_reindex(path, modified, size).unwrap_or(true) {
-            return None;
-        }
-        
-        // Wrap parsing with a rudimentary deadline check since pure blocking tasks can't easily timeout
-        // But doing an actual robust timeout across FFI/parsers usually requires spawning processes.
-        // For now, size guards offer the best protection against blocking parses.
-        let parsed = parse_file(path).ok()?;
-        let content_hash = blake3::hash(parsed.content.as_bytes()).into();
-        
-        Some(IndexTask {
-            doc: parsed,
-            modified,
-            size,
-            content_hash,
-        })
+
+        if batch_entries.is_empty() { return; }
+
+        let needs_reindex = metadata_db.batch_needs_reindex(&batch_entries).unwrap_or_else(|_| vec![true; batch_entries.len()]);
+
+        let paths_to_parse: Vec<_> = valid_paths.into_iter().enumerate()
+            .filter(|(i, _)| needs_reindex[*i])
+            .map(|(_, data)| data)
+            .collect();
+
+        paths_to_parse.into_par_iter().for_each(|(path, modified, size)| {
+            if let Ok(parsed) = parse_file(&path) {
+                let content_hash = blake3::hash(parsed.content.as_bytes()).into();
+                let _ = task_tx.send(IndexTask {
+                    doc: parsed,
+                    modified,
+                    size,
+                    content_hash,
+                });
+            } else {
+                warn!("Failed to parse file {:?}", path);
+            }
+        });
     }
 }

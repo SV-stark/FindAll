@@ -1,5 +1,8 @@
 use memchr::memchr;
 use regex::Regex;
+use std::sync::OnceLock;
+
+static OPERATOR_REGEX: OnceLock<Regex> = OnceLock::new();
 
 /// Parsed query with operators and search terms
 #[derive(Debug, Clone)]
@@ -34,10 +37,12 @@ impl ParsedQuery {
 
         // Parse operators
         // ext:pdf, path:docs, title:report, size:>1MB, size:<10MB, exact:"phrase"
-        let operator_regex = Regex::new(
-            r#"(?i)(ext|path|title|size):(?:([<>]?)(\d+(?:\.\d+)?)(MB|KB|GB|B)?|"([^"]*)"|(\S+))"#,
-        )
-        .unwrap();
+        let operator_regex = OPERATOR_REGEX.get_or_init(|| {
+            Regex::new(
+                r#"(?i)(ext|path|title|size):(?:([<>]?)(\d+(?:\.\d+)?)(MB|KB|GB|B)?|"([^"]*)"|(\S+))"#,
+            )
+            .unwrap()
+        });
 
         let mut remaining = input.to_string();
 

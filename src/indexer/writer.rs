@@ -30,28 +30,9 @@ impl IndexWriterManager {
             .unwrap_or_else(|| {
                 // Default calculation: use 5% of system memory, capped at 256MB
                 // This is a heuristic - in production, use sysinfo to get actual memory
-                let system_memory = if cfg!(target_os = "linux") {
-                    // Try to read from /proc/meminfo on Linux
-                    std::fs::read_to_string("/proc/meminfo")
-                        .ok()
-                        .and_then(|content| {
-                            content
-                                .lines()
-                                .find(|line| line.starts_with("MemTotal:"))
-                                .and_then(|line| {
-                                    line.split_whitespace()
-                                        .nth(1)
-                                        .and_then(|s| s.parse::<usize>().ok())
-                                        .map(|kb| kb * 1024) // Convert KB to bytes
-                                })
-                        })
-                        .unwrap_or(8_000_000_000) // Default to 8GB if unknown
-                } else {
-                    8_000_000_000 // Default 8GB for other platforms
-                };
+                let mut sys = sysinfo::System::new_with_specifics(sysinfo::RefreshKind::new().with_memory()); let system_memory = sys.total_memory() as usize;
 
-                let heap = (system_memory / 20).min(256_000_000).max(32_000_000);
-                heap
+                (system_memory / 20).min(256_000_000).max(32_000_000)
             });
 
         available_memory.min(256_000_000).max(32_000_000)

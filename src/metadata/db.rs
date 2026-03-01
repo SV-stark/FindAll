@@ -1,18 +1,18 @@
 use crate::error::{FlashError, Result};
-use compact_str::CompactString;
-use redb::{Database, ReadableTable, RedbValue, TableDefinition, TypeName};
-use serde::{Deserialize, Serialize};
+use rkyv::{Archive, Deserialize, Serialize};
+use redb::{Database, ReadableTable, TableDefinition};
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::SystemTime;
 use tracing::warn;
 
-const FILES_TABLE: TableDefinition<&str, FileMetadata> = TableDefinition::new("files");
+const FILES_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("files");
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Archive, Serialize, Deserialize)]
+#[rkyv(check_bytes)] // Enables check_archived_root
 pub struct FileMetadata {
-    pub path: CompactString,
+    pub path: String,
     pub modified: u64,          // Unix timestamp
     pub size: u64,              // File size in bytes
     pub content_hash: [u8; 32], // Blake3 hash for content deduplication
@@ -117,14 +117,18 @@ impl MetadataDb {
             .map_err(|e| FlashError::database("database_operation", "files_table", e.to_string()))?
         {
             Some(metadata) => {
-                let meta = metadata.value();
+                let bytes = metadata.value();
                 self.metrics.read_operations.fetch_add(1, Ordering::Relaxed);
                 self.metrics.bytes_read.fetch_add(
-                    std::mem::size_of::<FileMetadata>() as u64,
+                    bytes.len() as u64,
                     Ordering::Relaxed,
                 );
-                // Reindex if modification time or size changed
-                meta.modified != modified || meta.size != size
+                // Zero-copy read and validate
+                if let Ok(meta) = rkyv::check_archived_root::<FileMetadata>(bytes) {
+                    meta.modified != modified || meta.size != size
+                } else {
+                    true // Reindex if validation fails
+                }
             }
             None => true, // File not indexed yet
         };
@@ -150,7 +154,7 @@ impl MetadataDb {
             })?;
 
             let metadata = FileMetadata {
-                path: path.to_string_lossy().to_string().into(),
+                path: path.to_string_lossy().to_string(),
                 modified,
                 size,
                 content_hash,
@@ -160,8 +164,12 @@ impl MetadataDb {
                     .as_secs(),
             };
 
+            let bytes = rkyv::to_bytes::<_, 256>(&metadata).map_err(|e| {
+                FlashError::database("database_operation", "files_table", format!("Serialization error: {}", e))
+            })?;
+
             table
-                .insert(path.to_str().unwrap_or(""), metadata)
+                .insert(path.to_str().unwrap_or(""), bytes.as_slice())
                 .map_err(|e| {
                     FlashError::database("database_operation", "files_table", e.to_string())
                 })?;
@@ -238,7 +246,14 @@ impl MetadataDb {
             .get(path.to_str().unwrap_or(""))
             .map_err(|e| FlashError::database("database_operation", "files_table", e.to_string()))?
         {
-            Some(metadata) => Some(metadata.value()),
+            Some(metadata) => {
+                let bytes = metadata.value();
+                if let Ok(meta) = rkyv::check_archived_root::<FileMetadata>(bytes) {
+                    Some(meta.deserialize(&mut rkyv::Infallible).unwrap())
+                } else {
+                    None
+                }
+            },
             None => None,
         };
 
@@ -273,17 +288,21 @@ impl MetadataDb {
 
             for (path, modified, size, content_hash) in entries {
                 let metadata = FileMetadata {
-                    path: path.clone().into(),
+                    path: path.clone(),
                     modified: *modified,
                     size: *size,
                     content_hash: *content_hash,
                     indexed_at,
                 };
 
-                total_bytes_written += std::mem::size_of::<FileMetadata>() as u64;
+                let bytes = rkyv::to_bytes::<_, 256>(&metadata).map_err(|e| {
+                    FlashError::database("database_operation", "files_table", format!("Serialization error: {}", e))
+                })?;
+
+                total_bytes_written += bytes.len() as u64;
                 total_bytes_written += path.len() as u64;
 
-                table.insert(path.as_str(), metadata).map_err(|e| {
+                table.insert(path.as_str(), bytes.as_slice()).map_err(|e| {
                     FlashError::database("database_operation", "files_table", e.to_string())
                 })?;
             }
@@ -327,8 +346,12 @@ impl MetadataDb {
             .map(|(path, modified, size)| {
                 match table.get(path.as_str()) {
                     Ok(Some(metadata)) => {
-                        let meta = metadata.value();
-                        meta.modified != *modified || meta.size != *size
+                        let bytes = metadata.value();
+                        if let Ok(meta) = rkyv::check_archived_root::<FileMetadata>(bytes) {
+                            meta.modified != *modified || meta.size != *size
+                        } else {
+                            true
+                        }
                     }
                     Ok(None) => true, // File not indexed yet
                     Err(_) => true,   // Error reading, safer to reindex
@@ -358,8 +381,12 @@ impl MetadataDb {
             .map_err(|e| FlashError::database("database_operation", "files_table", e.to_string()))?
             .filter_map(|entry| {
                 entry.ok().map(|(k, v)| {
-                    let metadata = v.value();
-                    (k.value().to_string(), metadata.modified, metadata.size)
+                    let bytes = v.value();
+                    if let Ok(meta) = rkyv::check_archived_root::<FileMetadata>(bytes) {
+                        (k.value().to_string(), meta.modified, meta.size)
+                    } else {
+                        (k.value().to_string(), 0, 0)
+                    }
                 })
             })
             .collect();
@@ -381,51 +408,3 @@ impl MetadataDb {
     }
 }
 
-// Implement RedbValue for FileMetadata to store in redb
-impl RedbValue for FileMetadata {
-    type SelfType<'a> = FileMetadata;
-    type AsBytes<'a> = Vec<u8>;
-
-    fn fixed_width() -> Option<usize> {
-        None
-    }
-
-    fn from_bytes<'a>(data: &'a [u8]) -> Self::SelfType<'a>
-    where
-        Self: 'a,
-    {
-        // Simple sanity check to prevent panics on extremely short/corrupt data
-        if data.len() < 40 {
-             return FileMetadata {
-                path: String::new().into(),
-                modified: 0,
-                size: 0,
-                content_hash: [0; 32],
-                indexed_at: 0,
-            };
-        }
-
-        bincode::deserialize(data).unwrap_or_else(|e| {
-            warn!("Failed to deserialize FileMetadata: {}", e);
-            FileMetadata {
-                path: String::new().into(),
-                modified: 0,
-                size: 0,
-                content_hash: [0; 32],
-                indexed_at: 0,
-            }
-        })
-    }
-
-    fn as_bytes<'a, 'b: 'a>(value: &Self::SelfType<'b>) -> Self::AsBytes<'a>
-    where
-        Self: 'a,
-        Self: 'b,
-    {
-        bincode::serialize(value).expect("FileMetadata serialization should never fail - this is a bug")
-    }
-
-    fn type_name() -> TypeName {
-        TypeName::new("FileMetadata")
-    }
-}

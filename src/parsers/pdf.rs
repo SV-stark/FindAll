@@ -1,5 +1,6 @@
 use crate::error::{FlashError, Result};
 use crate::parsers::ParsedDocument;
+use pdfium_render::prelude::*;
 use std::path::Path;
 use tracing::warn;
 
@@ -24,24 +25,36 @@ pub fn parse_pdf(path: &Path) -> Result<ParsedDocument> {
         ));
     }
 
-    // Use catch_unwind to prevent panics from crashing the application
-    let text = std::panic::catch_unwind(|| pdf_extract::extract_text(path));
+    let content = match std::panic::catch_unwind(|| -> std::result::Result<String, String> {
+        let bind = Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path("./"))
+            .or_else(|_| Pdfium::bind_to_system_library());
+            
+        let pdfium = match bind {
+            Ok(b) => Pdfium::new(b),
+            Err(e) => return Err(format!("Failed to bind: {}", e)),
+        };
 
-    let content = match text {
+        let document = match pdfium.load_pdf_from_file(path, None) {
+            Ok(doc) => doc,
+            Err(e) => return Err(format!("Failed to load: {}", e)),
+        };
+
+        let mut text = String::new();
+        for page in document.pages().iter() {
+            if let Ok(page_text) = page.text() {
+                text.push_str(&page_text.all());
+                text.push('\n');
+            }
+        }
+        Ok(text)
+    }) {
         Ok(Ok(text)) => text,
         Ok(Err(e)) => {
-            warn!(
-                "Failed to extract PDF text from {}: {}",
-                path.display(),
-                e
-            );
+            warn!("Failed to extract PDF text from {}: {}", path.display(), e);
             String::new()
         }
         Err(_) => {
-            warn!(
-                "PDF extraction panicked for {}. File may be corrupted or encrypted.",
-                path.display()
-            );
+            warn!("PDF extraction panicked for {}. File may be corrupted or encrypted.", path.display());
             String::new()
         }
     };

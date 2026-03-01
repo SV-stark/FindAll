@@ -23,6 +23,7 @@ pub struct WatcherManager {
     metadata_db: Arc<MetadataDb>,
     runtime_handle: tokio::runtime::Handle,
     // Buffer for pending events: Map<Path, Action>
+    // WARNING: Do not hold this Mutex across .await points to avoid deadlocks.
     event_buffer: Arc<Mutex<HashMap<PathBuf, WatcherAction>>>,
 }
 
@@ -160,17 +161,12 @@ impl WatcherManager {
                 match event.kind {
                     EventKind::Modify(_) | EventKind::Create(_) | EventKind::Remove(_) => {
                         for path in &event.paths {
-                            if path.is_file() {
-                                match event.kind {
-                                    EventKind::Remove(_) => {
-                                        guard.insert(path.clone(), WatcherAction::Remove);
-                                    }
-                                    _ => {
-                                        // P4 bug B6: don't overwrite if we already have it maybe? 
-                                        // Actually, if we get Modify/Create, we want to Index.
-                                        // But if we got a remove, then a create, we want to Index.
-                                        // If we got a modification, we process it as an Index.
-                                        // The issue was that the old code did insert(Remove) then insert(Index) in the SAME handler.
+                            match event.kind {
+                                EventKind::Remove(_) => {
+                                    guard.insert(path.clone(), WatcherAction::Remove);
+                                }
+                                _ => {
+                                    if path.is_file() {
                                         guard.insert(path.clone(), WatcherAction::Index);
                                     }
                                 }
