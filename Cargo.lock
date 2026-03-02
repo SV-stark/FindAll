@@ -4528,7 +4528,9 @@ checksum = "a2fa337e0cf13357c13ef1dc108df1333eb192f75fc170bea03fcf1fd404c2ee"
 dependencies = [
  "bstr",
  "normpath",
+ "url",
  "windows-sys 0.61.2",
+ "zbus",
 ]
 
 [[package]]
@@ -7118,6 +7120,7 @@ dependencies = [
  "idna",
  "percent-encoding",
  "serde",
+ "serde_derive",
 ]
 
 [[package]]
@@ -8851,6 +8854,7 @@ dependencies = [
  "endi",
  "enumflags2",
  "serde",
+ "url",
  "winnow 0.7.14",
  "zvariant_derive",
  "zvariant_utils",

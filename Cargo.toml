@@ -60,7 +60,7 @@ bincode = { version = "2.0.0-rc.3", features = ["serde"] }
 dirs = "6.0"
 arboard = "3.4"
 regex = "1"
-opener = "0.8"
+opener = { version = "0.8", features = ["reveal"] }
 rfd = "0.17"
 ctrlc = "3.2"
 tray-icon = "0.21"
@@ -69,9 +69,6 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 global-hotkey = "0.5.0"
 fs2 = "0.4"
 self_update = { version = "0.41", features = ["rustls"] }
-
-[target.'cfg(windows)'.dependencies]
-winreg = "0.55"
 
 # Performance & Observability
 mimalloc = { version = "0.1", default-features = false }
@@ -85,6 +82,9 @@ litchi = { git = "https://github.com/DevExzh/litchi.git", rev = "0f9973bc59afaa9
     "rtf",
 ] }
 calamine = "0.33"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.55"
 
 [dev-dependencies]
 tempfile = "3.0"
