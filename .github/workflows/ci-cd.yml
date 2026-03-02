@@ -69,9 +69,10 @@ jobs:
     name: Security Audit
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       issues: write
       security-events: write
+      checks: write
     steps:
       - uses: actions/checkout@v4
       

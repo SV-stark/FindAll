@@ -9,8 +9,7 @@ use std::time::SystemTime;
 
 const FILES_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("files");
 
-#[derive(Debug, Clone, Archive, Serialize, Deserialize)]
-#[archive(check_bytes)]
+#[derive(Debug, Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct FileMetadata {
     pub path: String,
     pub modified: u64,          // Unix timestamp
@@ -125,7 +124,9 @@ impl MetadataDb {
                     .bytes_read
                     .fetch_add(bytes.len() as u64, Ordering::Relaxed);
                 // Zero-copy read and validate
-                if let Ok(meta) = rkyv::check_archived_root::<FileMetadata>(bytes) {
+                if let Ok(meta) =
+                    rkyv::access::<rkyv::Archived<FileMetadata>, rkyv::rancor::Error>(bytes)
+                {
                     meta.modified != modified || meta.size != size
                 } else {
                     true // Reindex if validation fails
@@ -165,7 +166,7 @@ impl MetadataDb {
                     .as_secs(),
             };
 
-            let bytes = rkyv::to_bytes::<_, 256>(&metadata).map_err(|e| {
+            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&metadata).map_err(|e| {
                 FlashError::database(
                     "database_operation",
                     "files_table",
@@ -254,8 +255,10 @@ impl MetadataDb {
         {
             Some(metadata) => {
                 let bytes = metadata.value();
-                if let Ok(meta) = rkyv::check_archived_root::<FileMetadata>(bytes) {
-                    Some(meta.deserialize(&mut rkyv::Infallible).unwrap())
+                if let Ok(meta) =
+                    rkyv::access::<rkyv::Archived<FileMetadata>, rkyv::rancor::Error>(bytes)
+                {
+                    rkyv::deserialize::<FileMetadata, rkyv::rancor::Error>(meta).ok()
                 } else {
                     None
                 }
@@ -301,7 +304,7 @@ impl MetadataDb {
                     indexed_at,
                 };
 
-                let bytes = rkyv::to_bytes::<_, 256>(&metadata).map_err(|e| {
+                let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&metadata).map_err(|e| {
                     FlashError::database(
                         "database_operation",
                         "files_table",
@@ -357,7 +360,9 @@ impl MetadataDb {
                 match table.get(path.as_str()) {
                     Ok(Some(metadata)) => {
                         let bytes = metadata.value();
-                        if let Ok(meta) = rkyv::check_archived_root::<FileMetadata>(bytes) {
+                        if let Ok(meta) =
+                            rkyv::access::<rkyv::Archived<FileMetadata>, rkyv::rancor::Error>(bytes)
+                        {
                             meta.modified != *modified || meta.size != *size
                         } else {
                             true
@@ -389,8 +394,14 @@ impl MetadataDb {
             .filter_map(|entry| {
                 entry.ok().map(|(k, v)| {
                     let bytes = v.value();
-                    if let Ok(meta) = rkyv::check_archived_root::<FileMetadata>(bytes) {
-                        (k.value().to_string(), meta.modified, meta.size)
+                    if let Ok(meta) =
+                        rkyv::access::<rkyv::Archived<FileMetadata>, rkyv::rancor::Error>(bytes)
+                    {
+                        (
+                            k.value().to_string(),
+                            meta.modified.to_native(),
+                            meta.size.to_native(),
+                        )
                     } else {
                         (k.value().to_string(), 0, 0)
                     }

@@ -25,7 +25,7 @@ serde_json = "1.0"
 tantivy = "0.25"
 
 # Metadata Database (Pure Rust KV store)
-redb = "1.5"
+redb = "2.1"
 
 # Concurrency & Parallelism
 tokio = { version = "1", features = ["full"] }
@@ -33,7 +33,7 @@ rayon = "1.8"
 
 # File System
 walkdir = "2"
-notify = "6.1"
+notify = "8.2"
 ignore = "0.4"
 memmap2 = "0.9"
 
@@ -44,11 +44,11 @@ pdfium-render = "0.8"
 
 # Performance Libraries
 moka = { version = "0.12", features = ["sync"] }
-phf = { version = "0.11", features = ["macros"] }
+phf = { version = "0.13", features = ["macros"] }
 fst = "0.4"
-nucleo-matcher = "0.2"
-compact_str = { version = "0.6", features = ["serde"] }
-rkyv = { version = "0.7", features = ["validation"] }
+nucleo-matcher = "0.3"
+compact_str = { version = "0.9", features = ["serde"] }
+rkyv = { version = "0.8", features = ["bytecheck"] }
 sysinfo = "0.38"
 
 # Utilities
@@ -57,13 +57,13 @@ thiserror = "2.0"
 blake3 = "1.5"
 chrono = { version = "0.4", features = ["serde"] }
 bincode = { version = "2.0.0-rc.3", features = ["serde"] }
-dirs = "5.0"
+dirs = "6.0"
 arboard = "3.4"
 regex = "1"
-opener = "0.7"
-rfd = "0.14"
+opener = "0.8"
+rfd = "0.17"
 ctrlc = "3.2"
-tray-icon = "0.14"
+tray-icon = "0.21"
 auto-launch = "0.6"
 image = { version = "0.25", default-features = false, features = ["png"] }
 global-hotkey = "0.5.0"
@@ -71,7 +71,7 @@ fs2 = "0.4"
 self_update = { version = "0.41", features = ["rustls"] }
 
 [target.'cfg(windows)'.dependencies]
-winreg = "0.52"
+winreg = "0.55"
 
 # Performance & Observability
 mimalloc = { version = "0.1", default-features = false }
