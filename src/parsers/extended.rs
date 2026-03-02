@@ -136,10 +136,8 @@ pub fn parse_azw(path: &Path) -> Result<ParsedDocument> {
     let mut text = String::new();
     let mut current = Vec::new();
 
-    if content.len() > 68 {
-        if &content[0..4] == b"TPZ" || &content[60..68] == b"BOOKMOBI" {
-            // Kindle format detected
-        }
+    if content.len() > 68 && (&content[0..4] == b"TPZ" || &content[60..68] == b"BOOKMOBI") {
+        // Kindle format detected
     }
 
     for byte in content {
@@ -194,7 +192,7 @@ pub fn parse_zip_content(path: &Path) -> Result<ParsedDocument> {
                         // Limit read size per file and total
                         let mut content = String::new();
                         // Put a cap on individual file read to avoid safe-bomb/DoS
-                        let mut take = file.take(1 * 1024 * 1024); // 1MB per file
+                        let mut take = file.take(1024 * 1024); // 1MB per file
                         if take.read_to_string(&mut content).is_ok() {
                             all_text.push_str(&content);
                             all_text.push_str("\n\n");

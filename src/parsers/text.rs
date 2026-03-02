@@ -13,7 +13,7 @@ const MAX_FILE_SIZE: u64 = 100 * 1024 * 1024; // 100MB
 /// Parse plain text files (TXT, MD, code files)
 /// Uses memory mapping for large files to reduce memory usage
 pub fn parse_text(path: &Path) -> Result<ParsedDocument> {
-    let metadata = std::fs::metadata(path).map_err(|e| FlashError::Io(e))?;
+    let metadata = std::fs::metadata(path).map_err(FlashError::Io)?;
 
     let file_size = metadata.len();
 
@@ -47,12 +47,12 @@ pub fn parse_text(path: &Path) -> Result<ParsedDocument> {
 
 /// Parse small files using buffered reader (faster for small files)
 fn parse_with_buffer(path: &Path) -> Result<String> {
-    let file = File::open(path).map_err(|e| FlashError::Io(e))?;
+    let file = File::open(path).map_err(FlashError::Io)?;
 
     let mut content = String::new();
     BufReader::new(file)
         .read_to_string(&mut content)
-        .map_err(|e| FlashError::Io(e))?;
+        .map_err(FlashError::Io)?;
 
     Ok(content)
 }
@@ -65,10 +65,7 @@ fn parse_with_mmap(path: &Path) -> Result<String> {
     // SAFETY: Memory mapping a file is unsafe because another process could modify it
     // while we are reading, potentially violating Rust's memory safety guarantees.
     // We only read the data and accept this risk for performance reasons.
-    let mmap = unsafe {
-        Mmap::map(&file)
-            .map_err(|e| FlashError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?
-    };
+    let mmap = unsafe { Mmap::map(&file).map_err(|e| FlashError::Io(std::io::Error::other(e)))? };
 
     // Use from_utf8_lossy to handle potential invalid UTF-8 sequences without erroring out
     // and to avoid an explicit intermediate Vec allocation (mmap.to_vec()).

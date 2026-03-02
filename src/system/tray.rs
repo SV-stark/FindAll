@@ -10,7 +10,7 @@ pub fn create_tray_icon() -> Result<TrayIcon> {
         .into_rgba8();
     let (width, height) = image.dimensions();
     let rgba = image.into_raw();
-    let icon = Icon::from_rgba(rgba, width as u32, height as u32)
+    let icon = Icon::from_rgba(rgba, width, height)
         .map_err(|e| FlashError::config("tray_icon", e.to_string()))?;
 
     let tray_menu = Menu::new();

@@ -3,7 +3,7 @@ use auto_launch::AutoLaunchBuilder;
 use std::env;
 
 pub fn set_auto_start(enable: bool) -> Result<()> {
-    let app_path = env::current_exe().map_err(|e| FlashError::Io(e))?;
+    let app_path = env::current_exe().map_err(FlashError::Io)?;
     let app_name = "com.flashsearch";
 
     let auto = AutoLaunchBuilder::new()
@@ -16,11 +16,9 @@ pub fn set_auto_start(enable: bool) -> Result<()> {
     if enable {
         auto.enable()
             .map_err(|e| FlashError::config("auto_start_enable", e.to_string()))?;
-    } else {
-        if auto.is_enabled().unwrap_or(false) {
-            auto.disable()
-                .map_err(|e| FlashError::config("auto_start_disable", e.to_string()))?;
-        }
+    } else if auto.is_enabled().unwrap_or(false) {
+        auto.disable()
+            .map_err(|e| FlashError::config("auto_start_disable", e.to_string()))?;
     }
 
     Ok(())

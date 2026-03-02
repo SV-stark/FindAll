@@ -278,7 +278,7 @@ mod tests {
             ParserType::from_extension("docx"),
             Some(ParserType::Docx)
         ));
-        assert!(matches!(ParserType::from_extension("exe"), None));
+        assert!(ParserType::from_extension("exe").is_none());
     }
 
     #[test]

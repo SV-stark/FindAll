@@ -159,7 +159,7 @@ impl FilenameIndex {
     }
 
     /// Save entries to disk using bincode (P3: replaces JSON for ~10x smaller + faster)
-    fn save_to_disk_sync(entries: &[FilenameEntry], data_path: &std::path::PathBuf) {
+    fn save_to_disk_sync(entries: &[FilenameEntry], data_path: &std::path::Path) {
         match bincode::serialize(entries) {
             Ok(bytes) => {
                 let _ = std::fs::write(data_path.join(INDEX_FILENAME), bytes);

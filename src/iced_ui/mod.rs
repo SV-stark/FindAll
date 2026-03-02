@@ -25,12 +25,12 @@ pub struct FileItem {
 
 impl From<SearchResult> for FileItem {
     fn from(r: SearchResult) -> Self {
-        let ext = r.file_path.split('.').last().map(String::from);
+        let ext = r.file_path.split('.').next_back().map(String::from);
         FileItem {
             title: r
                 .file_path
                 .split(['\\', '/'])
-                .last()
+                .next_back()
                 .unwrap_or("Unknown")
                 .to_string(),
             path: r.file_path,
@@ -42,7 +42,7 @@ impl From<SearchResult> for FileItem {
 
 impl From<FilenameSearchResult> for FileItem {
     fn from(r: FilenameSearchResult) -> Self {
-        let ext = r.file_name.split('.').last().map(String::from);
+        let ext = r.file_name.split('.').next_back().map(String::from);
         FileItem {
             title: r.file_name,
             path: r.file_path,
@@ -218,14 +218,14 @@ impl App {
             return (None, None);
         }
 
-        let (op, num_str) = if size_str.starts_with(">=") {
-            (">=", &size_str[2..])
-        } else if size_str.starts_with("<=") {
-            ("<=", &size_str[2..])
-        } else if size_str.starts_with(">") {
-            (">", &size_str[1..])
-        } else if size_str.starts_with("<") {
-            ("<", &size_str[1..])
+        let (op, num_str) = if let Some(stripped) = size_str.strip_prefix(">=") {
+            (">=", stripped)
+        } else if let Some(stripped) = size_str.strip_prefix("<=") {
+            ("<=", stripped)
+        } else if let Some(stripped) = size_str.strip_prefix(">") {
+            (">", stripped)
+        } else if let Some(stripped) = size_str.strip_prefix("<") {
+            ("<", stripped)
         } else {
             (">=", size_str)
         };
@@ -622,25 +622,24 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
     }
 }
 
+#[allow(dead_code)]
 fn subscription(_app: &App) -> Subscription<Message> {
-    let mut subs = Vec::new();
-
-    // Always poll hotkey and tray every 100ms
-    subs.push(
+    let subs = vec![
         iced::time::every(std::time::Duration::from_millis(100)).map(|_| Message::PollHotkey),
-    );
-    subs.push(iced::time::every(std::time::Duration::from_millis(100)).map(|_| Message::PollTray));
+        iced::time::every(std::time::Duration::from_millis(100)).map(|_| Message::PollTray),
+    ];
 
     Subscription::batch(subs)
 }
 
-fn view(app: &App) -> Element<Message> {
+fn view(app: &App) -> Element<'_, Message> {
     match app.active_tab {
         Tab::Search => search::search_view(app),
         Tab::Settings => settings::settings_view(app),
     }
 }
 
+#[allow(dead_code)]
 fn error_view(error: &str) -> Element<'_, Message> {
     use iced::widget::{button, column, container, text, Space};
     use iced::{Alignment, Length, Padding};

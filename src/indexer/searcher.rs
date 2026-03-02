@@ -140,7 +140,7 @@ impl IndexSearcher {
             .map_err(|_| FlashError::index_field("extension", "Field not found in schema"))?;
 
         // Search across content, title, and file_path fields
-        let default_fields: Vec<Field> = vec!["content", "title", "file_path"]
+        let default_fields: Vec<Field> = ["content", "title", "file_path"]
             .iter()
             .filter_map(|field_name| schema.get_field(field_name).ok())
             .collect();
@@ -219,14 +219,14 @@ impl IndexSearcher {
             if !extensions.is_empty() {
                 let extension_queries: Vec<_> = extensions
                     .iter()
-                    .filter_map(|ext| {
+                    .map(|ext| {
                         let ext_lower = ext.to_lowercase();
                         // Use TermQuery for fast extension matching (much faster than RegexQuery)
                         let term = tantivy::Term::from_field_text(self.extension_field, &ext_lower);
-                        Some(tantivy::query::TermQuery::new(
+                        tantivy::query::TermQuery::new(
                             term,
                             IndexRecordOption::Basic,
-                        ))
+                        )
                     })
                     .collect();
 

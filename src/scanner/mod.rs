@@ -294,13 +294,13 @@ impl Scanner {
         });
 
         // Wait for all stages to complete
-        let _ = walker_handle
+        walker_handle
             .await
             .map_err(|e| crate::error::FlashError::index(format!("Walk task failed: {}", e)))?;
-        let _ = parser_handle
+        parser_handle
             .await
             .map_err(|e| crate::error::FlashError::index(format!("Parse task failed: {}", e)))?;
-        let _ = writer_handle
+        writer_handle
             .await
             .map_err(|e| crate::error::FlashError::index(format!("Write task failed: {}", e)))?;
 

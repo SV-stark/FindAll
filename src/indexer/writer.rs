@@ -34,10 +34,10 @@ impl IndexWriterManager {
                 sys.refresh_memory();
                 let system_memory = sys.total_memory() as usize;
 
-                (system_memory / 20).min(256_000_000).max(32_000_000)
+                (system_memory / 20).clamp(32_000_000, 256_000_000)
             });
 
-        available_memory.min(256_000_000).max(32_000_000)
+        available_memory.clamp(32_000_000, 256_000_000)
     }
 
     pub fn new(index: &Index, _memory_limit_mb: u32) -> Result<Self> {
@@ -149,7 +149,7 @@ impl IndexWriterManager {
             .extension()
             .and_then(|e| e.to_str())
         {
-            document.add_text(self.extension_field, &ext.to_lowercase());
+            document.add_text(self.extension_field, ext.to_lowercase());
         }
 
         document

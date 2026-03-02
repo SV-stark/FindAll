@@ -2,7 +2,7 @@ use super::{theme, App, Message, Tab};
 use iced::widget::{button, checkbox, column, container, row, text, Scrollable, Space, TextInput};
 use iced::{Alignment, Element, Length, Padding};
 
-pub fn settings_view(app: &App) -> Element<Message> {
+pub fn settings_view(app: &App) -> Element<'_, Message> {
     let title = text("Settings").size(28);
 
     let search_tab_style = theme::tab_button(matches!(app.active_tab, Tab::Search));

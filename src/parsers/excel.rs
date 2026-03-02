@@ -118,7 +118,10 @@ mod tests {
             format_cell_value(&calamine::Data::String("test".to_string())),
             "test"
         );
-        assert_eq!(format_cell_value(&calamine::Data::Float(3.14)), "3.14");
+        assert_eq!(
+            format_cell_value(&calamine::Data::Float(std::f64::consts::PI)),
+            "3.141592653589793"
+        );
         assert_eq!(format_cell_value(&calamine::Data::Int(42)), "42");
         assert_eq!(format_cell_value(&calamine::Data::Bool(true)), "true");
     }

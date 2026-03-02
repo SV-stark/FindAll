@@ -138,12 +138,10 @@ fn extract_opf_path(container_xml: &str) -> Option<String> {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Empty(e)) | Ok(Event::Start(e)) => {
                 if e.name().as_ref() == b"rootfile" {
-                    for attr in e.attributes() {
-                        if let Ok(attr) = attr {
-                            if attr.key.as_ref() == b"full-path" {
-                                if let Ok(path) = std::str::from_utf8(&attr.value) {
-                                    return Some(path.to_string());
-                                }
+                    for attr in e.attributes().flatten() {
+                        if attr.key.as_ref() == b"full-path" {
+                            if let Ok(path) = std::str::from_utf8(&attr.value) {
+                                return Some(path.to_string());
                             }
                         }
                     }

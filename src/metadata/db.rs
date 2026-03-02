@@ -19,6 +19,8 @@ pub struct FileMetadata {
     pub indexed_at: u64,        // When this file was last indexed
 }
 
+pub type RecentFileEntry = (String, Option<String>, u64, u64);
+
 /// Connection metrics for monitoring
 #[derive(Debug)]
 pub struct ConnectionMetrics {
@@ -372,10 +374,7 @@ impl MetadataDb {
 
     /// Get recently modified files sorted by modification time
     /// Note: This loads all files into memory. For large datasets, consider using a separate index.
-    pub fn get_recent_files(
-        &self,
-        limit: usize,
-    ) -> Result<Vec<(String, Option<String>, u64, u64)>> {
+    pub fn get_recent_files(&self, limit: usize) -> Result<Vec<RecentFileEntry>> {
         let txn = self.db.begin_read().map_err(|e| {
             FlashError::database("database_operation", "files_table", e.to_string())
         })?;

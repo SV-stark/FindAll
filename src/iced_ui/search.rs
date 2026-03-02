@@ -16,7 +16,7 @@ const SUN_ICON_SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="16"
 
 const MOON_ICON_SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>"#;
 
-fn load_icon(icon_name: &str) -> iced::widget::Svg {
+fn load_icon(icon_name: &str) -> iced::widget::Svg<'_> {
     let svg_data = match icon_name {
         "search" => SEARCH_ICON_SVG,
         "file" => FILE_ICON_SVG,
@@ -29,7 +29,7 @@ fn load_icon(icon_name: &str) -> iced::widget::Svg {
     svg::Svg::new(svg::Handle::from_memory(svg_data.as_bytes().to_vec()))
 }
 
-pub fn search_view(app: &App) -> Element<Message> {
+pub fn search_view(app: &App) -> Element<'_, Message> {
     let mode_text = match app.search_mode {
         SearchMode::FullText => "Full Text",
         SearchMode::Filename => "Filename",

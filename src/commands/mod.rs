@@ -12,14 +12,6 @@ pub use search::*;
 pub use settings::*;
 pub use system::*;
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn test_export_csv() {
-        // Basic test placeholder
-    }
-}
-
 use crate::indexer::{filename_index::FilenameIndex, IndexManager};
 use crate::metadata::MetadataDb;
 use crate::settings::SettingsManager;
@@ -56,5 +48,13 @@ impl AppState {
             progress_tx,
             scanner,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_export_csv() {
+        // Basic test placeholder
     }
 }

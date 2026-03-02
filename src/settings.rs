@@ -56,7 +56,7 @@ pub struct AppSettings {
     pub pinned_files: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DefaultFilters {
     pub file_types: Vec<String>,
     pub min_size_mb: Option<u32>,
@@ -72,20 +72,15 @@ fn default_settings_version() -> u32 {
     1
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum Theme {
     #[serde(rename = "auto")]
+    #[default]
     Auto,
     #[serde(rename = "light")]
     Light,
     #[serde(rename = "dark")]
     Dark,
-}
-
-impl Default for Theme {
-    fn default() -> Self {
-        Theme::Auto
-    }
 }
 
 impl std::fmt::Display for Theme {
@@ -98,20 +93,15 @@ impl std::fmt::Display for Theme {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum FontSize {
     #[serde(rename = "small")]
     Small,
     #[serde(rename = "medium")]
+    #[default]
     Medium,
     #[serde(rename = "large")]
     Large,
-}
-
-impl Default for FontSize {
-    fn default() -> Self {
-        FontSize::Medium
-    }
 }
 
 impl std::fmt::Display for FontSize {
@@ -124,31 +114,15 @@ impl std::fmt::Display for FontSize {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum DoubleClickAction {
     #[serde(rename = "open_file")]
+    #[default]
     OpenFile,
     #[serde(rename = "show_in_folder")]
     ShowInFolder,
     #[serde(rename = "preview")]
     Preview,
-}
-
-impl Default for DoubleClickAction {
-    fn default() -> Self {
-        DoubleClickAction::OpenFile
-    }
-}
-
-impl Default for DefaultFilters {
-    fn default() -> Self {
-        Self {
-            file_types: vec![],
-            min_size_mb: None,
-            max_size_mb: None,
-            modified_within_days: None,
-        }
-    }
 }
 
 impl Default for AppSettings {
@@ -226,7 +200,7 @@ impl SettingsManager {
             return Ok(defaults);
         }
 
-        let content = fs::read_to_string(&self.path).map_err(|e| FlashError::Io(e))?;
+        let content = fs::read_to_string(&self.path).map_err(FlashError::Io)?;
 
         serde_json::from_str(&content)
             .map_err(|e| FlashError::config("parse_settings", e.to_string()))
@@ -236,7 +210,7 @@ impl SettingsManager {
         let content = serde_json::to_string_pretty(settings)
             .map_err(|e| FlashError::config("serialize_settings", e.to_string()))?;
 
-        fs::write(&self.path, content).map_err(|e| FlashError::Io(e))
+        fs::write(&self.path, content).map_err(FlashError::Io)
     }
 }
 
@@ -250,15 +224,18 @@ mod tests {
         let temp_dir = tempdir().unwrap();
         let manager = SettingsManager::new(temp_dir.path());
 
-        let mut settings = AppSettings::default();
-        settings.max_results = 100;
-        settings.theme = Theme::Dark;
+        let settings = AppSettings {
+            max_results: 100,
+            theme: Theme::Dark,
+            ..Default::default()
+        };
 
         manager.save(&settings).unwrap();
         let loaded = manager.load().unwrap();
         assert_eq!(loaded.max_results, 100);
         assert!(matches!(loaded.theme, Theme::Dark));
     }
+    #[allow(dead_code)]
     fn test_settings_unknown_fields() {
         let temp_dir = tempdir().unwrap();
         let manager = SettingsManager::new(temp_dir.path());

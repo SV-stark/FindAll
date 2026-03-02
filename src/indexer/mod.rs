@@ -27,7 +27,7 @@ fn read_schema_version(index_path: &Path) -> Option<String> {
 }
 
 fn write_schema_version(index_path: &Path, version: &str) -> Result<()> {
-    std::fs::write(get_schema_version_path(index_path), version).map_err(|e| FlashError::Io(e))
+    std::fs::write(get_schema_version_path(index_path), version).map_err(FlashError::Io)
 }
 
 /// Central manager for the Tantivy search index
@@ -45,7 +45,7 @@ impl IndexManager {
 
         // Ensure directory exists
         if !index_path.exists() {
-            std::fs::create_dir_all(index_path).map_err(|e| FlashError::Io(e))?;
+            std::fs::create_dir_all(index_path).map_err(FlashError::Io)?;
         }
 
         // Check schema version - if mismatch, rebuild index
@@ -56,15 +56,15 @@ impl IndexManager {
                     "Schema version mismatch: stored={}, current={}. Rebuilding index...",
                     ver, SCHEMA_VERSION
                 );
-                std::fs::remove_dir_all(index_path).map_err(|e| FlashError::Io(e))?;
-                std::fs::create_dir_all(index_path).map_err(|e| FlashError::Io(e))?;
+                std::fs::remove_dir_all(index_path).map_err(FlashError::Io)?;
+                std::fs::create_dir_all(index_path).map_err(FlashError::Io)?;
                 write_schema_version(index_path, SCHEMA_VERSION)?;
             }
         } else if index_path.join("meta.json").exists() {
             // Old index without version - rebuild
             warn!("No schema version found. Rebuilding index...");
-            std::fs::remove_dir_all(index_path).map_err(|e| FlashError::Io(e))?;
-            std::fs::create_dir_all(index_path).map_err(|e| FlashError::Io(e))?;
+            std::fs::remove_dir_all(index_path).map_err(FlashError::Io)?;
+            std::fs::create_dir_all(index_path).map_err(FlashError::Io)?;
             write_schema_version(index_path, SCHEMA_VERSION)?;
         } else {
             // New index - write version

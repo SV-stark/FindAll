@@ -2,7 +2,6 @@
 
 use mimalloc::MiMalloc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use tracing::{error, info};
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
@@ -101,6 +100,7 @@ fn main() {
     let lock_file = std::fs::OpenOptions::new()
         .write(true)
         .create(true)
+        .truncate(true)
         .open(&lock_path);
 
     if let Ok(file) = lock_file {

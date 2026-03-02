@@ -175,13 +175,13 @@ impl WatcherManager {
                 }
             }
         })
-        .map_err(|e| FlashError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+        .map_err(|e| FlashError::Io(std::io::Error::other(e)))?;
 
         for dir in dirs {
             let path = Path::new(&dir);
             if path.exists() {
                 watcher.watch(path, RecursiveMode::Recursive).map_err(|e| {
-                    FlashError::Io(std::io::Error::new(std::io::ErrorKind::Other, e))
+                    FlashError::Io(std::io::Error::other(e))
                 })?;
             }
         }

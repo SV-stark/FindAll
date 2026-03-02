@@ -8,7 +8,7 @@ const MMAP_THRESHOLD: u64 = 1024 * 1024; // 1MB
 const MAX_FILE_SIZE: u64 = 100 * 1024 * 1024; // 100MB
 
 pub fn read_file(path: &Path) -> Result<Vec<u8>> {
-    let metadata = std::fs::metadata(path).map_err(|e| FlashError::Io(e))?;
+    let metadata = std::fs::metadata(path).map_err(FlashError::Io)?;
 
     let file_size = metadata.len();
 
@@ -35,10 +35,9 @@ pub fn read_file_as_string(path: &Path) -> Result<String> {
 }
 
 fn read_with_buffer(path: &Path) -> Result<Vec<u8>> {
-    let mut file = File::open(path).map_err(|e| FlashError::Io(e))?;
+    let mut file = File::open(path).map_err(FlashError::Io)?;
     let mut bytes = Vec::new();
-    file.read_to_end(&mut bytes)
-        .map_err(|e| FlashError::Io(e))?;
+    file.read_to_end(&mut bytes).map_err(FlashError::Io)?;
     Ok(bytes)
 }
 
@@ -50,10 +49,7 @@ fn read_with_mmap(path: &Path) -> Result<Vec<u8>> {
     // while we are reading, potentially violating Rust's memory safety guarantees.
     // For a local desktop search engine, this risk is acceptable and typically results
     // in a process crash rather than an exploitable vulnerability.
-    let mmap = unsafe {
-        Mmap::map(&file)
-            .map_err(|e| FlashError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?
-    };
+    let mmap = unsafe { Mmap::map(&file).map_err(|e| FlashError::Io(std::io::Error::other(e)))? };
 
     Ok(mmap.to_vec())
 }
@@ -67,5 +63,5 @@ pub fn is_mmap_applicable(path: &Path) -> bool {
 pub fn get_file_size(path: &Path) -> Result<u64> {
     std::fs::metadata(path)
         .map(|m| m.len())
-        .map_err(|e| FlashError::Io(e))
+        .map_err(FlashError::Io)
 }
