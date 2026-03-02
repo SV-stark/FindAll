@@ -1,6 +1,6 @@
 use crate::error::{FlashError, Result};
 use redb::{Database, ReadableTable, TableDefinition};
-use rkyv::{Archive, Deserialize, Serialize};
+use rkyv;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
