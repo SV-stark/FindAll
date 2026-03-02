@@ -1,0 +1,8 @@
+   Compiling flash-search v0.2.0 (E:\findall)
+src\indexer\filename_index.rs:49:49: error[E0433]: failed to resolve: could not find `serde` in `bincode`: could not find `serde` in `bincode`
+src\indexer\filename_index.rs:166:24: error[E0433]: failed to resolve: could not find `serde` in `bincode`: could not find `serde` in `bincode`
+src\system\startup.rs:12:45: error[E0433]: failed to resolve: could not find `MacosLaunchMode` in `auto_launch`: could not find `MacosLaunchMode` in `auto_launch`, help: an enum with a similar name exists (notice the capitalization): `MacOSLaunchMode`
+src\indexer\filename_index.rs:54:86: error[E0282]: type annotations needed: cannot infer type
+src\parsers\epub.rs:85:80: error[E0505]: cannot move out of `decoded` because it is borrowed: move out of `decoded` occurs here
+src\parsers\epub.rs:175:84: error[E0505]: cannot move out of `decoded` because it is borrowed: move out of `decoded` occurs here
+error: could not compile `flash-search` (lib) due to 6 previous errors

@@ -38,8 +38,8 @@ ignore = "0.4"
 memmap2 = "0.9"
 
 # Document Parsing
-zip = { version = "2.2", default-features = false, features = ["deflate"] }
-quick-xml = "0.31"
+zip = { version = "2.4", default-features = false, features = ["deflate"] }
+quick-xml = "0.39"
 pdfium-render = "0.8"
 
 # Performance Libraries
@@ -49,14 +49,14 @@ fst = "0.4"
 nucleo-matcher = "0.2"
 compact_str = { version = "0.6", features = ["serde"] }
 rkyv = { version = "0.7", features = ["validation"] }
-sysinfo = "0.30"
+sysinfo = "0.38"
 
 # Utilities
 anyhow = "1.0"
-thiserror = "1.0"
+thiserror = "2.0"
 blake3 = "1.5"
 chrono = { version = "0.4", features = ["serde"] }
-bincode = "1.3"
+bincode = { version = "2.0.0-rc.3", features = ["serde"] }
 dirs = "5.0"
 arboard = "3.4"
 regex = "1"
@@ -64,7 +64,7 @@ opener = "0.7"
 rfd = "0.14"
 ctrlc = "3.2"
 tray-icon = "0.14"
-auto-launch = "0.5"
+auto-launch = "0.6"
 image = { version = "0.25", default-features = false, features = ["png"] }
 global-hotkey = "0.5.0"
 fs2 = "0.4"
@@ -80,8 +80,11 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
 
 # Document Parsing
-litchi = { git = "https://github.com/DevExzh/litchi.git", rev = "0f9973bc59afaa9bd34450d6bf45e4a27d487dd5", features = ["odf", "rtf"] }
-calamine = "0.24"
+litchi = { git = "https://github.com/DevExzh/litchi.git", rev = "0f9973bc59afaa9bd34450d6bf45e4a27d487dd5", features = [
+    "odf",
+    "rtf",
+] }
+calamine = "0.33"
 
 [dev-dependencies]
 tempfile = "3.0"

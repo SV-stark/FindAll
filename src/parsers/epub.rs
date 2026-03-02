@@ -74,15 +74,19 @@ pub fn parse_epub(path: &Path) -> Result<ParsedDocument> {
 
 fn extract_text_from_html(html: &str, output: &mut String) {
     let mut reader = Reader::from_str(html);
-    reader.trim_text(true);
+    reader.config_mut().trim_text(true);
 
     let mut buf = Vec::with_capacity(1024);
 
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Text(e)) => {
-                if let Ok(txt) = e.unescape() {
-                    output.push_str(&txt);
+                if let Ok(decoded) = e.decode() {
+                    let text = match quick_xml::escape::unescape(&decoded) {
+                        Ok(unescaped) => unescaped.into_owned(),
+                        Err(_) => decoded.into_owned(),
+                    };
+                    output.push_str(&text);
                     output.push(' ');
                 }
             }
@@ -170,8 +174,12 @@ fn extract_title_from_opf(opf_content: &str) -> Option<String> {
             }
             Ok(Event::Text(e)) => {
                 if in_title {
-                    if let Ok(txt) = e.unescape() {
-                        let title = txt.to_string();
+                    if let Ok(decoded) = e.decode() {
+                        let text = match quick_xml::escape::unescape(&decoded) {
+                            Ok(unescaped) => unescaped.into_owned(),
+                            Err(_) => decoded.into_owned(),
+                        };
+                        let title = text;
                         if !title.trim().is_empty() {
                             return Some(title);
                         }

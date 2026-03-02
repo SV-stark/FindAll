@@ -46,16 +46,23 @@ impl FilenameIndex {
 
             if bin_path.exists() {
                 match std::fs::read(&bin_path) {
-                    Ok(bytes) => match bincode::deserialize::<Vec<FilenameEntry>>(&bytes) {
-                        Ok(entries) => {
-                            tracing::info!("Loaded {} filenames from bincode index", entries.len());
-                            entries
+                    Ok(bytes) => {
+                        match bincode::serde::decode_from_slice(&bytes, bincode::config::standard())
+                        {
+                            Ok((entries, _)) => {
+                                let entries: Vec<FilenameEntry> = entries;
+                                tracing::info!(
+                                    "Loaded {} filenames from bincode index",
+                                    entries.len()
+                                );
+                                entries
+                            }
+                            Err(e) => {
+                                tracing::warn!("Failed to parse bincode filename index: {}", e);
+                                Vec::new()
+                            }
                         }
-                        Err(e) => {
-                            tracing::warn!("Failed to parse bincode filename index: {}", e);
-                            Vec::new()
-                        }
-                    },
+                    }
                     Err(_) => Vec::new(),
                 }
             } else if json_path.exists() {
@@ -160,7 +167,7 @@ impl FilenameIndex {
 
     /// Save entries to disk using bincode (P3: replaces JSON for ~10x smaller + faster)
     fn save_to_disk_sync(entries: &[FilenameEntry], data_path: &std::path::Path) {
-        match bincode::serialize(entries) {
+        match bincode::serde::encode_to_vec(entries, bincode::config::standard()) {
             Ok(bytes) => {
                 let _ = std::fs::write(data_path.join(INDEX_FILENAME), bytes);
             }

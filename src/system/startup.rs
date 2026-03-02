@@ -9,7 +9,7 @@ pub fn set_auto_start(enable: bool) -> Result<()> {
     let auto = AutoLaunchBuilder::new()
         .set_app_name(app_name)
         .set_app_path(app_path.to_str().unwrap_or_default())
-        .set_use_launch_agent(true)
+        .set_macos_launch_mode(auto_launch::MacOSLaunchMode::LaunchAgent)
         .build()
         .map_err(|e| FlashError::config("auto_start", e.to_string()))?;
 
