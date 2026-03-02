@@ -223,10 +223,7 @@ impl IndexSearcher {
                         let ext_lower = ext.to_lowercase();
                         // Use TermQuery for fast extension matching (much faster than RegexQuery)
                         let term = tantivy::Term::from_field_text(self.extension_field, &ext_lower);
-                        tantivy::query::TermQuery::new(
-                            term,
-                            IndexRecordOption::Basic,
-                        )
+                        tantivy::query::TermQuery::new(term, IndexRecordOption::Basic)
                     })
                     .collect();
 

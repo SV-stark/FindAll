@@ -211,7 +211,6 @@ impl App {
         }
     }
 
-
     fn parse_size_filter(size_str: &str) -> (Option<u64>, Option<u64>) {
         let size_str = size_str.trim();
         if size_str.is_empty() {

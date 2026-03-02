@@ -180,9 +180,9 @@ impl WatcherManager {
         for dir in dirs {
             let path = Path::new(&dir);
             if path.exists() {
-                watcher.watch(path, RecursiveMode::Recursive).map_err(|e| {
-                    FlashError::Io(std::io::Error::other(e))
-                })?;
+                watcher
+                    .watch(path, RecursiveMode::Recursive)
+                    .map_err(|e| FlashError::Io(std::io::Error::other(e)))?;
             }
         }
 
