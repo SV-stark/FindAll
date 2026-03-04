@@ -621,7 +621,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
     }
 }
 
-#[allow(dead_code)]
 fn subscription(_app: &App) -> Subscription<Message> {
     let subs = vec![
         iced::time::every(std::time::Duration::from_millis(100)).map(|_| Message::PollHotkey),
@@ -691,6 +690,7 @@ pub fn run_ui(
     )
     .title(app_title)
     .theme(app_theme)
+    .subscription(subscription)
     .window(iced::window::Settings {
         size: iced::Size::new(1000.0, 700.0),
         position: iced::window::Position::Centered,

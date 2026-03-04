@@ -28,8 +28,11 @@ pub fn open_folder_internal(path: String) -> Result<(), String> {
 }
 
 pub async fn select_folder_internal() -> Result<Option<String>, String> {
-    // Placeholder - will integrate rfd or similar for native slint
-    Ok(None)
+    let handle = rfd::AsyncFileDialog::new()
+        .set_title("Select Folder to Index")
+        .pick_folder()
+        .await;
+    Ok(handle.map(|h| h.path().to_string_lossy().to_string()))
 }
 
 pub fn copy_to_clipboard_internal(text: String) -> Result<(), String> {
@@ -43,7 +46,24 @@ pub async fn export_results_internal(
     results: Vec<SearchResult>,
     format: String,
 ) -> Result<(), String> {
-    // Placeholder for save dialog
-    println!("Exporting {} results in {} format", results.len(), format);
+    let mut dialog = rfd::AsyncFileDialog::new()
+        .set_title("Export Search Results")
+        .set_file_name(format!("flash_search_results.{}", format));
+
+    if format == "csv" {
+        dialog = dialog.add_filter("CSV File", &["csv"]);
+    } else if format == "json" {
+        dialog = dialog.add_filter("JSON File", &["json"]);
+    }
+
+    if let Some(handle) = dialog.save_file().await {
+        let path = handle.path().to_string_lossy().to_string();
+        if format == "csv" {
+            crate::commands::export_results_csv(&results, &path)?;
+        } else if format == "json" {
+            crate::commands::export_results_json(&results, &path)?;
+        }
+    }
+
     Ok(())
 }

@@ -406,3 +406,10 @@ For questions about implementation details, refer to:
 
 **Last Updated**: 2024
 **Version**: 0.1.0
+
+## Self-Healing Rules
+- On borrow checker errors: Scan stack trace, add explicit lifetimes ('a), clone owned data where safe, or refactor to Rc<RefCell<T>> / Arc<Mutex<T>> for shared state.
+- Lifetime mismatches: Infer from context (e.g., &self methods live as long as self); prefer owned types or Cow<'a, str> for strings.
+- Async pinning: Detect Pin<Box<dyn Future>> needs; unwrap with .await safely, use tokio::spawn for non-Send futures, or Box::pin(async move {}).
+- Always: Run `cargo check --tests` + `cargo clippy --fix` after edits; iterate until zero warnings. If fails 3x, request human review.
+- Disable browser verification: Set verify_browser: false for CLI/binary focus—no screenshots/UI tests.

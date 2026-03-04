@@ -26,7 +26,7 @@ fn load_icon(icon_name: &str) -> iced::widget::Svg<'_> {
         "moon" => MOON_ICON_SVG,
         _ => SEARCH_ICON_SVG,
     };
-    svg::Svg::new(svg::Handle::from_memory(svg_data.as_bytes().to_vec()))
+    svg::Svg::new(svg::Handle::from_memory(svg_data.as_bytes()))
 }
 
 pub fn search_view(app: &App) -> Element<'_, Message> {
