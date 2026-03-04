@@ -1,9 +1,0 @@
-   Compiling flash-search v0.2.0 (E:\findall)
-src\metadata\db.rs:170:23: error[E0107]: function takes 1 generic argument but 2 generic arguments were supplied: expected 1 generic argument
-src\metadata\db.rs:308:35: error[E0107]: function takes 1 generic argument but 2 generic arguments were supplied: expected 1 generic argument
-src\metadata\db.rs:404:25: error[E0308]: `if` and `else` have incompatible types: expected `(String, u64_le, u64_le)`, found `(String, {integer}, {integer})`
-src\metadata\db.rs:3:12: warning: unused import: `Archive`
-src\metadata\db.rs:3:21: warning: unused import: `Deserialize`
-src\metadata\db.rs:3:34: warning: unused import: `Serialize`
-warning: `flash-search` (lib) generated 3 warnings
-error: could not compile `flash-search` (lib) due to 3 previous errors; 3 warnings emitted
