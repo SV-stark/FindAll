@@ -68,8 +68,8 @@ fn spawn_update_checker() {
         tracing::info!("Checking for updates...");
         // Placeholder repo config for self_update
         let result = self_update::backends::github::Update::configure()
-            .repo_owner("example-owner")
-            .repo_name("flash-search")
+            .repo_owner("SV-stark")
+            .repo_name("FindAll")
             .bin_name("flash-search")
             .show_download_progress(true)
             .current_version(env!("CARGO_PKG_VERSION"))

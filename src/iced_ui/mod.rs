@@ -354,7 +354,11 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         match message {
             Message::SearchQueryChanged(q) => {
                 app.search_query = q;
-                Task::none()
+                if !app.search_query.is_empty() {
+                    app.perform_search()
+                } else {
+                    Task::none()
+                }
             }
             Message::SearchSubmitted => app.perform_search(),
             Message::SearchResultsReceived(results) => {
@@ -488,8 +492,41 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             ),
             Message::FolderPicked(Some(f)) => {
                 if !app.settings.index_dirs.iter().any(|d| d == &f) {
-                    app.settings.index_dirs.push(f);
+                    app.settings.index_dirs.push(f.clone());
                     app.save_settings();
+
+                    // Automatically start scanning the new folder
+                    let state = match &app.state {
+                        Some(s) => s.clone(),
+                        None => return Task::none(),
+                    };
+                    
+                    app.rebuild_progress = Some(0.0);
+                    app.rebuild_status = Some("Scanning new folder...".to_string());
+                    
+                    let exclude_patterns = app.settings.exclude_patterns.clone();
+                    let rx = app.progress_rx.clone();
+
+                    return Task::batch(vec![
+                        Task::future(async move {
+                            let _ = state
+                                .scanner
+                                .scan_directory(PathBuf::from(f), exclude_patterns)
+                                .await;
+                            Message::IndexRebuilt
+                        }),
+                        Task::perform(
+                            async move {
+                                if let Some(r) = rx {
+                                    let mut g = r.lock().await;
+                                    g.recv().await
+                                } else {
+                                    None
+                                }
+                            },
+                            Message::PollProgressResult,
+                        ),
+                    ]);
                 }
                 Task::none()
             }

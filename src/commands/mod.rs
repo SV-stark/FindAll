@@ -41,6 +41,8 @@ impl AppState {
         scanner: Arc<crate::scanner::Scanner>,
     ) -> Self {
         let cache = settings_manager.load().unwrap_or_default();
+        let mut watcher = watcher;
+        let _ = watcher.update_watch_list(cache.index_dirs.clone());
         Self {
             indexer,
             metadata_db,
