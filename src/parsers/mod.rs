@@ -246,7 +246,6 @@ pub fn parse_file(path: &Path) -> Result<ParsedDocument> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
 
     #[test]
     fn test_extension_matches() {
@@ -283,10 +282,25 @@ mod tests {
 
     #[test]
     fn test_parse_file_txt() {
-        let path = PathBuf::from("tests/fixtures/sample.txt");
-        if path.exists() {
-            let result = super::parse_file(&path);
-            assert!(result.is_ok());
-        }
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("test.txt");
+        let mut file = std::fs::File::create(&file_path).unwrap();
+        writeln!(file, "Hello, world!").unwrap();
+
+        let result = parse_file(&file_path);
+        assert!(result.is_ok());
+        let doc = result.unwrap();
+        assert!(doc.content.contains("Hello, world!"));
+    }
+
+    #[test]
+    fn test_parse_file_unknown() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("test.unknown");
+        std::fs::File::create(&file_path).unwrap();
+
+        let result = parse_file(&file_path);
+        assert!(result.is_err());
     }
 }

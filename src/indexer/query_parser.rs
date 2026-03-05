@@ -229,4 +229,34 @@ mod tests {
         assert_eq!(parsed.max_size, Some(10485760));
         assert_eq!(parsed.text_query, "annual");
     }
+
+    #[test]
+    fn test_matches_extension() {
+        let parsed = ParsedQuery::new("ext:pdf");
+        assert!(parsed.matches_extension("file.pdf"));
+        assert!(parsed.matches_extension("FILE.PDF"));
+        assert!(!parsed.matches_extension("file.txt"));
+    }
+
+    #[test]
+    fn test_matches_path() {
+        let parsed = ParsedQuery::new("path:reports");
+        assert!(parsed.matches_path("/home/user/reports/annual.pdf"));
+        assert!(!parsed.matches_path("/home/user/documents/annual.pdf"));
+    }
+
+    #[test]
+    fn test_matches_title() {
+        let parsed = ParsedQuery::new("title:annual");
+        assert!(parsed.matches_title(Some("Annual Report")));
+        assert!(!parsed.matches_title(Some("Monthly Report")));
+        assert!(!parsed.matches_title(None));
+    }
+
+    #[test]
+    fn test_extract_highlight_terms() {
+        let terms = extract_highlight_terms("ext:pdf report title:annual");
+        assert!(terms.contains(&"report".to_string()));
+        assert!(terms.contains(&"annual".to_string()));
+    }
 }

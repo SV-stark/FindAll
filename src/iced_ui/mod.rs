@@ -736,3 +736,36 @@ pub fn run_ui(
     .run()
     .unwrap();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_file_item_from_search_result() {
+        let sr = SearchResult {
+            file_path: "C:\\path\\to\\file.txt".to_string(),
+            score: 0.95,
+            title: Some("My File".to_string()),
+            matched_terms: vec![],
+            snippet: None,
+        };
+        let fi = FileItem::from(sr);
+        assert_eq!(fi.title, "file.txt");
+        assert_eq!(fi.path, "C:\\path\\to\\file.txt");
+        assert_eq!(fi.score, 0.95);
+        assert_eq!(fi.extension.as_deref(), Some("txt"));
+    }
+
+    #[test]
+    fn test_parse_size_filter() {
+        let (min, max) = App::parse_size_filter(">= 2MB");
+        assert_eq!(min, Some(2 * 1024 * 1024));
+        assert_eq!(max, None);
+
+        let (min, max) = App::parse_size_filter("< 10KB");
+        assert_eq!(min, None);
+        assert_eq!(max, Some(10 * 1024 - 1));
+    }
+}
+

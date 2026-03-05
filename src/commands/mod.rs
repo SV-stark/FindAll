@@ -5,12 +5,25 @@ mod search;
 mod settings;
 mod system;
 
-pub use autostart::*;
-pub use export::*;
-pub use indexing::*;
-pub use search::*;
-pub use settings::*;
-pub use system::*;
+pub use autostart::{is_auto_start_enabled, set_auto_start};
+pub use export::{export_results_csv, export_results_json};
+pub use indexing::{
+    get_index_statistics_internal, get_index_status_internal, get_recent_files_internal,
+    start_indexing_internal,
+};
+pub use search::{
+    get_file_preview_highlighted_internal, get_file_preview_internal,
+    get_filename_index_stats_internal, search_filenames_internal, search_query_internal,
+};
+pub use settings::{
+    add_recent_search_internal, add_search_history_internal, clear_recent_searches_internal,
+    get_pinned_files_internal, get_recent_searches_internal, get_search_history_internal,
+    get_settings_internal, pin_file_internal, save_settings_internal, unpin_file_internal,
+};
+pub use system::{
+    copy_to_clipboard_internal, export_results_internal, get_home_dir_internal,
+    open_folder_internal, select_folder_internal,
+};
 
 use crate::indexer::{filename_index::FilenameIndex, IndexManager};
 use crate::metadata::MetadataDb;
