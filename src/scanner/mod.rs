@@ -382,3 +382,52 @@ impl Scanner {
             });
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::settings::AppSettings;
+    use crate::indexer::IndexManager;
+    use crate::metadata::MetadataDb;
+    use std::sync::Arc;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_scanner_new() {
+        let dir = tempdir().unwrap();
+        let index_path = dir.path().join("index");
+        let db_path = dir.path().join("metadata.redb");
+        
+        let settings = AppSettings::default();
+        let indexer = Arc::new(IndexManager::open(&index_path, 100).unwrap());
+        let metadata_db = Arc::new(MetadataDb::open(&db_path).unwrap());
+        
+        let scanner = Scanner::new(
+            indexer,
+            metadata_db,
+            None,
+            None,
+            settings,
+        );
+        
+        assert!(scanner.filename_index.is_none());
+    }
+
+    #[test]
+    fn test_progress_event_serialization() {
+        let event = ProgressEvent {
+            total: 100,
+            processed: 50,
+            current_file: "test.txt".to_string(),
+            status: "Indexing...".to_string(),
+            ptype: ProgressType::Content,
+            files_per_second: 10.5,
+            eta_seconds: 5,
+            current_folder: "/home/user".to_string(),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("test.txt"));
+        assert!(json.contains("Content"));
+    }
+}
+

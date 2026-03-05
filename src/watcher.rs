@@ -265,4 +265,32 @@ mod tests {
         assert!(watcher.update_watch_list(vec![]).is_ok());
         assert!(watcher.watcher.is_none());
     }
+
+    #[tokio::test]
+    async fn test_reindex_single_file() {
+        use std::io::Write;
+        let temp = tempdir().unwrap();
+        let metadata = Arc::new(MetadataDb::open(&temp.path().join("metadata.db")).unwrap());
+
+        let file_path = temp.path().join("test.txt");
+        let mut file = fs::File::create(&file_path).unwrap();
+        writeln!(file, "Initial content").unwrap();
+
+        // Should return Some on first index
+        let result = WatcherManager::reindex_single_file(&file_path, &metadata).await;
+        assert!(result.is_ok());
+        let option = result.unwrap();
+        assert!(option.is_some());
+        let (doc, modified, size, _hash) = option.unwrap();
+        assert_eq!(doc.content, "Initial content\n");
+
+        metadata
+            .update_metadata(Path::new(&doc.path), modified, size, [0; 32])
+            .unwrap();
+
+        // Should return None if no change
+        let result = WatcherManager::reindex_single_file(&file_path, &metadata).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
 }

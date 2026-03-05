@@ -401,3 +401,72 @@ impl IndexSearcher {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cache_key_equality() {
+        let key1 = CacheKey {
+            query: "test".to_string(),
+            limit: 10,
+            min_size: None,
+            max_size: None,
+            extensions: None,
+        };
+        let key2 = CacheKey {
+            query: "test".to_string(),
+            limit: 10,
+            min_size: None,
+            max_size: None,
+            extensions: None,
+        };
+        assert_eq!(key1, key2);
+        
+        let key3 = CacheKey {
+            query: "diff".to_string(),
+            ..key1.clone()
+        };
+        assert_ne!(key1, key3);
+    }
+
+    #[test]
+    fn test_query_cache_insert_get() {
+        let cache = QueryCache::new();
+        let key = CacheKey {
+            query: "test".to_string(),
+            limit: 10,
+            min_size: None,
+            max_size: None,
+            extensions: None,
+        };
+        let results = vec![SearchResult {
+            file_path: "path".to_string(),
+            title: None,
+            score: 1.0,
+            matched_terms: vec!["test".to_string()],
+            snippet: Some("snippet".to_string()),
+        }];
+        cache.insert(key.clone(), results.clone());
+        let cached = cache.get(&key);
+        assert!(cached.is_some());
+        assert_eq!(cached.unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_query_cache_invalidate() {
+        let cache = QueryCache::new();
+        let key = CacheKey {
+            query: "test".to_string(),
+            limit: 10,
+            min_size: None,
+            max_size: None,
+            extensions: None,
+        };
+        cache.insert(key.clone(), vec![]);
+        cache.invalidate();
+        assert!(cache.get(&key).is_none());
+    }
+}
+
