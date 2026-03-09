@@ -27,11 +27,19 @@ pub fn parse_pdf(path: &Path) -> Result<ParsedDocument> {
 
     let content = match std::panic::catch_unwind(|| -> std::result::Result<String, String> {
         let bind = Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path("./"))
+            .or_else(|_| Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path("./assets/")))
             .or_else(|_| Pdfium::bind_to_system_library());
 
         let pdfium = match bind {
             Ok(b) => Pdfium::new(b),
-            Err(e) => return Err(format!("Failed to bind: {}", e)),
+            Err(e) => {
+                let msg = if e.to_string().contains("126") {
+                    format!("Failed to bind: {} (pdfium.dll not found. Please place it in the root or assets/ folder)", e)
+                } else {
+                    format!("Failed to bind: {}", e)
+                };
+                return Err(msg);
+            }
         };
 
         let document = match pdfium.load_pdf_from_file(path, None) {
