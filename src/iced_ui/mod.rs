@@ -21,21 +21,27 @@ pub struct FileItem {
     pub path: String,
     pub score: f32,
     pub extension: Option<String>,
+    pub modified: Option<u64>,
+    pub size: Option<u64>,
+    pub snippets: Vec<String>,
 }
 
 impl From<SearchResult> for FileItem {
     fn from(r: SearchResult) -> Self {
-        let ext = r.file_path.split('.').next_back().map(String::from);
         FileItem {
-            title: r
-                .file_path
-                .split(['\\', '/'])
-                .next_back()
-                .unwrap_or("Unknown")
-                .to_string(),
+            title: r.title.unwrap_or_else(|| {
+                r.file_path
+                    .split(['\\', '/'])
+                    .next_back()
+                    .unwrap_or("Unknown")
+                    .to_string()
+            }),
             path: r.file_path,
             score: r.score,
-            extension: ext,
+            extension: r.extension,
+            modified: r.modified,
+            size: r.size,
+            snippets: r.snippets,
         }
     }
 }
@@ -44,10 +50,13 @@ impl From<FilenameSearchResult> for FileItem {
     fn from(r: FilenameSearchResult) -> Self {
         let ext = r.file_name.split('.').next_back().map(String::from);
         FileItem {
-            title: r.file_name,
+            title: r.file_name, // Reverted to original as the provided diff was syntactically incorrect here
             path: r.file_path,
             score: 1.0,
             extension: ext,
+            modified: None, // Added missing fields with default values
+            size: None,     // Added missing fields with default values
+            snippets: Vec::new(),
         }
     }
 }
@@ -56,6 +65,27 @@ impl From<FilenameSearchResult> for FileItem {
 pub enum Tab {
     Search,
     Settings,
+}
+
+pub fn format_size(bytes: u64) -> String {
+    if bytes < 1024 {
+        format!("{} B", bytes)
+    } else if bytes < 1024 * 1024 {
+        format!("{:.1} KB", bytes as f64 / 1024.0)
+    } else if bytes < 1024 * 1024 * 1024 {
+        format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+    } else {
+        format!("{:.1} GB", bytes as f64 / (1024.0 * 1024.0 * 1024.0))
+    }
+}
+
+pub fn format_date(timestamp: u64) -> String {
+    use chrono::{DateTime, Local};
+    let native = DateTime::from_timestamp(timestamp as i64, 0).unwrap_or_else(|| {
+        DateTime::from_timestamp(0, 0).unwrap()
+    });
+    let local: DateTime<Local> = DateTime::from(native);
+    local.format("%Y/%m/%d").to_string()
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -101,6 +131,7 @@ pub enum Message {
     ToggleContextMenu(bool),
     GlobalHotkeyChanged(String),
     PollHotkey,
+    NotImplemented(String),
 }
 
 pub struct App {
@@ -196,7 +227,7 @@ impl App {
                 active_tab: Tab::Search,
                 files_indexed: 0,
                 index_size: "0 MB".to_string(),
-                is_dark: false,
+                is_dark: true, // Default to dark theme
                 search_mode: SearchMode::FullText,
                 filter_extension: String::new(),
                 filter_size: String::new(),
@@ -654,6 +685,10 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 }
                 Task::none()
             }
+            Message::NotImplemented(feature) => {
+                app.error = Some(format!("Feature '{}' is not yet implemented in this version.", feature));
+                Task::none()
+            }
         }
     }
 }
@@ -668,6 +703,9 @@ fn subscription(_app: &App) -> Subscription<Message> {
 }
 
 fn view(app: &App) -> Element<'_, Message> {
+    if let Some(err) = &app.error {
+        return error_view(err);
+    }
     match app.active_tab {
         Tab::Search => search::search_view(app),
         Tab::Settings => settings::settings_view(app),
@@ -709,6 +747,19 @@ fn app_theme(app: &App) -> iced::Theme {
         iced::Theme::Light
     }
 }
+fn load_app_icon() -> Option<iced::window::icon::Icon> {
+    match image::open("FindAll.png") {
+        Ok(img) => {
+            let rgba = img.to_rgba8();
+            let (width, height) = rgba.dimensions();
+            iced::window::icon::from_rgba(rgba.into_raw(), width, height).ok()
+        }
+        Err(e) => {
+            tracing::warn!("Failed to load app icon FindAll.png: {}", e);
+            None
+        }
+    }
+}
 
 pub fn run_ui(
     state: Result<std::sync::Arc<AppState>, String>,
@@ -731,8 +782,10 @@ pub fn run_ui(
     .window(iced::window::Settings {
         size: iced::Size::new(1000.0, 700.0),
         position: iced::window::Position::Centered,
+        icon: load_app_icon(),
         ..Default::default()
     })
+    .antialiasing(false)
     .run()
     .unwrap();
 }
@@ -747,8 +800,11 @@ mod tests {
             file_path: "C:\\path\\to\\file.txt".to_string(),
             score: 0.95,
             title: Some("My File".to_string()),
+            modified: None,
+            size: None,
+            extension: None,
             matched_terms: vec![],
-            snippet: None,
+            snippets: Vec::new(),
         };
         let fi = FileItem::from(sr);
         assert_eq!(fi.title, "file.txt");

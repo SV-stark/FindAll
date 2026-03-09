@@ -1,349 +1,298 @@
 use super::{theme, App, Message, SearchMode, Tab};
 use iced::widget::{
-    button, column, container, progress_bar, row, svg, text, Scrollable, Space, TextInput,
+    button, column, container, row, scrollable, svg, text, TextInput, Space,
 };
-use iced::{Alignment, Element, Length, Padding};
+use iced::{font, Alignment, Element, Font, Length, Padding};
 
-const SEARCH_ICON_SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>"#;
+// --- SVG Icons (Simplified for Iced) ---
+const SEARCH_ICON_SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>"#;
+const FOLDER_ICON_SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>"#;
+const FILE_ICON_SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>"#;
+const OCR_ICON_SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 7h10v10H7z"/></svg>"#;
+const SETTINGS_ICON_SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>"#;
 
-const FILE_ICON_SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5-2z"/><polyline points="14 2 14 8 20 8"/></svg>"#;
-
-const SETTINGS_ICON_SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>"#;
-
-const REFRESH_ICON_SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>"#;
-
-const SUN_ICON_SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>"#;
-
-const MOON_ICON_SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>"#;
-
-fn load_icon(icon_name: &str) -> iced::widget::Svg<'_> {
-    let svg_data = match icon_name {
-        "search" => SEARCH_ICON_SVG,
-        "file" => FILE_ICON_SVG,
-        "settings" => SETTINGS_ICON_SVG,
-        "refresh" => REFRESH_ICON_SVG,
-        "sun" => SUN_ICON_SVG,
-        "moon" => MOON_ICON_SVG,
-        _ => SEARCH_ICON_SVG,
-    };
+fn load_icon(svg_data: &'static str) -> Element<'static, Message> {
     svg::Svg::new(svg::Handle::from_memory(svg_data.as_bytes()))
+        .width(Length::Fixed(16.0))
+        .height(Length::Fixed(16.0))
+        .into()
 }
 
 pub fn search_view(app: &App) -> Element<'_, Message> {
-    let mode_text = match app.search_mode {
-        SearchMode::FullText => "Full Text",
-        SearchMode::Filename => "Filename",
-    };
+    column![
+        top_navigation(app),
+        search_input_bar(app),
+        main_layout(app),
+        status_bar(app),
+    ]
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .into()
+}
 
-    let search_icon = container(load_icon("search")).padding(Padding::new(12.0));
+fn top_navigation(_app: &App) -> Element<'_, Message> {
+    let logo = row![
+        text("Flash Search").size(16),
+        text(" - Anytxt Inspired").size(12).style(theme::dim_text_style()),
+    ]
+    .spacing(8)
+    .align_y(Alignment::Center);
 
-    let input = TextInput::new("Search files...", &app.search_query)
+    let menu_items = row![
+        button(row![load_icon(FOLDER_ICON_SVG), text("Open")].spacing(4))
+            .on_press(Message::NotImplemented("Open File/Folder".to_string()))
+            .style(theme::top_menu_button()),
+        button(row![load_icon(OCR_ICON_SVG), text("OCR")].spacing(4))
+            .on_press(Message::NotImplemented("OCR".to_string()))
+            .style(theme::top_menu_button()),
+        button(row![load_icon(SEARCH_ICON_SVG), text("Advanced Search")].spacing(4))
+            .on_press(Message::NotImplemented("Advanced Search".to_string()))
+            .style(theme::top_menu_button()),
+        button(row![load_icon(SETTINGS_ICON_SVG), text("Settings")].spacing(4))
+            .on_press(Message::TabChanged(Tab::Settings))
+            .style(theme::top_menu_button()),
+        button(text("File Actions"))
+            .on_press(Message::NotImplemented("File Actions".to_string()))
+            .style(theme::top_menu_button()),
+    ]
+    .spacing(16);
+
+    container(
+        row![
+            logo,
+            Space::new().width(Length::Fill),
+            menu_items,
+        ]
+        .padding(Padding { top: 8.0, bottom: 8.0, left: 16.0, right: 16.0 })
+        .align_y(Alignment::Center)
+    )
+    .style(theme::top_bar_container)
+    .width(Length::Fill)
+    .into()
+}
+
+fn search_input_bar(app: &App) -> Element<'_, Message> {
+    let input = TextInput::new("Enter search keywords...", &app.search_query)
         .on_input(Message::SearchQueryChanged)
         .on_submit(Message::SearchSubmitted)
-        .padding(Padding::new(12.0))
-        .size(16)
+        .padding(Padding::new(10.0))
         .style(theme::search_input())
         .width(Length::Fill);
 
-    let search_btn = button(container(load_icon("search")).padding(Padding::new(8.0)))
-        .on_press(Message::SearchSubmitted)
-        .style(theme::primary_button())
-        .padding(Padding::new(12.0));
-
-    let search_bar = row![search_icon, input, search_btn]
-        .spacing(0)
-        .align_y(Alignment::Center)
-        .width(Length::Fill);
-
-    let search_bar_container = container(search_bar)
-        .style(theme::input_container)
-        .width(Length::Fill);
-
-    let error_display: Element<Message> = if let Some(ref err) = app.search_error {
-        container(
-            row![
-                container(load_icon("settings")).style(|_theme| theme::error_container_style()),
-                text(err).size(13).style(|_theme| theme::error_text_style()),
-                Space::new().width(Length::Fill),
-                button("Dismiss")
-                    .on_press(Message::DismissError)
-                    .padding(Padding::new(4.0))
-                    .style(theme::secondary_button())
-            ]
-            .spacing(8)
-            .align_y(Alignment::Center),
-        )
-        .padding(Padding::new(12.0))
-        .style(theme::error_container)
-        .width(Length::Fill)
-        .into()
-    } else {
-        Space::new().height(Length::Fixed(0.0)).into()
-    };
-
-    let filter_ext = TextInput::new("ext:pdf", &app.filter_extension)
-        .on_input(Message::FilterExtensionChanged)
-        .on_submit(Message::SearchSubmitted)
-        .padding(Padding::new(8.0))
-        .size(13)
-        .width(Length::Fixed(100.0))
-        .style(theme::small_input());
-
-    let filter_size = TextInput::new("size:>1MB", &app.filter_size)
-        .on_input(Message::FilterSizeChanged)
-        .on_submit(Message::SearchSubmitted)
-        .padding(Padding::new(8.0))
-        .size(13)
-        .width(Length::Fixed(100.0))
-        .style(theme::small_input());
-
-    let mode_btn = button(text(mode_text).size(13))
+    let mode_toggle = button(text(if app.search_mode == SearchMode::FullText { "Full Text" } else { "Filename" }).size(12))
         .on_press(Message::ToggleSearchMode)
-        .padding(Padding::new(12.0))
-        .style(theme::secondary_button());
+        .style(theme::secondary_button())
+        .padding(Padding::new(8.0));
 
-    let theme_btn = button(if app.is_dark {
-        container(load_icon("sun"))
-    } else {
-        container(load_icon("moon"))
-    })
-    .on_press(Message::ToggleTheme)
-    .padding(Padding::new(10.0))
-    .style(theme::icon_button());
-
-    let sep1 = container(
-        Space::new()
-            .width(Length::Fixed(1.0))
-            .height(Length::Fixed(20.0)),
-    );
-
-    let rebuild_display: Element<_> = if let Some(progress) = app.rebuild_progress {
-        let status = app.rebuild_status.as_deref().unwrap_or("Rebuilding...");
-        column![text(status).size(12), progress_bar(0.0..=1.0, progress),]
-            .spacing(4)
-            .align_x(Alignment::Center)
-            .width(Length::Fixed(120.0))
-            .into()
-    } else {
-        button(row![container(load_icon("refresh")), text("Rebuild").size(13)].spacing(6))
-            .on_press(Message::RebuildIndex)
-            .padding(Padding::new(10.0))
-            .style(theme::secondary_button())
-            .into()
-    };
-
-    let settings_btn = button(container(load_icon("settings")).padding(Padding::new(4.0)))
-        .on_press(Message::TabChanged(Tab::Settings))
-        .padding(Padding::new(10.0))
-        .style(theme::icon_button());
-
-    let stats = text(format!("{} files | {}", app.files_indexed, app.index_size)).size(13);
-
-    let filter_group = row![mode_btn, sep1, filter_ext, filter_size,]
-        .spacing(8)
-        .align_y(Alignment::Center);
-
-    let toolbar_spacer = Space::new().width(Length::Fixed(16.0));
-
-    let filter_row = row![
-        filter_group,
-        Space::new().width(Length::Fill),
-        stats,
-        toolbar_spacer,
-        theme_btn,
-        rebuild_display,
-        settings_btn
-    ]
-    .spacing(8)
-    .align_y(Alignment::Center)
-    .width(Length::Fill);
-
-    let top_section = container(
-        column![search_bar_container, error_display, filter_row]
-            .spacing(12)
-            .align_x(Alignment::Center),
+    container(
+        row![input, mode_toggle]
+            .spacing(8)
+            .padding(Padding { top: 8.0, bottom: 8.0, left: 16.0, right: 16.0 })
+            .align_y(Alignment::Center)
     )
     .style(theme::top_bar_container)
-    .padding(Padding::new(16.0))
-    .width(Length::Fill);
+    .width(Length::Fill)
+    .into()
+}
 
-    let results_panel: Element<Message> = if app.settings.index_dirs.is_empty() {
-        container(
-            column![
-                container(load_icon("settings")),
-                Space::new().height(Length::Fixed(16.0)),
-                text("Add a folder to get started").size(24),
-                Space::new().height(Length::Fixed(8.0)),
-                text("Configure your indexed directories in Settings.").size(14),
-                Space::new().height(Length::Fixed(24.0)),
-                button(text("Go to Settings").size(16))
-                    .on_press(Message::TabChanged(Tab::Settings))
-                    .padding(Padding::new(14.0))
-                    .style(theme::primary_button()),
-            ]
-            .align_x(Alignment::Center),
-        )
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .center_x(Length::Fill)
-        .center_y(Length::Fill)
-        .into()
-    } else if app.is_searching {
-        container(column![text("Searching...").size(14),].align_x(Alignment::Center))
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .center_x(Length::Fill)
-            .center_y(Length::Fill)
-            .into()
-    } else if app.results.is_empty() && !app.search_query.is_empty() {
-        container(
-            column![
-                text("No results found").size(16),
-                Space::new().height(Length::Fixed(8.0)),
-                text("Try adjusting your search terms").size(13),
-            ]
-            .align_x(Alignment::Center),
-        )
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .center_x(Length::Fill)
-        .center_y(Length::Fill)
-        .into()
-    } else if app.results.is_empty() {
-        container(
-            column![
-                container(load_icon("search")),
-                Space::new().height(Length::Fixed(12.0)),
-                text("Start searching").size(16),
-                text("Enter keywords to find files").size(13),
-            ]
-            .align_x(Alignment::Center),
-        )
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .center_x(Length::Fill)
-        .center_y(Length::Fill)
-        .into()
-    } else {
-        let items: Vec<_> = app
-            .results
-            .iter()
-            .enumerate()
-            .map(|(i, item)| {
-                let ext_str = item.extension.as_deref().unwrap_or("");
-                let is_selected = app.selected_index == Some(i);
-
-                let dir = std::path::Path::new(&item.path)
-                    .parent()
-                    .map(|p| p.to_string_lossy().to_string())
-                    .unwrap_or_default();
-
-                let file_icon = container(load_icon("file")).padding(Padding::new(8.0));
-
-                let ext_badge =
-                    container(text(ext_str.to_uppercase()).size(10)).padding(Padding::new(4.0));
-
-                let score_text = format!("{:.1}", item.score * 100.0);
-                let score_badge =
-                    container(text(format!("{}%", score_text)).size(10)).padding(Padding::new(4.0));
-
-                let header = row![
-                    file_icon,
-                    text(&item.title).size(15),
-                    Space::new().width(Length::Fill),
-                    score_badge,
-                    ext_badge,
-                ]
-                .align_y(Alignment::Center);
-
-                let body = text(dir).size(12);
-
-                let card_content = column![header, body].spacing(4).align_x(Alignment::Start);
-
-                let card = container(card_content)
-                    .padding(Padding::new(12.0))
-                    .width(Length::Fill);
-
-                let card_container = if is_selected {
-                    container(card).style(theme::result_card_hover)
-                } else {
-                    container(card).style(theme::result_card_normal)
-                };
-
-                let button_style = theme::result_button(is_selected);
-
-                button(card_container)
-                    .on_press(Message::ResultSelected(i))
-                    .width(Length::Fill)
-                    .padding(Padding::new(0.0))
-                    .style(button_style)
-                    .into()
-            })
-            .collect();
-        let list = Scrollable::new(column(items).spacing(8)).height(Length::Fill);
-        container(list)
-            .padding(Padding::new(12.0))
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .into()
-    };
-
-    let preview_panel: Element<Message> = if app.is_loading_preview {
-        container(column![text("Loading preview...").size(14),].align_x(Alignment::Center))
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .center_x(Length::Fill)
-            .center_y(Length::Fill)
-            .into()
-    } else if let Some(ref preview) = app.preview_content {
-        let scroll = Scrollable::new(
-            container(text(preview).size(14))
-                .padding(Padding::new(20.0))
-                .width(Length::Fill),
-        )
-        .height(Length::Fill);
-
-        container(scroll)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .into()
-    } else {
-        container(
-            column![
-                container(load_icon("file")),
-                Space::new().height(Length::Fixed(12.0)),
-                text("Select a file to preview").size(14),
-            ]
-            .align_x(Alignment::Center),
-        )
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .center_x(Length::Fill)
-        .center_y(Length::Fill)
-        .into()
-    };
-
-    let preview_panel_container = container(preview_panel)
-        .style(theme::sidebar_container)
-        .width(Length::FillPortion(3))
-        .height(Length::Fill);
-
-    let split_pane = row![
-        container(results_panel)
-            .width(Length::FillPortion(2))
-            .height(Length::Fill),
-        preview_panel_container
+fn main_layout(app: &App) -> Element<'_, Message> {
+    row![
+        left_sidebar(app),
+        right_panel(app),
     ]
     .width(Length::Fill)
+    .height(Length::Fill)
+    .into()
+}
+
+fn left_sidebar(app: &App) -> Element<'_, Message> {
+    let nav_tree = column![
+        button(row![load_icon(FOLDER_ICON_SVG), text("All Folders").size(13)].spacing(8))
+            .on_press(Message::NotImplemented("Filter: All Folders".to_string()))
+            .width(Length::Fill)
+            .style(theme::nav_button(true)),
+        button(row![load_icon(FILE_ICON_SVG), text("File Types").size(13)].spacing(8))
+            .on_press(Message::NotImplemented("Filter: File Types".to_string()))
+            .width(Length::Fill)
+            .style(theme::nav_button(false)),
+        button(row![load_icon(SEARCH_ICON_SVG), text("All Files").size(13)].spacing(8))
+            .on_press(Message::NotImplemented("Filter: All Files".to_string()))
+            .width(Length::Fill)
+            .style(theme::nav_button(false)),
+    ]
+    .spacing(4)
+    .padding(Padding::new(8.0));
+
+    let table_header = container(
+        row![
+            text("Name").width(Length::FillPortion(2)).size(12),
+            text("Modified").width(Length::FillPortion(1)).size(12),
+            text("Type").width(Length::FillPortion(1)).size(12),
+            text("Size").width(Length::FillPortion(1)).size(12),
+        ]
+        .padding(Padding::new(8.0))
+    )
+    .style(theme::table_header_container)
+    .width(Length::Fill);
+
+    let results = scrollable(
+        column(app.results.iter().enumerate().map(|(i, res)| {
+            let is_selected = app.selected_index == Some(i);
+            button(
+                container(
+                    row![
+                        row![load_icon(FILE_ICON_SVG), text(&res.title).size(13)].spacing(8).width(Length::FillPortion(2)),
+                        text(res.modified.map(crate::iced_ui::format_date).unwrap_or_else(|| "Unknown".to_string())).size(12).style(theme::muted_text_style()).width(Length::FillPortion(1)),
+                        text(res.extension.as_deref().unwrap_or("File")).size(12).style(theme::muted_text_style()).width(Length::FillPortion(1)),
+                        text(res.size.map(crate::iced_ui::format_size).unwrap_or_else(|| "Unknown".to_string())).size(12).style(theme::muted_text_style()).width(Length::FillPortion(1)),
+                    ]
+                    .align_y(Alignment::Center)
+                )
+                .padding(Padding { top: 4.0, bottom: 4.0, left: 8.0, right: 8.0 })
+                .style(if is_selected { theme::result_card_selected } else { theme::result_card_normal })
+                .width(Length::Fill)
+            )
+            .on_press(Message::ResultSelected(i))
+            .style(theme::ghost_button())
+            .width(Length::Fill)
+            .into()
+        }).collect::<Vec<Element<Message>>>())
+    )
     .height(Length::Fill);
 
     container(
-        column![top_section, split_pane]
+        column![nav_tree, table_header, results]
             .width(Length::Fill)
-            .height(Length::Fill),
     )
-    .style(theme::main_content_container)
-    .width(Length::Fill)
+    .style(theme::sidebar_container)
+    .width(Length::FillPortion(2))
     .height(Length::Fill)
+    .into()
+}
+
+fn right_panel(app: &App) -> Element<'_, Message> {
+    let preview_tabs = container(
+        row![
+            button(text("Preview").size(12)).style(theme::nav_button(true)),
+            Space::new().width(Length::Fill),
+            load_icon(OCR_ICON_SVG),
+        ]
+        .padding(Padding::new(8.0))
+        .align_y(Alignment::Center)
+    )
+    .style(theme::table_header_container)
+    .width(Length::Fill);
+
+    let preview_content: Element<'_, Message> = if app.is_loading_preview {
+        container(text("Loading preview...").style(theme::dim_text_style()))
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .into()
+    } else if let Some(content) = &app.preview_content {
+        container(
+            scrollable(
+                container(text(content).size(14))
+                    .padding(Padding::new(20.0))
+            )
+        ).into()
+    } else {
+        container(text("Select a file to preview").style(theme::dim_text_style()))
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .into()
+    };
+
+    container(
+        column![
+            preview_tabs,
+            container(preview_content).height(Length::Fill),
+            hits_panel(app),
+        ]
+    )
+    .width(Length::FillPortion(3))
+    .height(Length::Fill)
+    .into()
+}
+
+fn hits_panel(app: &App) -> Element<'_, Message> {
+    let result = app.selected_index.and_then(|i| app.results.get(i));
+
+    let hits_content: Element<'_, Message> = if let Some(res) = result {
+        if res.snippets.is_empty() {
+            container(text("No preview context available").style(theme::muted_text_style()))
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .center_x(Length::Fill)
+                .center_y(Length::Fill)
+                .into()
+        } else {
+            scrollable(
+                column(res.snippets.iter().enumerate().map(|(i, s)| hit_row(i + 1, s)).collect::<Vec<_>>())
+                    .spacing(4)
+                    .padding(8),
+            )
+            .height(Length::Fill)
+            .into()
+        }
+    } else {
+        container(text("Select a file to see context hits").style(theme::muted_text_style()))
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .into()
+    };
+
+    container(
+        column![
+            container(
+                row![
+                    text("Search Hits").size(14).font(Font { weight: font::Weight::Bold, ..Font::default() }),
+                    Space::new().width(Length::Fill),
+                    text(format!("{} total", result.map(|r| r.snippets.len()).unwrap_or(0)))
+                        .size(12)
+                        .style(theme::muted_text_style()),
+                ]
+                .align_y(Alignment::Center)
+                .padding(Padding::new(4.0))
+            )
+            .style(theme::table_header_container)
+            .width(Length::Fill),
+            hits_content,
+        ]
+    )
+    .style(theme::sidebar_container)
+    .width(Length::Fill)
+    .height(Length::Fixed(200.0))
+    .into()
+}
+
+fn hit_row(_idx: usize, content: &str) -> Element<'_, Message> {
+    row![
+        text(_idx.to_string()).size(11).style(theme::dim_text_style()),
+        container(text(content).size(12)).padding(Padding::new(4.0)),
+    ]
+    .spacing(12)
+    .align_y(Alignment::Center)
+    .into()
+}
+
+fn status_bar(app: &App) -> Element<'_, Message> {
+    container(
+        row![
+            text(format!("{} files indexed", app.files_indexed)).size(11),
+            Space::new().width(Length::Fixed(16.0)),
+            text(&app.index_size).size(11),
+            Space::new().width(Length::Fill),
+            if let Some(status) = &app.rebuild_status {
+                Element::from(text(status).size(11))
+            } else {
+                Element::from(Space::new().width(Length::Fixed(0.0)))
+            },
+        ]
+        .padding(Padding { top: 4.0, bottom: 4.0, left: 16.0, right: 16.0 })
+    )
+    .style(theme::top_bar_container)
+    .width(Length::Fill)
     .into()
 }

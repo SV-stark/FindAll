@@ -14,7 +14,7 @@ use tantivy::{directory::MmapDirectory, Index};
 use tracing::{info, warn};
 
 /// Current schema version - bump this when schema changes
-pub const SCHEMA_VERSION: &str = "1.0.0";
+pub const SCHEMA_VERSION: &str = "1.1.0";
 
 fn get_schema_version_path(index_path: &Path) -> PathBuf {
     index_path.join(".schema_version")
@@ -71,12 +71,32 @@ impl IndexManager {
             write_schema_version(index_path, SCHEMA_VERSION)?;
         }
 
-        // Use memory-mapped directory for efficient I/O
         let directory = MmapDirectory::open(index_path)
             .map_err(|e| FlashError::index(format!("Failed to open index directory: {}", e)))?;
 
-        let index = Index::open_or_create(directory, schema.clone())
-            .map_err(|e| FlashError::index(format!("Failed to open or create index: {}", e)))?;
+        let index = match Index::open_or_create(directory, schema.clone()) {
+            Ok(idx) => idx,
+            Err(e) => {
+                // Check if it's a schema mismatch error
+                let err_str = e.to_string();
+                if err_str.contains("Schema error") || err_str.contains("Inconsistent") {
+                    warn!("Tantivy detected schema mismatch: {}. Forcing index rebuild...", err_str);
+                    
+                    // Close the directory/files if needed? MmapDirectory handles it.
+                    // Wipe and start over
+                    std::fs::remove_dir_all(index_path).map_err(FlashError::Io)?;
+                    std::fs::create_dir_all(index_path).map_err(FlashError::Io)?;
+                    write_schema_version(index_path, SCHEMA_VERSION)?;
+                    
+                    let new_directory = MmapDirectory::open(index_path)
+                        .map_err(|e| FlashError::index(format!("Failed to re-open index directory: {}", e)))?;
+                    Index::open_or_create(new_directory, schema)
+                        .map_err(|e| FlashError::index(format!("Failed to create new index after reset: {}", e)))?
+                } else {
+                    return Err(FlashError::index(format!("Failed to open or create index: {}", e)));
+                }
+            }
+        };
 
         info!(
             "Opened index at {} with schema version {}",

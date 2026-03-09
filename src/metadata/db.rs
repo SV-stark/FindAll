@@ -59,22 +59,51 @@ pub struct MetadataDb {
 impl MetadataDb {
     /// Open or create the metadata database
     pub fn open(db_path: &Path) -> Result<Self> {
-        let db = Arc::new(Database::create(db_path).map_err(|e| {
-            FlashError::database("database_operation", "files_table", e.to_string())
-        })?);
+        let db = match Database::create(db_path) {
+            Ok(db) => Arc::new(db),
+            Err(e) => {
+                tracing::warn!("Failed to open metadata database: {}. Forcing reset...", e);
+                let _ = std::fs::remove_file(db_path);
+                Arc::new(Database::create(db_path).map_err(|e| {
+                    FlashError::database("database_operation", "files_table", e.to_string())
+                })?)
+            }
+        };
 
         // Create table if it doesn't exist
-        let txn = db.begin_write().map_err(|e| {
-            FlashError::database("database_operation", "files_table", e.to_string())
-        })?;
-        {
-            let _table = txn.open_table(FILES_TABLE).map_err(|e| {
+        // Wrap this in a closure to easily catch errors and retry
+        let init_table = |db: &Database| -> Result<()> {
+            let txn = db.begin_write().map_err(|e| {
                 FlashError::database("database_operation", "files_table", e.to_string())
             })?;
+            {
+                let _table = txn.open_table(FILES_TABLE).map_err(|e| {
+                    FlashError::database("database_operation", "files_table", e.to_string())
+                })?;
+            }
+            txn.commit().map_err(|e| {
+                FlashError::database("database_operation", "files_table", e.to_string())
+            })
+        };
+
+        if let Err(e) = init_table(&db) {
+            tracing::warn!("Failed to initialize database tables: {}. Wiping and recreating...", e);
+            drop(db); // Ensure file is not locked
+            let _ = std::fs::remove_file(db_path);
+            
+            let db = Arc::new(Database::create(db_path).map_err(|e| {
+                FlashError::database("database_operation", "files_table", e.to_string())
+            })?);
+            
+            init_table(&db).map_err(|e| {
+                FlashError::database("database_operation", "files_table", format!("Retry failed: {}", e))
+            })?;
+            
+            return Ok(Self {
+                db,
+                metrics: Arc::new(ConnectionMetrics::default()),
+            });
         }
-        txn.commit().map_err(|e| {
-            FlashError::database("database_operation", "files_table", e.to_string())
-        })?;
 
         Ok(Self {
             db,

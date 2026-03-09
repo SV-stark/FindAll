@@ -21,10 +21,13 @@ pub struct SearchResult {
     pub file_path: String,
     pub title: Option<String>,
     pub score: f32,
+    pub modified: Option<u64>,
+    pub size: Option<u64>,
+    pub extension: Option<String>,
     /// Terms that matched for highlighting
     pub matched_terms: Vec<String>,
-    /// Context snippet with highlighting
-    pub snippet: Option<String>,
+    /// Context snippets with highlighting
+    pub snippets: Vec<String>,
 }
 
 /// Statistics about the search index
@@ -100,8 +103,8 @@ pub struct IndexSearcher {
     reader: IndexReader,
     query_parser: QueryParser,
     // schema: Schema,
-    path_field: Field,
-    title_field: Field,
+    // path_field: Field,
+    // title_field: Field,
     size_field: Field,
     content_field: Field,
     extension_field: Field,
@@ -125,12 +128,6 @@ impl IndexSearcher {
         reader.reload().ok();
 
         // Get field references once to avoid repeated lookups
-        let path_field = schema
-            .get_field("file_path")
-            .map_err(|_| FlashError::index_field("file_path", "Field not found in schema"))?;
-        let title_field = schema
-            .get_field("title")
-            .map_err(|_| FlashError::index_field("title", "Field not found in schema"))?;
         let size_field = schema
             .get_field("size")
             .map_err(|_| FlashError::index_field("size", "Field not found in schema"))?;
@@ -152,8 +149,6 @@ impl IndexSearcher {
         Ok(Self {
             reader,
             query_parser,
-            path_field,
-            title_field,
             size_field,
             content_field,
             extension_field,
@@ -283,39 +278,67 @@ impl IndexSearcher {
         let snippet_generator =
             SnippetGenerator::create(&searcher, &*final_query, self.content_field)?;
 
+        let schema = searcher.schema();
+
         for (score, doc_address) in top_docs {
             let retrieved_doc: TantivyDocument = searcher.doc(doc_address).map_err(|e| {
                 FlashError::search(query, format!("Failed to retrieve document: {}", e))
             })?;
 
             let file_path = retrieved_doc
-                .get_first(self.path_field)
+                .get_first(schema.get_field("file_path").unwrap())
                 .and_then(|f| f.as_str())
                 .map(|s: &str| s.to_string())
                 .unwrap_or_default();
 
             let title = retrieved_doc
-                .get_first(self.title_field)
+                .get_first(schema.get_field("title").unwrap())
                 .and_then(|f| f.as_str())
                 .map(|s: &str| s.to_string());
 
-            // Generate snippet using the pre-created generator
+            let extension = retrieved_doc
+                .get_first(self.extension_field)
+                .and_then(|f| f.as_str())
+                .map(|s: &str| s.to_string());
+
+            // Get fast fields for size and modified
+            let size = searcher
+                .segment_reader(doc_address.segment_ord)
+                .fast_fields()
+                .u64("size")
+                .ok()
+                .map(|f| f.values.get_val(doc_address.doc_id));
+
+            let modified = searcher
+                .segment_reader(doc_address.segment_ord)
+                .fast_fields()
+                .date("modified")
+                .ok()
+                .map(|f| {
+                    let date = f.values.get_val(doc_address.doc_id);
+                    date.into_timestamp_secs() as u64
+                });
+
+            // Generate snippets
             let snippet = snippet_generator.snippet_from_doc(&retrieved_doc);
-            // Get snippet as HTML then strip tags for plain text display
-            let snippet_html = snippet.to_html();
-            let snippet_text = snippet_html
+            let snippet_text = snippet.to_html()
                 .replace("<b>", "")
                 .replace("</b>", "")
                 .replace("&lt;", "<")
                 .replace("&gt;", ">")
                 .replace("&amp;", "&");
+            
+            let snippets = vec![snippet_text];
 
             results.push(SearchResult {
                 file_path,
                 title,
                 score,
+                modified,
+                size,
+                extension,
                 matched_terms: highlight_terms.clone(),
-                snippet: Some(snippet_text),
+                snippets,
             });
 
             if results.len() >= limit {
@@ -473,8 +496,11 @@ mod tests {
             file_path: "path".to_string(),
             title: None,
             score: 1.0,
+            modified: None,
+            size: None,
+            extension: None,
             matched_terms: vec!["test".to_string()],
-            snippet: Some("snippet".to_string()),
+            snippets: vec!["snippet".to_string()],
         }];
         cache.insert(key.clone(), results.clone());
         let cached = cache.get(&key);

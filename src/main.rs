@@ -69,7 +69,7 @@ fn spawn_update_checker() {
         // Placeholder repo config for self_update
         let result = self_update::backends::github::Update::configure()
             .repo_owner("SV-stark")
-            .repo_name("FindAll")
+            .repo_name("findall")
             .bin_name("flash-search")
             .show_download_progress(true)
             .current_version(env!("CARGO_PKG_VERSION"))
