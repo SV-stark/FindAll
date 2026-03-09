@@ -32,8 +32,9 @@
 - **⚡ Blazing Fast**: Sub-50ms search results across millions of documents
 - **📂 Filename Search**: Instant filename-only search mode for ultra-fast navigation
 - **💾 Minimal Footprint**: <30MB RAM usage at idle (vs 200MB+ for Electron apps)
-- **📄 Universal Format Support**: PDF, DOCX, XLSX, EPUB, EML, MSG, ZIP, Markdown, Code files, ODT, ODP, ODS
+- **📄 Universal Format Support**: Native support for **75+ formats** (PDF, Office, Images, Archives, Ebooks, etc.)
 - **🔍 Full-Text Search**: BM25 scoring, boolean queries, exact phrase matching
+- **📸 Integrated OCR**: Search text within images and scanned PDFs via Kreuzberg
 - **📊 Advanced Filters**: Filter by size (`size:>1MB`), extension (`ext:rs`), or path (`path:src`)
 - **🔄 Live Indexing**: Automatic file watching and incremental updates
 - **🎯 Smart Filtering**: .gitignore support, custom exclude patterns
@@ -129,6 +130,7 @@ cargo run
 | **Language** | Rust | Zero-overhead, memory-safe core |
 | **GUI** | Iced | High-performance, cross-platform UI framework (<30MB RAM) |
 | **Search Engine** | Tantivy | Full-text indexing with BM25 scoring |
+| **Document Intelligence** | [Kreuzberg](https://github.com/kreuzberg-dev/kreuzberg) | Universal text extraction (75+ formats) + OCR |
 | **Metadata DB** | redb | Pure Rust key-value storage |
 | **Concurrency** | Rayon + Tokio | Parallel processing + async I/O |
 
@@ -138,16 +140,15 @@ cargo run
 
 <div align="center">
 
-| Format | Parser | Status |
-|--------|--------|--------|
-| PDF | `pdf-extract` / `lopdf` | ✅ Supported |
-| DOCX | `zip` + `quick-xml` | ✅ Supported |
-| XLSX, XLS, XLSB | `calamine` | ✅ Supported |
-| EPUB, EML, MSG | Native + `zip` | ✅ Supported |
-| ZIP, 7z, RAR | `zip` / `sevenz` | ✅ Supported (ZIP) |
-| TXT, MD, Code | Native Rust | ✅ Supported |
-| ODT, ODP, ODS | `litchi` | ✅ Supported |
-| Images (OCR) | `ocrs` / Tesseract | 🚧 Planned |
+| Format Category | Examples | Status |
+|-----------------|----------|--------|
+| **Documents** | PDF, DOCX, XLSX, PPTX, ODT, RTF | ✅ Supported |
+| **Images (OCR)** | JPEG, PNG, TIFF, HEIC, Scanned PDF | ✅ Supported |
+| **Archives** | ZIP, 7z, RAR, TAR | ✅ Supported |
+| **Email** | EML, MSG, Outlook PST | ✅ Supported |
+| **Ebooks** | EPUB, MOBI, AZW3 | ✅ Supported |
+| **Code & Text** | 100+ programing languages, MD, JSON, XML | ✅ Supported |
+| **Structured Data** | CSV, TSV, Parquet | ✅ Supported |
 
 </div>
 
@@ -180,7 +181,9 @@ Benchmarks on AMD Ryzen 7 5800X with NVMe SSD:
 |---------|-------------|---------|----------------|---------|
 | Startup Time | Instant | ~2s | System | ~3s |
 | RAM Usage | 25MB | 80MB | 150MB+ | 120MB |
-| PDF Search | ✅ | ✅ | ⚠️ | ✅ |
+| PDF Search | ✅ (Bundled) | ✅ | ⚠️ | ✅ |
+| OCR Support | ✅ (Built-in) | ✅ | ❌ | ⚠️ |
+| 75+ Formats | ✅ | ✅ | ❌ | ⚠️ |
 | Live Updates | ✅ | ✅ | ✅ | ❌ |
 | Cross-Platform | ✅ | ⚠️ | ❌ | ✅ |
 
@@ -212,10 +215,10 @@ Benchmarks on AMD Ryzen 7 5800X with NVMe SSD:
 <h3 align="center">Phase 3: Advanced Features (In Progress 🚧)</h3>
 <div align="center">
 
+- [x] Universal Format Support (75+ formats via Kreuzberg)
+- [x] Integrated OCR for images and scanned PDFs
 - [x] Search history and favorites (Pinned files)
 - [ ] Natural language queries
-- [ ] Plugin system for custom parsers
-- [ ] OCR support for images and scanned PDFs
 - [ ] Cloud sync for index
 
 </div>

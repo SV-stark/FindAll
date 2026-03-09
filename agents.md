@@ -20,7 +20,7 @@
 ├─────────────────────────────────────────────────────────────┤
 │  Core Engine                                                │
 │  ├── indexer/       - Tantivy search engine wrapper         │
-│  ├── parsers/       - File format parsers                   │
+│  ├── parsers/       - Kreuzberg unified document intell.      │
 │  ├── scanner/       - File system crawler                   │
 │  └── metadata/      - redb database operations              │
 └─────────────────────────────────────────────────────────────┘
@@ -41,9 +41,8 @@ flash-search/
 │   │   ├── search.rs        # Search screen UI
 │   │   └── settings.rs      # Settings screen UI
 │   ├── parsers/
-│   │   ├── mod.rs           # Parser dispatch
-│   │   ├── docx.rs          # DOCX parser
-│   │   └── ...              # Other parsers
+│   │   ├── mod.rs           # Unified parser (via Kreuzberg)
+│   │   └── memory_map.rs    # Mmap utilities
 │   ├── indexer/
 │   │   ├── mod.rs           # Indexer module
 │   │   ├── schema.rs        # Tantivy schema
@@ -121,55 +120,18 @@ pub async fn index_directory(path: PathBuf) -> Result<()> {
 }
 ```
 
-### 4. Parser Implementation
-
-#### DOCX Parser (Critical Performance Path)
+### 4. Parser Implementation (Unified via Kreuzberg)
 
 ```rust
-use memmap2::Mmap;
-use quick_xml::events::Event;
-use quick_xml::Reader;
-use zip::ZipArchive;
+pub fn parse_file(path: &Path) -> Result<ParsedDocument> {
+    // Kreuzberg handles 75+ formats automatically
+    let result = kreuzberg::extract_file_sync(path)
+        .map_err(|e| FlashError::parse(path, format!("Extraction failed: {}", e)))?;
 
-pub fn parse_docx(path: &Path) -> Result<ParsedDocument> {
-    // Memory map the file
-    let file = std::fs::File::open(path)?;
-    let mmap = unsafe { Mmap::map(&file)? };
-    
-    // Stream from memory
-    let cursor = std::io::Cursor::new(&mmap[..]);
-    let mut archive = ZipArchive::new(cursor)?;
-    
-    // Extract document.xml
-    let mut doc_xml = archive.by_name("word/document.xml")?;
-    let mut xml_content = String::new();
-    doc_xml.read_to_string(&mut xml_content)?;
-    
-    // Stream parse XML (NO DOM!)
-    let mut reader = Reader::from_str(&xml_content);
-    let mut buf = Vec::new();
-    let mut text = String::new();
-    
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) if e.name().as_ref() == b"w:t" => {
-                // Extract text content
-                if let Ok(txt) = reader.read_text(e.name()) {
-                    text.push_str(&txt);
-                    text.push(' ');
-                }
-            }
-            Ok(Event::Eof) => break,
-            Err(e) => return Err(e.into()),
-            _ => (),
-        }
-        buf.clear();
-    }
-    
     Ok(ParsedDocument {
         path: path.to_string_lossy().to_string(),
-        content: text,
-        title: extract_title(&mut archive)?,
+        content: result.content,
+        title: result.metadata.title,
     })
 }
 ```
