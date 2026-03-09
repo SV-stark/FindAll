@@ -386,9 +386,9 @@ impl Scanner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::settings::AppSettings;
     use crate::indexer::IndexManager;
     use crate::metadata::MetadataDb;
+    use crate::settings::AppSettings;
     use std::sync::Arc;
     use tempfile::tempdir;
 
@@ -397,19 +397,13 @@ mod tests {
         let dir = tempdir().unwrap();
         let index_path = dir.path().join("index");
         let db_path = dir.path().join("metadata.redb");
-        
+
         let settings = AppSettings::default();
         let indexer = Arc::new(IndexManager::open(&index_path, 100).unwrap());
         let metadata_db = Arc::new(MetadataDb::open(&db_path).unwrap());
-        
-        let scanner = Scanner::new(
-            indexer,
-            metadata_db,
-            None,
-            None,
-            settings,
-        );
-        
+
+        let scanner = Scanner::new(indexer, metadata_db, None, None, settings);
+
         assert!(scanner.filename_index.is_none());
     }
 
@@ -430,4 +424,3 @@ mod tests {
         assert!(json.contains("Content"));
     }
 }
-

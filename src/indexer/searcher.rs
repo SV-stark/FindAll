@@ -321,13 +321,14 @@ impl IndexSearcher {
 
             // Generate snippets
             let snippet = snippet_generator.snippet_from_doc(&retrieved_doc);
-            let snippet_text = snippet.to_html()
+            let snippet_text = snippet
+                .to_html()
                 .replace("<b>", "")
                 .replace("</b>", "")
                 .replace("&lt;", "<")
                 .replace("&gt;", ">")
                 .replace("&amp;", "&");
-            
+
             let snippets = vec![snippet_text];
 
             results.push(SearchResult {
@@ -474,7 +475,7 @@ mod tests {
             extensions: None,
         };
         assert_eq!(key1, key2);
-        
+
         let key3 = CacheKey {
             query: "diff".to_string(),
             ..key1.clone()
@@ -523,4 +524,3 @@ mod tests {
         assert!(cache.get(&key).is_none());
     }
 }
-

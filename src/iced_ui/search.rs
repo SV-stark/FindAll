@@ -1,7 +1,5 @@
 use super::{theme, App, Message, SearchMode, Tab};
-use iced::widget::{
-    button, column, container, row, scrollable, svg, text, TextInput, Space,
-};
+use iced::widget::{button, column, container, row, scrollable, svg, text, Space, TextInput};
 use iced::{font, Alignment, Element, Font, Length, Padding};
 
 // --- SVG Icons (Simplified for Iced) ---
@@ -33,7 +31,9 @@ pub fn search_view(app: &App) -> Element<'_, Message> {
 fn top_navigation(_app: &App) -> Element<'_, Message> {
     let logo = row![
         text("Flash Search").size(16),
-        text(" - Anytxt Inspired").size(12).style(theme::dim_text_style()),
+        text(" - Anytxt Inspired")
+            .size(12)
+            .style(theme::dim_text_style()),
     ]
     .spacing(8)
     .align_y(Alignment::Center);
@@ -58,13 +58,14 @@ fn top_navigation(_app: &App) -> Element<'_, Message> {
     .spacing(16);
 
     container(
-        row![
-            logo,
-            Space::new().width(Length::Fill),
-            menu_items,
-        ]
-        .padding(Padding { top: 8.0, bottom: 8.0, left: 16.0, right: 16.0 })
-        .align_y(Alignment::Center)
+        row![logo, Space::new().width(Length::Fill), menu_items,]
+            .padding(Padding {
+                top: 8.0,
+                bottom: 8.0,
+                left: 16.0,
+                right: 16.0,
+            })
+            .align_y(Alignment::Center),
     )
     .style(theme::top_bar_container)
     .width(Length::Fill)
@@ -79,16 +80,28 @@ fn search_input_bar(app: &App) -> Element<'_, Message> {
         .style(theme::search_input())
         .width(Length::Fill);
 
-    let mode_toggle = button(text(if app.search_mode == SearchMode::FullText { "Full Text" } else { "Filename" }).size(12))
-        .on_press(Message::ToggleSearchMode)
-        .style(theme::secondary_button())
-        .padding(Padding::new(8.0));
+    let mode_toggle = button(
+        text(if app.search_mode == SearchMode::FullText {
+            "Full Text"
+        } else {
+            "Filename"
+        })
+        .size(12),
+    )
+    .on_press(Message::ToggleSearchMode)
+    .style(theme::secondary_button())
+    .padding(Padding::new(8.0));
 
     container(
         row![input, mode_toggle]
             .spacing(8)
-            .padding(Padding { top: 8.0, bottom: 8.0, left: 16.0, right: 16.0 })
-            .align_y(Alignment::Center)
+            .padding(Padding {
+                top: 8.0,
+                bottom: 8.0,
+                left: 16.0,
+                right: 16.0,
+            })
+            .align_y(Alignment::Center),
     )
     .style(theme::top_bar_container)
     .width(Length::Fill)
@@ -96,13 +109,10 @@ fn search_input_bar(app: &App) -> Element<'_, Message> {
 }
 
 fn main_layout(app: &App) -> Element<'_, Message> {
-    row![
-        left_sidebar(app),
-        right_panel(app),
-    ]
-    .width(Length::Fill)
-    .height(Length::Fill)
-    .into()
+    row![left_sidebar(app), right_panel(app),]
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
 }
 
 fn left_sidebar(app: &App) -> Element<'_, Message> {
@@ -130,44 +140,73 @@ fn left_sidebar(app: &App) -> Element<'_, Message> {
             text("Type").width(Length::FillPortion(1)).size(12),
             text("Size").width(Length::FillPortion(1)).size(12),
         ]
-        .padding(Padding::new(8.0))
+        .padding(Padding::new(8.0)),
     )
     .style(theme::table_header_container)
     .width(Length::Fill);
 
-    let results = scrollable(
-        column(app.results.iter().enumerate().map(|(i, res)| {
-            let is_selected = app.selected_index == Some(i);
-            button(
-                container(
-                    row![
-                        row![load_icon(FILE_ICON_SVG), text(&res.title).size(13)].spacing(8).width(Length::FillPortion(2)),
-                        text(res.modified.map(crate::iced_ui::format_date).unwrap_or_else(|| "Unknown".to_string())).size(12).style(theme::muted_text_style()).width(Length::FillPortion(1)),
-                        text(res.extension.as_deref().unwrap_or("File")).size(12).style(theme::muted_text_style()).width(Length::FillPortion(1)),
-                        text(res.size.map(crate::iced_ui::format_size).unwrap_or_else(|| "Unknown".to_string())).size(12).style(theme::muted_text_style()).width(Length::FillPortion(1)),
-                    ]
-                    .align_y(Alignment::Center)
+    let results = scrollable(column(
+        app.results
+            .iter()
+            .enumerate()
+            .map(|(i, res)| {
+                let is_selected = app.selected_index == Some(i);
+                button(
+                    container(
+                        row![
+                            row![load_icon(FILE_ICON_SVG), text(&res.title).size(13)]
+                                .spacing(8)
+                                .width(Length::FillPortion(2)),
+                            text(
+                                res.modified
+                                    .map(crate::iced_ui::format_date)
+                                    .unwrap_or_else(|| "Unknown".to_string())
+                            )
+                            .size(12)
+                            .style(theme::muted_text_style())
+                            .width(Length::FillPortion(1)),
+                            text(res.extension.as_deref().unwrap_or("File"))
+                                .size(12)
+                                .style(theme::muted_text_style())
+                                .width(Length::FillPortion(1)),
+                            text(
+                                res.size
+                                    .map(crate::iced_ui::format_size)
+                                    .unwrap_or_else(|| "Unknown".to_string())
+                            )
+                            .size(12)
+                            .style(theme::muted_text_style())
+                            .width(Length::FillPortion(1)),
+                        ]
+                        .align_y(Alignment::Center),
+                    )
+                    .padding(Padding {
+                        top: 4.0,
+                        bottom: 4.0,
+                        left: 8.0,
+                        right: 8.0,
+                    })
+                    .style(if is_selected {
+                        theme::result_card_selected
+                    } else {
+                        theme::result_card_normal
+                    })
+                    .width(Length::Fill),
                 )
-                .padding(Padding { top: 4.0, bottom: 4.0, left: 8.0, right: 8.0 })
-                .style(if is_selected { theme::result_card_selected } else { theme::result_card_normal })
+                .on_press(Message::ResultSelected(i))
+                .style(theme::ghost_button())
                 .width(Length::Fill)
-            )
-            .on_press(Message::ResultSelected(i))
-            .style(theme::ghost_button())
-            .width(Length::Fill)
-            .into()
-        }).collect::<Vec<Element<Message>>>())
-    )
+                .into()
+            })
+            .collect::<Vec<Element<Message>>>(),
+    ))
     .height(Length::Fill);
 
-    container(
-        column![nav_tree, table_header, results]
-            .width(Length::Fill)
-    )
-    .style(theme::sidebar_container)
-    .width(Length::FillPortion(2))
-    .height(Length::Fill)
-    .into()
+    container(column![nav_tree, table_header, results].width(Length::Fill))
+        .style(theme::sidebar_container)
+        .width(Length::FillPortion(2))
+        .height(Length::Fill)
+        .into()
 }
 
 fn right_panel(app: &App) -> Element<'_, Message> {
@@ -178,7 +217,7 @@ fn right_panel(app: &App) -> Element<'_, Message> {
             load_icon(OCR_ICON_SVG),
         ]
         .padding(Padding::new(8.0))
-        .align_y(Alignment::Center)
+        .align_y(Alignment::Center),
     )
     .style(theme::table_header_container)
     .width(Length::Fill);
@@ -189,12 +228,10 @@ fn right_panel(app: &App) -> Element<'_, Message> {
             .center_y(Length::Fill)
             .into()
     } else if let Some(content) = &app.preview_content {
-        container(
-            scrollable(
-                container(text(content).size(14))
-                    .padding(Padding::new(20.0))
-            )
-        ).into()
+        container(scrollable(
+            container(text(content).size(14)).padding(Padding::new(20.0)),
+        ))
+        .into()
     } else {
         container(text("Select a file to preview").style(theme::dim_text_style()))
             .center_x(Length::Fill)
@@ -202,13 +239,11 @@ fn right_panel(app: &App) -> Element<'_, Message> {
             .into()
     };
 
-    container(
-        column![
-            preview_tabs,
-            container(preview_content).height(Length::Fill),
-            hits_panel(app),
-        ]
-    )
+    container(column![
+        preview_tabs,
+        container(preview_content).height(Length::Fill),
+        hits_panel(app),
+    ])
     .width(Length::FillPortion(3))
     .height(Length::Fill)
     .into()
@@ -227,9 +262,15 @@ fn hits_panel(app: &App) -> Element<'_, Message> {
                 .into()
         } else {
             scrollable(
-                column(res.snippets.iter().enumerate().map(|(i, s)| hit_row(i + 1, s)).collect::<Vec<_>>())
-                    .spacing(4)
-                    .padding(8),
+                column(
+                    res.snippets
+                        .iter()
+                        .enumerate()
+                        .map(|(i, s)| hit_row(i + 1, s))
+                        .collect::<Vec<_>>(),
+                )
+                .spacing(4)
+                .padding(8),
             )
             .height(Length::Fill)
             .into()
@@ -243,24 +284,28 @@ fn hits_panel(app: &App) -> Element<'_, Message> {
             .into()
     };
 
-    container(
-        column![
-            container(
-                row![
-                    text("Search Hits").size(14).font(Font { weight: font::Weight::Bold, ..Font::default() }),
-                    Space::new().width(Length::Fill),
-                    text(format!("{} total", result.map(|r| r.snippets.len()).unwrap_or(0)))
-                        .size(12)
-                        .style(theme::muted_text_style()),
-                ]
-                .align_y(Alignment::Center)
-                .padding(Padding::new(4.0))
-            )
-            .style(theme::table_header_container)
-            .width(Length::Fill),
-            hits_content,
-        ]
-    )
+    container(column![
+        container(
+            row![
+                text("Search Hits").size(14).font(Font {
+                    weight: font::Weight::Bold,
+                    ..Font::default()
+                }),
+                Space::new().width(Length::Fill),
+                text(format!(
+                    "{} total",
+                    result.map(|r| r.snippets.len()).unwrap_or(0)
+                ))
+                .size(12)
+                .style(theme::muted_text_style()),
+            ]
+            .align_y(Alignment::Center)
+            .padding(Padding::new(4.0))
+        )
+        .style(theme::table_header_container)
+        .width(Length::Fill),
+        hits_content,
+    ])
     .style(theme::sidebar_container)
     .width(Length::Fill)
     .height(Length::Fixed(200.0))
@@ -269,7 +314,9 @@ fn hits_panel(app: &App) -> Element<'_, Message> {
 
 fn hit_row(_idx: usize, content: &str) -> Element<'_, Message> {
     row![
-        text(_idx.to_string()).size(11).style(theme::dim_text_style()),
+        text(_idx.to_string())
+            .size(11)
+            .style(theme::dim_text_style()),
         container(text(content).size(12)).padding(Padding::new(4.0)),
     ]
     .spacing(12)
@@ -290,7 +337,12 @@ fn status_bar(app: &App) -> Element<'_, Message> {
                 Element::from(Space::new().width(Length::Fixed(0.0)))
             },
         ]
-        .padding(Padding { top: 4.0, bottom: 4.0, left: 16.0, right: 16.0 })
+        .padding(Padding {
+            top: 4.0,
+            bottom: 4.0,
+            left: 16.0,
+            right: 16.0,
+        }),
     )
     .style(theme::top_bar_container)
     .width(Length::Fill)

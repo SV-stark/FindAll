@@ -6,10 +6,10 @@ use iced::{
 
 // --- Color Palette (Inspired by Zinc/Amber Premium Dark) ---
 pub const SURFACE_DARK: Color = Color::from_rgb(0.06, 0.06, 0.07); // #0f1115
-pub const PANEL_DARK: Color = Color::from_rgb(0.1, 0.11, 0.13);    // #1a1c21
-pub const BORDER_DARK: Color = Color::from_rgb(0.16, 0.17, 0.2);   // #292c33
-pub const ACCENT_BLUE: Color = Color::from_rgb(0.23, 0.51, 0.96);  // #3b82f6
-pub const HIT_AMBER: Color = Color::from_rgb(0.96, 0.62, 0.04);    // #f59e0b
+pub const PANEL_DARK: Color = Color::from_rgb(0.1, 0.11, 0.13); // #1a1c21
+pub const BORDER_DARK: Color = Color::from_rgb(0.16, 0.17, 0.2); // #292c33
+pub const ACCENT_BLUE: Color = Color::from_rgb(0.23, 0.51, 0.96); // #3b82f6
+pub const HIT_AMBER: Color = Color::from_rgb(0.96, 0.62, 0.04); // #f59e0b
 
 pub const TEXT_BRIGHT: Color = Color::from_rgb(0.98, 0.98, 0.98);
 pub const TEXT_MUTED: Color = Color::from_rgb(0.63, 0.64, 0.66);
@@ -245,19 +245,17 @@ pub fn icon_button() -> impl Fn(&Theme, button::Status) -> button::Style {
 // --- Input Styles ---
 
 pub fn search_input() -> impl Fn(&Theme, text_input::Status) -> text_input::Style {
-    move |_theme: &Theme, _status: text_input::Status| {
-        text_input::Style {
-            background: Background::Color(SURFACE_DARK),
-            border: Border {
-                color: BORDER_DARK,
-                width: 1.0,
-                radius: Radius::from(4.0),
-            },
-            icon: TEXT_DIM,
-            placeholder: TEXT_DIM,
-            value: TEXT_BRIGHT,
-            selection: accent_color_light(),
-        }
+    move |_theme: &Theme, _status: text_input::Status| text_input::Style {
+        background: Background::Color(SURFACE_DARK),
+        border: Border {
+            color: BORDER_DARK,
+            width: 1.0,
+            radius: Radius::from(4.0),
+        },
+        icon: TEXT_DIM,
+        placeholder: TEXT_DIM,
+        value: TEXT_BRIGHT,
+        selection: accent_color_light(),
     }
 }
 

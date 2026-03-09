@@ -87,18 +87,25 @@ impl MetadataDb {
         };
 
         if let Err(e) = init_table(&db) {
-            tracing::warn!("Failed to initialize database tables: {}. Wiping and recreating...", e);
+            tracing::warn!(
+                "Failed to initialize database tables: {}. Wiping and recreating...",
+                e
+            );
             drop(db); // Ensure file is not locked
             let _ = std::fs::remove_file(db_path);
-            
+
             let db = Arc::new(Database::create(db_path).map_err(|e| {
                 FlashError::database("database_operation", "files_table", e.to_string())
             })?);
-            
+
             init_table(&db).map_err(|e| {
-                FlashError::database("database_operation", "files_table", format!("Retry failed: {}", e))
+                FlashError::database(
+                    "database_operation",
+                    "files_table",
+                    format!("Retry failed: {}", e),
+                )
             })?;
-            
+
             return Ok(Self {
                 db,
                 metrics: Arc::new(ConnectionMetrics::default()),

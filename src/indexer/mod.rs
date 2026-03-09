@@ -80,20 +80,28 @@ impl IndexManager {
                 // Check if it's a schema mismatch error
                 let err_str = e.to_string();
                 if err_str.contains("Schema error") || err_str.contains("Inconsistent") {
-                    warn!("Tantivy detected schema mismatch: {}. Forcing index rebuild...", err_str);
-                    
+                    warn!(
+                        "Tantivy detected schema mismatch: {}. Forcing index rebuild...",
+                        err_str
+                    );
+
                     // Close the directory/files if needed? MmapDirectory handles it.
                     // Wipe and start over
                     std::fs::remove_dir_all(index_path).map_err(FlashError::Io)?;
                     std::fs::create_dir_all(index_path).map_err(FlashError::Io)?;
                     write_schema_version(index_path, SCHEMA_VERSION)?;
-                    
-                    let new_directory = MmapDirectory::open(index_path)
-                        .map_err(|e| FlashError::index(format!("Failed to re-open index directory: {}", e)))?;
-                    Index::open_or_create(new_directory, schema)
-                        .map_err(|e| FlashError::index(format!("Failed to create new index after reset: {}", e)))?
+
+                    let new_directory = MmapDirectory::open(index_path).map_err(|e| {
+                        FlashError::index(format!("Failed to re-open index directory: {}", e))
+                    })?;
+                    Index::open_or_create(new_directory, schema).map_err(|e| {
+                        FlashError::index(format!("Failed to create new index after reset: {}", e))
+                    })?
                 } else {
-                    return Err(FlashError::index(format!("Failed to open or create index: {}", e)));
+                    return Err(FlashError::index(format!(
+                        "Failed to open or create index: {}",
+                        e
+                    )));
                 }
             }
         };

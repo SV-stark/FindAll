@@ -1,5 +1,4 @@
 use crate::error::{FlashError, Result};
-use phf::phf_map;
 use std::ffi::OsStr;
 use std::path::Path;
 
@@ -31,7 +30,7 @@ fn extension_matches(ext: &OsStr, target: &str) -> bool {
 
 /// Detect file type and route to appropriate parser using Kreuzberg
 pub fn parse_file(path: &Path) -> Result<ParsedDocument> {
-    let result = kreuzberg::extract_file_sync(path)
+    let result = kreuzberg::extract_file_sync(path, None, &Default::default())
         .map_err(|e| FlashError::parse(path, format!("Extraction failed: {}", e)))?;
 
     Ok(ParsedDocument {

@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 pub use crate::indexer::searcher::{IndexStatistics, SearchResult};
+use serde::{Deserialize, Serialize};
 
 /// Recent file from metadata DB
 #[derive(Serialize, Deserialize)]

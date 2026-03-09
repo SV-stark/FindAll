@@ -81,9 +81,8 @@ pub fn format_size(bytes: u64) -> String {
 
 pub fn format_date(timestamp: u64) -> String {
     use chrono::{DateTime, Local};
-    let native = DateTime::from_timestamp(timestamp as i64, 0).unwrap_or_else(|| {
-        DateTime::from_timestamp(0, 0).unwrap()
-    });
+    let native = DateTime::from_timestamp(timestamp as i64, 0)
+        .unwrap_or_else(|| DateTime::from_timestamp(0, 0).unwrap());
     let local: DateTime<Local> = DateTime::from(native);
     local.format("%Y/%m/%d").to_string()
 }
@@ -531,10 +530,10 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         Some(s) => s.clone(),
                         None => return Task::none(),
                     };
-                    
+
                     app.rebuild_progress = Some(0.0);
                     app.rebuild_status = Some("Scanning new folder...".to_string());
-                    
+
                     let exclude_patterns = app.settings.exclude_patterns.clone();
                     let rx = app.progress_rx.clone();
 
@@ -686,7 +685,10 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 Task::none()
             }
             Message::NotImplemented(feature) => {
-                app.error = Some(format!("Feature '{}' is not yet implemented in this version.", feature));
+                app.error = Some(format!(
+                    "Feature '{}' is not yet implemented in this version.",
+                    feature
+                ));
                 Task::none()
             }
         }
@@ -824,4 +826,3 @@ mod tests {
         assert_eq!(max, Some(10 * 1024 - 1));
     }
 }
-
