@@ -1,0 +1,20 @@
+{
+  "session_id": "ext_20260309_172307_d3471b9d",
+  "status": "submitted",
+  "runner": "claude",
+  "created_at": "2026-03-09T17:23:07+00:00",
+  "expires_at": "2026-03-10T17:23:07+00:00",
+  "ttl_hours": 24,
+  "token": "7e5975878d62a98289c463820eb0da92",
+  "attest": "I validated this review was completed without awareness of overall score and is unbiased.",
+  "packet_path": "D:\\FindAll\\.desloppify\\review_packets\\holistic_packet_20260309_172307.json",
+  "blind_packet_path": "D:\\FindAll\\.desloppify\\review_packet_blind.json",
+  "packet_sha256": "b149bd4b88541684dbeb7c591f6d38d23050bcc5862f582aca1cb4fe798fdc98",
+  "template_path": "D:\\FindAll\\.desloppify\\external_review_sessions\\ext_20260309_172307_d3471b9d\\review_result.template.json",
+  "launch_prompt_path": "D:\\FindAll\\.desloppify\\external_review_sessions\\ext_20260309_172307_d3471b9d\\claude_launch_prompt.md",
+  "instructions_path": "D:\\FindAll\\.desloppify\\external_review_sessions\\ext_20260309_172307_d3471b9d\\reviewer_instructions.md",
+  "expected_output_path": "D:\\FindAll\\.desloppify\\external_review_sessions\\ext_20260309_172307_d3471b9d\\review_result.json",
+  "submitted_at": "2026-03-09T17:32:32+00:00",
+  "submitted_input_file": "review_result.json",
+  "submitted_canonical_file": "D:\\FindAll\\.desloppify\\external_review_sessions\\ext_20260309_172307_d3471b9d\\canonical_import_20260309_173231.json"
+}

@@ -1,20 +1,27 @@
 {
   "version": 1,
   "created": "2026-03-05T06:28:33+00:00",
-  "last_scan": "2026-03-09T16:38:49+00:00",
-  "scan_count": 13,
-  "overall_score": 24.0,
+  "last_scan": "2026-03-09T17:32:35+00:00",
+  "scan_count": 16,
+  "overall_score": 34.9,
   "objective_score": 60.0,
-  "strict_score": 24.0,
+  "strict_score": 34.9,
   "verified_strict_score": 60.0,
   "stats": {
-    "total": 223,
-    "auto_resolved": 62,
+    "total": 230,
+    "auto_resolved": 68,
     "false_positive": 0,
     "fixed": 0,
-    "open": 161,
+    "open": 162,
     "wontfix": 0,
     "by_tier": {
+      "1": {
+        "auto_resolved": 0,
+        "false_positive": 0,
+        "fixed": 0,
+        "open": 1,
+        "wontfix": 0
+      },
       "2": {
         "auto_resolved": 1,
         "false_positive": 0,
@@ -23,7 +30,7 @@
         "wontfix": 0
       },
       "3": {
-        "auto_resolved": 61,
+        "auto_resolved": 67,
         "false_positive": 0,
         "fixed": 0,
         "open": 154,
@@ -89,7 +96,7 @@
           "reason": "tool_not_found"
         }
       ],
-      "updated_at": "2026-03-09T16:38:49+00:00"
+      "updated_at": "2026-03-09T17:32:35+00:00"
     }
   },
   "score_confidence": {
@@ -120,13 +127,144 @@
     "dimensions": []
   },
   "subjective_integrity": {
-    "status": "pass",
+    "status": "penalized",
     "target_score": 95.0,
-    "matched_count": 0,
-    "matched_dimensions": [],
-    "reset_dimensions": []
+    "matched_count": 14,
+    "matched_dimensions": [
+      "abstraction_fitness",
+      "api_surface_coherence",
+      "contract_coherence",
+      "convention_outlier",
+      "cross_module_architecture",
+      "dependency_health",
+      "design_coherence",
+      "high_level_elegance",
+      "incomplete_migration",
+      "initialization_coupling",
+      "logic_clarity",
+      "low_level_elegance",
+      "mid_level_elegance",
+      "naming_quality"
+    ],
+    "reset_dimensions": [
+      "abstraction_fitness",
+      "api_surface_coherence",
+      "contract_coherence",
+      "convention_outlier",
+      "cross_module_architecture",
+      "dependency_health",
+      "design_coherence",
+      "high_level_elegance",
+      "incomplete_migration",
+      "initialization_coupling",
+      "logic_clarity",
+      "low_level_elegance",
+      "mid_level_elegance",
+      "naming_quality"
+    ]
   },
-  "subjective_assessments": {},
+  "subjective_assessments": {
+    "naming_quality": {
+      "score": 95.0,
+      "source": "holistic",
+      "assessed_at": "2026-03-09T17:32:31+00:00"
+    },
+    "logic_clarity": {
+      "score": 95.0,
+      "source": "holistic",
+      "assessed_at": "2026-03-09T17:32:31+00:00"
+    },
+    "type_safety": {
+      "score": 98.0,
+      "source": "holistic",
+      "assessed_at": "2026-03-09T17:32:31+00:00"
+    },
+    "contract_coherence": {
+      "score": 95.0,
+      "source": "holistic",
+      "assessed_at": "2026-03-09T17:32:31+00:00"
+    },
+    "error_consistency": {
+      "score": 98.0,
+      "source": "holistic",
+      "assessed_at": "2026-03-09T17:32:31+00:00"
+    },
+    "abstraction_fitness": {
+      "score": 95.0,
+      "source": "holistic",
+      "assessed_at": "2026-03-09T17:32:31+00:00"
+    },
+    "ai_generated_debt": {
+      "score": 80.0,
+      "source": "holistic",
+      "assessed_at": "2026-03-09T17:32:31+00:00"
+    },
+    "high_level_elegance": {
+      "score": 95.0,
+      "source": "holistic",
+      "assessed_at": "2026-03-09T17:32:31+00:00"
+    },
+    "mid_level_elegance": {
+      "score": 95.0,
+      "source": "holistic",
+      "assessed_at": "2026-03-09T17:32:31+00:00"
+    },
+    "low_level_elegance": {
+      "score": 95.0,
+      "source": "holistic",
+      "assessed_at": "2026-03-09T17:32:31+00:00"
+    },
+    "cross_module_architecture": {
+      "score": 95.0,
+      "source": "holistic",
+      "assessed_at": "2026-03-09T17:32:31+00:00"
+    },
+    "initialization_coupling": {
+      "score": 95.0,
+      "source": "holistic",
+      "assessed_at": "2026-03-09T17:32:31+00:00"
+    },
+    "convention_outlier": {
+      "score": 95.0,
+      "source": "holistic",
+      "assessed_at": "2026-03-09T17:32:31+00:00"
+    },
+    "dependency_health": {
+      "score": 95.0,
+      "source": "holistic",
+      "assessed_at": "2026-03-09T17:32:31+00:00"
+    },
+    "test_strategy": {
+      "score": 90.0,
+      "source": "holistic",
+      "assessed_at": "2026-03-09T17:32:31+00:00"
+    },
+    "api_surface_coherence": {
+      "score": 95.0,
+      "source": "holistic",
+      "assessed_at": "2026-03-09T17:32:31+00:00"
+    },
+    "authorization_consistency": {
+      "score": 100,
+      "source": "holistic",
+      "assessed_at": "2026-03-09T17:32:31+00:00"
+    },
+    "incomplete_migration": {
+      "score": 95.0,
+      "source": "holistic",
+      "assessed_at": "2026-03-09T17:32:31+00:00"
+    },
+    "package_organization": {
+      "score": 98.0,
+      "source": "holistic",
+      "assessed_at": "2026-03-09T17:32:31+00:00"
+    },
+    "design_coherence": {
+      "score": 95.0,
+      "source": "holistic",
+      "assessed_at": "2026-03-09T17:32:31+00:00"
+    }
+  },
   "lang_capabilities": {
     "rust": {
       "fixers": [
@@ -1816,9 +1954,396 @@
           "strict": 0.0
         }
       }
+    },
+    {
+      "timestamp": "2026-03-09T17:20:57+00:00",
+      "lang": "rust",
+      "strict_score": 24.0,
+      "verified_strict_score": 60.0,
+      "objective_score": 60.0,
+      "overall_score": 24.0,
+      "open": 161,
+      "diff_new": 6,
+      "diff_resolved": 6,
+      "ignored": 0,
+      "raw_issues": 161,
+      "suppressed_pct": 0.0,
+      "ignore_patterns": 0,
+      "subjective_integrity": {
+        "status": "pass",
+        "matched_count": 0,
+        "reset_count": 0,
+        "target_score": 95.0
+      },
+      "score_confidence": {
+        "status": "reduced",
+        "confidence": 0.0,
+        "detector_count": 2,
+        "dimension_count": 0
+      },
+      "dimension_scores": {
+        "Code quality": {
+          "score": 49.8,
+          "strict": 49.8
+        },
+        "Security": {
+          "score": 100.0,
+          "strict": 100.0
+        },
+        "File health": {
+          "score": 85.6,
+          "strict": 85.6
+        },
+        "Duplication": {
+          "score": 100.0,
+          "strict": 100.0
+        },
+        "Test health": {
+          "score": 0.0,
+          "strict": 0.0
+        },
+        "Naming quality": {
+          "score": 0.0,
+          "strict": 0.0
+        },
+        "Logic clarity": {
+          "score": 0.0,
+          "strict": 0.0
+        },
+        "Type safety": {
+          "score": 0.0,
+          "strict": 0.0
+        },
+        "Contracts": {
+          "score": 0.0,
+          "strict": 0.0
+        },
+        "Error consistency": {
+          "score": 0.0,
+          "strict": 0.0
+        },
+        "Abstraction fit": {
+          "score": 0.0,
+          "strict": 0.0
+        },
+        "AI generated debt": {
+          "score": 0.0,
+          "strict": 0.0
+        },
+        "High elegance": {
+          "score": 0.0,
+          "strict": 0.0
+        },
+        "Mid elegance": {
+          "score": 0.0,
+          "strict": 0.0
+        },
+        "Low elegance": {
+          "score": 0.0,
+          "strict": 0.0
+        },
+        "Cross-module arch": {
+          "score": 0.0,
+          "strict": 0.0
+        },
+        "Init coupling": {
+          "score": 0.0,
+          "strict": 0.0
+        },
+        "Convention drift": {
+          "score": 0.0,
+          "strict": 0.0
+        },
+        "Dep health": {
+          "score": 0.0,
+          "strict": 0.0
+        },
+        "Test strategy": {
+          "score": 0.0,
+          "strict": 0.0
+        },
+        "API coherence": {
+          "score": 0.0,
+          "strict": 0.0
+        },
+        "Auth consistency": {
+          "score": 0.0,
+          "strict": 0.0
+        },
+        "Stale migration": {
+          "score": 0.0,
+          "strict": 0.0
+        },
+        "Structure nav": {
+          "score": 0.0,
+          "strict": 0.0
+        },
+        "Design coherence": {
+          "score": 0.0,
+          "strict": 0.0
+        }
+      }
+    },
+    {
+      "timestamp": "2026-03-09T17:32:31+00:00",
+      "lang": "rust",
+      "strict_score": 81.2,
+      "verified_strict_score": 60.0,
+      "objective_score": 60.0,
+      "overall_score": 81.2,
+      "open": 162,
+      "diff_new": 1,
+      "diff_resolved": 0,
+      "ignored": 0,
+      "raw_issues": 1,
+      "suppressed_pct": 0.0,
+      "ignore_patterns": 0,
+      "subjective_integrity": {
+        "status": "disabled",
+        "matched_count": 0,
+        "reset_count": 0,
+        "target_score": null
+      },
+      "score_confidence": {
+        "status": "reduced",
+        "confidence": 0.0,
+        "detector_count": 2,
+        "dimension_count": 0
+      },
+      "dimension_scores": {
+        "Code quality": {
+          "score": 49.8,
+          "strict": 49.8
+        },
+        "Security": {
+          "score": 100.0,
+          "strict": 100.0
+        },
+        "File health": {
+          "score": 85.6,
+          "strict": 85.6
+        },
+        "Duplication": {
+          "score": 100.0,
+          "strict": 100.0
+        },
+        "Test health": {
+          "score": 0.0,
+          "strict": 0.0
+        },
+        "Naming quality": {
+          "score": 95.0,
+          "strict": 95.0
+        },
+        "Logic clarity": {
+          "score": 95.0,
+          "strict": 95.0
+        },
+        "Type safety": {
+          "score": 98.0,
+          "strict": 98.0
+        },
+        "Contracts": {
+          "score": 95.0,
+          "strict": 95.0
+        },
+        "Error consistency": {
+          "score": 98.0,
+          "strict": 98.0
+        },
+        "Abstraction fit": {
+          "score": 95.0,
+          "strict": 95.0
+        },
+        "AI generated debt": {
+          "score": 80.0,
+          "strict": 80.0
+        },
+        "High elegance": {
+          "score": 95.0,
+          "strict": 95.0
+        },
+        "Mid elegance": {
+          "score": 95.0,
+          "strict": 95.0
+        },
+        "Low elegance": {
+          "score": 95.0,
+          "strict": 95.0
+        },
+        "Cross-module arch": {
+          "score": 95.0,
+          "strict": 95.0
+        },
+        "Init coupling": {
+          "score": 95.0,
+          "strict": 95.0
+        },
+        "Convention drift": {
+          "score": 95.0,
+          "strict": 95.0
+        },
+        "Dep health": {
+          "score": 95.0,
+          "strict": 95.0
+        },
+        "Test strategy": {
+          "score": 90.0,
+          "strict": 90.0
+        },
+        "API coherence": {
+          "score": 95.0,
+          "strict": 95.0
+        },
+        "Auth consistency": {
+          "score": 100.0,
+          "strict": 100.0
+        },
+        "Stale migration": {
+          "score": 95.0,
+          "strict": 95.0
+        },
+        "Structure nav": {
+          "score": 98.0,
+          "strict": 98.0
+        },
+        "Design coherence": {
+          "score": 95.0,
+          "strict": 95.0
+        }
+      }
+    },
+    {
+      "timestamp": "2026-03-09T17:32:35+00:00",
+      "lang": "rust",
+      "strict_score": 34.9,
+      "verified_strict_score": 60.0,
+      "objective_score": 60.0,
+      "overall_score": 34.9,
+      "open": 162,
+      "diff_new": 0,
+      "diff_resolved": 0,
+      "ignored": 0,
+      "raw_issues": 161,
+      "suppressed_pct": 0.0,
+      "ignore_patterns": 0,
+      "subjective_integrity": {
+        "status": "penalized",
+        "matched_count": 14,
+        "reset_count": 14,
+        "target_score": 95.0
+      },
+      "score_confidence": {
+        "status": "reduced",
+        "confidence": 0.0,
+        "detector_count": 2,
+        "dimension_count": 0
+      },
+      "dimension_scores": {
+        "Code quality": {
+          "score": 49.8,
+          "strict": 49.8
+        },
+        "Security": {
+          "score": 100.0,
+          "strict": 100.0
+        },
+        "File health": {
+          "score": 85.6,
+          "strict": 85.6
+        },
+        "Duplication": {
+          "score": 100.0,
+          "strict": 100.0
+        },
+        "Test health": {
+          "score": 0.0,
+          "strict": 0.0
+        },
+        "Naming quality": {
+          "score": 0.0,
+          "strict": 0.0
+        },
+        "Logic clarity": {
+          "score": 0.0,
+          "strict": 0.0
+        },
+        "Type safety": {
+          "score": 98.0,
+          "strict": 98.0
+        },
+        "Contracts": {
+          "score": 0.0,
+          "strict": 0.0
+        },
+        "Error consistency": {
+          "score": 98.0,
+          "strict": 98.0
+        },
+        "Abstraction fit": {
+          "score": 0.0,
+          "strict": 0.0
+        },
+        "AI generated debt": {
+          "score": 80.0,
+          "strict": 80.0
+        },
+        "High elegance": {
+          "score": 0.0,
+          "strict": 0.0
+        },
+        "Mid elegance": {
+          "score": 0.0,
+          "strict": 0.0
+        },
+        "Low elegance": {
+          "score": 0.0,
+          "strict": 0.0
+        },
+        "Cross-module arch": {
+          "score": 0.0,
+          "strict": 0.0
+        },
+        "Init coupling": {
+          "score": 0.0,
+          "strict": 0.0
+        },
+        "Convention drift": {
+          "score": 0.0,
+          "strict": 0.0
+        },
+        "Dep health": {
+          "score": 0.0,
+          "strict": 0.0
+        },
+        "Test strategy": {
+          "score": 90.0,
+          "strict": 90.0
+        },
+        "API coherence": {
+          "score": 0.0,
+          "strict": 0.0
+        },
+        "Auth consistency": {
+          "score": 100.0,
+          "strict": 100.0
+        },
+        "Stale migration": {
+          "score": 0.0,
+          "strict": 0.0
+        },
+        "Structure nav": {
+          "score": 98.0,
+          "strict": 98.0
+        },
+        "Design coherence": {
+          "score": 0.0,
+          "strict": 0.0
+        }
+      }
     }
   ],
-  "tool_hash": "8abd96c47193",
+  "tool_hash": "9cd5c72f32c7",
   "scan_path": ".",
   "scan_completeness": {
     "rust": "full"
@@ -1842,7 +2367,7 @@
   "codebase_metrics": {
     "rust": {
       "total_files": 35,
-      "total_loc": 6103,
+      "total_loc": 6116,
       "total_directories": 10
     }
   },
@@ -1939,9 +2464,9 @@
       "detectors": {
         "test_coverage": {
           "potential": 391,
-          "pass_rate": 0.0003839629587362877,
+          "pass_rate": 8.230283309677429e-05,
           "failing": 31,
-          "weighted_failures": 390.8498704831341
+          "weighted_failures": 390.96781959225916
         }
       }
     },
@@ -1959,7 +2484,7 @@
           "failing": 0,
           "weighted_failures": 10.0,
           "assessment_score": 0.0,
-          "placeholder": true,
+          "placeholder": false,
           "dimension_key": "naming_quality",
           "configured_weight": 2.0,
           "components": []
@@ -1980,7 +2505,7 @@
           "failing": 0,
           "weighted_failures": 10.0,
           "assessment_score": 0.0,
-          "placeholder": true,
+          "placeholder": false,
           "dimension_key": "logic_clarity",
           "configured_weight": 6.0,
           "components": []
@@ -1988,20 +2513,20 @@
       }
     },
     "Type safety": {
-      "score": 0.0,
-      "strict": 0.0,
-      "verified_strict_score": 0.0,
+      "score": 98.0,
+      "strict": 98.0,
+      "verified_strict_score": 98.0,
       "checks": 10,
       "failing": 0,
       "tier": 4,
       "detectors": {
         "subjective_assessment": {
           "potential": 10,
-          "pass_rate": 0.0,
+          "pass_rate": 0.98,
           "failing": 0,
-          "weighted_failures": 10.0,
-          "assessment_score": 0.0,
-          "placeholder": true,
+          "weighted_failures": 0.2,
+          "assessment_score": 98.0,
+          "placeholder": false,
           "dimension_key": "type_safety",
           "configured_weight": 12.0,
           "components": []
@@ -2022,7 +2547,7 @@
           "failing": 0,
           "weighted_failures": 10.0,
           "assessment_score": 0.0,
-          "placeholder": true,
+          "placeholder": false,
           "dimension_key": "contract_coherence",
           "configured_weight": 12.0,
           "components": []
@@ -2030,20 +2555,20 @@
       }
     },
     "Error consistency": {
-      "score": 0.0,
-      "strict": 0.0,
-      "verified_strict_score": 0.0,
+      "score": 98.0,
+      "strict": 98.0,
+      "verified_strict_score": 98.0,
       "checks": 10,
       "failing": 0,
       "tier": 4,
       "detectors": {
         "subjective_assessment": {
           "potential": 10,
-          "pass_rate": 0.0,
+          "pass_rate": 0.98,
           "failing": 0,
-          "weighted_failures": 10.0,
-          "assessment_score": 0.0,
-          "placeholder": true,
+          "weighted_failures": 0.2,
+          "assessment_score": 98.0,
+          "placeholder": false,
           "dimension_key": "error_consistency",
           "configured_weight": 3.0,
           "components": []
@@ -2064,7 +2589,7 @@
           "failing": 0,
           "weighted_failures": 10.0,
           "assessment_score": 0.0,
-          "placeholder": true,
+          "placeholder": false,
           "dimension_key": "abstraction_fitness",
           "configured_weight": 8.0,
           "components": []
@@ -2072,20 +2597,20 @@
       }
     },
     "AI generated debt": {
-      "score": 0.0,
-      "strict": 0.0,
-      "verified_strict_score": 0.0,
+      "score": 80.0,
+      "strict": 80.0,
+      "verified_strict_score": 80.0,
       "checks": 10,
-      "failing": 0,
+      "failing": 1,
       "tier": 4,
       "detectors": {
         "subjective_assessment": {
           "potential": 10,
-          "pass_rate": 0.0,
-          "failing": 0,
-          "weighted_failures": 10.0,
-          "assessment_score": 0.0,
-          "placeholder": true,
+          "pass_rate": 0.8,
+          "failing": 1,
+          "weighted_failures": 2.0,
+          "assessment_score": 80.0,
+          "placeholder": false,
           "dimension_key": "ai_generated_debt",
           "configured_weight": 1.0,
           "components": []
@@ -2106,7 +2631,7 @@
           "failing": 0,
           "weighted_failures": 10.0,
           "assessment_score": 0.0,
-          "placeholder": true,
+          "placeholder": false,
           "dimension_key": "high_level_elegance",
           "configured_weight": 22.0,
           "components": []
@@ -2127,7 +2652,7 @@
           "failing": 0,
           "weighted_failures": 10.0,
           "assessment_score": 0.0,
-          "placeholder": true,
+          "placeholder": false,
           "dimension_key": "mid_level_elegance",
           "configured_weight": 22.0,
           "components": []
@@ -2148,7 +2673,7 @@
           "failing": 0,
           "weighted_failures": 10.0,
           "assessment_score": 0.0,
-          "placeholder": true,
+          "placeholder": false,
           "dimension_key": "low_level_elegance",
           "configured_weight": 12.0,
           "components": []
@@ -2169,7 +2694,7 @@
           "failing": 0,
           "weighted_failures": 10.0,
           "assessment_score": 0.0,
-          "placeholder": true,
+          "placeholder": false,
           "dimension_key": "cross_module_architecture",
           "configured_weight": 1.0,
           "components": []
@@ -2190,7 +2715,7 @@
           "failing": 0,
           "weighted_failures": 10.0,
           "assessment_score": 0.0,
-          "placeholder": true,
+          "placeholder": false,
           "dimension_key": "initialization_coupling",
           "configured_weight": 1.0,
           "components": []
@@ -2211,7 +2736,7 @@
           "failing": 0,
           "weighted_failures": 10.0,
           "assessment_score": 0.0,
-          "placeholder": true,
+          "placeholder": false,
           "dimension_key": "convention_outlier",
           "configured_weight": 1.0,
           "components": []
@@ -2232,7 +2757,7 @@
           "failing": 0,
           "weighted_failures": 10.0,
           "assessment_score": 0.0,
-          "placeholder": true,
+          "placeholder": false,
           "dimension_key": "dependency_health",
           "configured_weight": 1.0,
           "components": []
@@ -2240,20 +2765,20 @@
       }
     },
     "Test strategy": {
-      "score": 0.0,
-      "strict": 0.0,
-      "verified_strict_score": 0.0,
+      "score": 90.0,
+      "strict": 90.0,
+      "verified_strict_score": 90.0,
       "checks": 10,
       "failing": 0,
       "tier": 4,
       "detectors": {
         "subjective_assessment": {
           "potential": 10,
-          "pass_rate": 0.0,
+          "pass_rate": 0.9,
           "failing": 0,
-          "weighted_failures": 10.0,
-          "assessment_score": 0.0,
-          "placeholder": true,
+          "weighted_failures": 1.0,
+          "assessment_score": 90.0,
+          "placeholder": false,
           "dimension_key": "test_strategy",
           "configured_weight": 1.0,
           "components": []
@@ -2274,7 +2799,7 @@
           "failing": 0,
           "weighted_failures": 10.0,
           "assessment_score": 0.0,
-          "placeholder": true,
+          "placeholder": false,
           "dimension_key": "api_surface_coherence",
           "configured_weight": 1.0,
           "components": []
@@ -2282,20 +2807,20 @@
       }
     },
     "Auth consistency": {
-      "score": 0.0,
-      "strict": 0.0,
-      "verified_strict_score": 0.0,
+      "score": 100.0,
+      "strict": 100.0,
+      "verified_strict_score": 100.0,
       "checks": 10,
       "failing": 0,
       "tier": 4,
       "detectors": {
         "subjective_assessment": {
           "potential": 10,
-          "pass_rate": 0.0,
+          "pass_rate": 1.0,
           "failing": 0,
-          "weighted_failures": 10.0,
-          "assessment_score": 0.0,
-          "placeholder": true,
+          "weighted_failures": 0.0,
+          "assessment_score": 100.0,
+          "placeholder": false,
           "dimension_key": "authorization_consistency",
           "configured_weight": 1.0,
           "components": []
@@ -2316,7 +2841,7 @@
           "failing": 0,
           "weighted_failures": 10.0,
           "assessment_score": 0.0,
-          "placeholder": true,
+          "placeholder": false,
           "dimension_key": "incomplete_migration",
           "configured_weight": 1.0,
           "components": []
@@ -2324,20 +2849,20 @@
       }
     },
     "Structure nav": {
-      "score": 0.0,
-      "strict": 0.0,
-      "verified_strict_score": 0.0,
+      "score": 98.0,
+      "strict": 98.0,
+      "verified_strict_score": 98.0,
       "checks": 10,
       "failing": 0,
       "tier": 4,
       "detectors": {
         "subjective_assessment": {
           "potential": 10,
-          "pass_rate": 0.0,
+          "pass_rate": 0.98,
           "failing": 0,
-          "weighted_failures": 10.0,
-          "assessment_score": 0.0,
-          "placeholder": true,
+          "weighted_failures": 0.2,
+          "assessment_score": 98.0,
+          "placeholder": false,
           "dimension_key": "package_organization",
           "configured_weight": 5.0,
           "components": []
@@ -2358,7 +2883,7 @@
           "failing": 0,
           "weighted_failures": 10.0,
           "assessment_score": 0.0,
-          "placeholder": true,
+          "placeholder": false,
           "dimension_key": "design_coherence",
           "configured_weight": 10.0,
           "components": []
@@ -2368,7 +2893,7 @@
   },
   "reminder_history": {
     "zone_classification": 3,
-    "report_scores": 12,
+    "report_scores": 14,
     "feedback_nudge": 3,
     "stagnant_nudge": 25
   },
@@ -2379,9 +2904,9 @@
       "file": "src/iced_ui/mod.rs",
       "tier": 3,
       "confidence": "medium",
-      "summary": "Large file: large (828 LOC) / complexity score 866",
+      "summary": "Large file: large (833 LOC) / complexity score 866",
       "detail": {
-        "loc": 828,
+        "loc": 833,
         "complexity_score": 866,
         "complexity_signals": [
           "1 TODOs",
@@ -2394,7 +2919,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:33+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -2409,21 +2934,21 @@
       "file": "src/iced_ui/search.rs",
       "tier": 3,
       "confidence": "medium",
-      "summary": "Large file: complexity score 39",
+      "summary": "Large file: complexity score 42",
       "detail": {
-        "complexity_score": 39,
+        "complexity_score": 42,
         "complexity_signals": [
-          "nesting depth 4",
+          "nesting depth 5",
           "longest function 93 LOC",
-          "cyclomatic complexity 3",
+          "cyclomatic complexity 4",
           "2 params"
         ],
-        "loc": 350
+        "loc": 363
       },
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:33+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -2453,7 +2978,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:33+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -2482,7 +3007,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:33+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -2497,9 +3022,9 @@
       "file": "src/indexer/searcher.rs",
       "tier": 3,
       "confidence": "medium",
-      "summary": "Large file: large (526 LOC) / complexity score 264",
+      "summary": "Large file: large (528 LOC) / complexity score 264",
       "detail": {
-        "loc": 526,
+        "loc": 528,
         "complexity_score": 264,
         "complexity_signals": [
           "nesting depth 4",
@@ -2511,7 +3036,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:33+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -2541,7 +3066,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:33+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -2570,7 +3095,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:33+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -2586,11 +3111,11 @@
       "tier": 3,
       "confidence": "medium",
       "summary": "14 disconnected function clusters (18 functions) \u2014 likely mixed responsibilities",
-      "detail": "Clusters: index_field, database, unsupported_format, parse",
+      "detail": "Clusters: unsupported_format, index_field, test_error_display, database",
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:33+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -2606,11 +3131,11 @@
       "tier": 3,
       "confidence": "medium",
       "summary": "21 disconnected function clusters (30 functions) \u2014 likely mixed responsibilities",
-      "detail": "Clusters: tab_button, accent_color_light, error_container, primary_button",
+      "detail": "Clusters: icon_button, small_input, error_container, primary_button",
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:33+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -2682,7 +3207,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -2728,7 +3253,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -2748,7 +3273,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -2768,7 +3293,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -2788,7 +3313,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -2808,7 +3333,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -2984,7 +3509,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3004,7 +3529,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3024,7 +3549,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3044,7 +3569,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3059,12 +3584,12 @@
       "file": "src/iced_ui/mod.rs",
       "tier": 3,
       "confidence": "medium",
-      "summary": "Unused import: {\n    get_file_preview_highlighted_internal, search_filenames_internal, search_query_internal,\n}",
+      "summary": "Unused import: {\r\n    get_file_preview_highlighted_internal, search_filenames_internal, search_query_internal,\r\n}",
       "detail": {},
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3084,7 +3609,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3156,7 +3681,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3176,7 +3701,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3222,7 +3747,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3242,7 +3767,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3262,7 +3787,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3277,12 +3802,12 @@
       "file": "src/iced_ui/theme.rs",
       "tier": 3,
       "confidence": "medium",
-      "summary": "Unused import: {button, container, text, text_input},\n    Background, Border, Color, Theme,\n}",
+      "summary": "Unused import: {button, container, text, text_input},\r\n    Background, Border, Color, Theme,\r\n}",
       "detail": {},
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3302,7 +3827,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3322,7 +3847,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3342,7 +3867,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3362,7 +3887,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3382,7 +3907,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3402,7 +3927,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3422,7 +3947,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3442,7 +3967,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3462,7 +3987,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3482,7 +4007,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3502,7 +4027,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3522,7 +4047,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3542,7 +4067,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3562,7 +4087,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3582,7 +4107,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3628,7 +4153,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3648,7 +4173,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3668,7 +4193,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3688,7 +4213,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3708,7 +4233,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3728,7 +4253,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3748,7 +4273,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3768,7 +4293,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3788,7 +4313,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3808,7 +4333,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3828,7 +4353,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3848,7 +4373,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3868,7 +4393,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -3888,7 +4413,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -4116,7 +4641,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -4136,7 +4661,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -4156,7 +4681,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -4488,7 +5013,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -4508,7 +5033,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -4528,7 +5053,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -4548,7 +5073,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -4568,7 +5093,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -4588,7 +5113,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -4608,7 +5133,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -4628,7 +5153,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -4674,7 +5199,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -4694,7 +5219,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -4714,7 +5239,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -4734,7 +5259,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -4754,7 +5279,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -4774,7 +5299,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -4794,7 +5319,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -4814,7 +5339,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -4834,7 +5359,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -4880,7 +5405,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -4900,7 +5425,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -4920,7 +5445,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -4940,7 +5465,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -4955,14 +5480,14 @@
       "file": "src/iced_ui/mod.rs",
       "tier": 3,
       "confidence": "medium",
-      "summary": "Orphaned file (828 LOC): zero importers, not an entry point",
+      "summary": "Orphaned file (833 LOC): zero importers, not an entry point",
       "detail": {
-        "loc": 828
+        "loc": 833
       },
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -4984,7 +5509,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -4999,14 +5524,14 @@
       "file": "src/indexer/searcher.rs",
       "tier": 3,
       "confidence": "medium",
-      "summary": "Orphaned file (526 LOC): zero importers, not an entry point",
+      "summary": "Orphaned file (528 LOC): zero importers, not an entry point",
       "detail": {
-        "loc": 526
+        "loc": 528
       },
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -5028,7 +5553,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -5043,14 +5568,14 @@
       "file": "src/iced_ui/search.rs",
       "tier": 3,
       "confidence": "medium",
-      "summary": "Orphaned file (350 LOC): zero importers, not an entry point",
+      "summary": "Orphaned file (363 LOC): zero importers, not an entry point",
       "detail": {
-        "loc": 350
+        "loc": 363
       },
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -5065,14 +5590,14 @@
       "file": "src/parsers/mod.rs",
       "tier": 3,
       "confidence": "medium",
-      "summary": "Orphaned file (103 LOC): zero importers, not an entry point",
+      "summary": "Orphaned file (87 LOC): zero importers, not an entry point",
       "detail": {
-        "loc": 103
+        "loc": 87
       },
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -5094,7 +5619,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -5116,7 +5641,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -5138,7 +5663,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -5188,7 +5713,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -5210,7 +5735,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -5232,7 +5757,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -5282,7 +5807,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -5304,7 +5829,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -5326,7 +5851,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -5348,7 +5873,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -5370,7 +5895,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -5385,14 +5910,14 @@
       "file": "src/indexer/mod.rs",
       "tier": 3,
       "confidence": "medium",
-      "summary": "Orphaned file (173 LOC): zero importers, not an entry point",
+      "summary": "Orphaned file (178 LOC): zero importers, not an entry point",
       "detail": {
-        "loc": 173
+        "loc": 178
       },
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -5491,14 +6016,14 @@
       "file": "src/commands/search.rs",
       "tier": 3,
       "confidence": "medium",
-      "summary": "Orphaned file (95 LOC): zero importers, not an entry point",
+      "summary": "Orphaned file (97 LOC): zero importers, not an entry point",
       "detail": {
-        "loc": 95
+        "loc": 97
       },
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -5520,7 +6045,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -5542,7 +6067,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -5564,7 +6089,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -5586,7 +6111,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -5608,7 +6133,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -5658,7 +6183,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -5708,7 +6233,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -5730,7 +6255,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -5780,7 +6305,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -5795,14 +6320,14 @@
       "file": "src/indexer/schema.rs",
       "tier": 3,
       "confidence": "medium",
-      "summary": "Orphaned file (32 LOC): zero importers, not an entry point",
+      "summary": "Orphaned file (34 LOC): zero importers, not an entry point",
       "detail": {
-        "loc": 32
+        "loc": 34
       },
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -5824,7 +6349,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -5846,7 +6371,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -5902,7 +6427,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -5958,7 +6483,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -6005,18 +6530,18 @@
       "file": "src/iced_ui/mod.rs",
       "tier": 2,
       "confidence": "high",
-      "summary": "Untested critical module (828 LOC, 0 importers) \u2014 high blast radius",
+      "summary": "Untested critical module (833 LOC, 0 importers) \u2014 high blast radius",
       "detail": {
         "kind": "untested_critical",
-        "loc": 828,
+        "loc": 833,
         "importer_count": 0,
-        "loc_weight": 28.77498913987632,
+        "loc_weight": 28.861739379323623,
         "complexity_score": 866
       },
       "status": "open",
       "note": "Reopened (\u00d71) \u2014 reappeared in scan (was fixed)",
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 1,
       "lang": "rust",
@@ -6042,7 +6567,7 @@
       "status": "open",
       "note": "Reopened (\u00d71) \u2014 reappeared in scan (was fixed)",
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 1,
       "lang": "rust",
@@ -6098,7 +6623,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -6123,7 +6648,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -6148,7 +6673,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -6163,17 +6688,17 @@
       "file": "src/commands/search.rs",
       "tier": 3,
       "confidence": "high",
-      "summary": "Untested module (95 LOC, 0 importers)",
+      "summary": "Untested module (97 LOC, 0 importers)",
       "detail": {
         "kind": "untested_module",
-        "loc": 95,
+        "loc": 97,
         "importer_count": 0,
-        "loc_weight": 9.746794344808963
+        "loc_weight": 9.848857801796104
       },
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -6199,7 +6724,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -6224,7 +6749,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -6249,7 +6774,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -6264,18 +6789,18 @@
       "file": "src/iced_ui/search.rs",
       "tier": 2,
       "confidence": "high",
-      "summary": "Untested critical module (350 LOC, 0 importers) \u2014 high blast radius",
+      "summary": "Untested critical module (363 LOC, 0 importers) \u2014 high blast radius",
       "detail": {
         "kind": "untested_critical",
-        "loc": 350,
+        "loc": 363,
         "importer_count": 0,
-        "loc_weight": 18.708286933869708,
-        "complexity_score": 39
+        "loc_weight": 19.05255888325765,
+        "complexity_score": 42
       },
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -6300,7 +6825,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -6315,17 +6840,17 @@
       "file": "src/indexer/mod.rs",
       "tier": 3,
       "confidence": "high",
-      "summary": "Untested module (173 LOC, 0 importers)",
+      "summary": "Untested module (178 LOC, 0 importers)",
       "detail": {
         "kind": "untested_module",
-        "loc": 173,
+        "loc": 178,
         "importer_count": 0,
-        "loc_weight": 13.152946437965905
+        "loc_weight": 13.341664064126334
       },
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -6350,7 +6875,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -6376,7 +6901,7 @@
       "status": "open",
       "note": "Reopened (\u00d71) \u2014 reappeared in scan (was fixed)",
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 1,
       "lang": "rust",
@@ -6401,7 +6926,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -6457,7 +6982,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -6482,7 +7007,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -6507,7 +7032,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -6646,18 +7171,18 @@
       "file": "src/indexer/searcher.rs",
       "tier": 2,
       "confidence": "high",
-      "summary": "Untested critical module (526 LOC, 0 importers) \u2014 high blast radius",
+      "summary": "Untested critical module (528 LOC, 0 importers) \u2014 high blast radius",
       "detail": {
         "kind": "untested_critical",
-        "loc": 526,
+        "loc": 528,
         "importer_count": 0,
-        "loc_weight": 22.93468988235943,
+        "loc_weight": 22.978250586152114,
         "complexity_score": 264
       },
       "status": "open",
       "note": "Reopened (\u00d71) \u2014 reappeared in scan (was fixed)",
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 1,
       "lang": "rust",
@@ -6682,7 +7207,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -6708,7 +7233,7 @@
       "status": "open",
       "note": "Reopened (\u00d71) \u2014 reappeared in scan (was fixed)",
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 1,
       "lang": "rust",
@@ -6733,7 +7258,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -6758,7 +7283,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -6783,7 +7308,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -6808,7 +7333,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -6833,7 +7358,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -6858,7 +7383,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -6873,17 +7398,17 @@
       "file": "src/indexer/schema.rs",
       "tier": 3,
       "confidence": "high",
-      "summary": "Untested module (32 LOC, 0 importers)",
+      "summary": "Untested module (34 LOC, 0 importers)",
       "detail": {
         "kind": "untested_module",
-        "loc": 32,
+        "loc": 34,
         "importer_count": 0,
-        "loc_weight": 5.656854249492381
+        "loc_weight": 5.830951894845301
       },
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T06:28:34+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -6955,7 +7480,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T07:53:15+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -7131,7 +7656,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T07:53:15+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -7151,7 +7676,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T08:07:38+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -7171,7 +7696,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T08:07:38+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -7191,7 +7716,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T08:07:38+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -7211,7 +7736,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T08:07:38+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -7231,7 +7756,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-05T08:07:38+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -7303,7 +7828,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-09T16:38:48+00:00",
-      "last_seen": "2026-03-09T16:38:48+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -7320,17 +7845,23 @@
       "confidence": "medium",
       "summary": "Unused import: {button, column, container, text, Space}",
       "detail": {},
-      "status": "open",
-      "note": null,
+      "status": "auto_resolved",
+      "note": "Disappeared from scan \u2014 likely fixed",
       "first_seen": "2026-03-09T16:38:48+00:00",
       "last_seen": "2026-03-09T16:38:48+00:00",
-      "resolved_at": null,
+      "resolved_at": "2026-03-09T17:20:57+00:00",
       "reopen_count": 0,
       "lang": "rust",
       "zone": "production",
       "suppressed": false,
       "suppressed_at": null,
-      "suppression_pattern": null
+      "suppression_pattern": null,
+      "resolution_attestation": {
+        "kind": "scan_verified",
+        "text": "Disappeared from detector output",
+        "attested_at": "2026-03-09T17:20:57+00:00",
+        "scan_verified": true
+      }
     },
     "unused::src/iced_ui/mod.rs::unused_import::720": {
       "id": "unused::src/iced_ui/mod.rs::unused_import::720",
@@ -7340,17 +7871,23 @@
       "confidence": "medium",
       "summary": "Unused import: {Alignment, Length, Padding}",
       "detail": {},
-      "status": "open",
-      "note": null,
+      "status": "auto_resolved",
+      "note": "Disappeared from scan \u2014 likely fixed",
       "first_seen": "2026-03-09T16:38:48+00:00",
       "last_seen": "2026-03-09T16:38:48+00:00",
-      "resolved_at": null,
+      "resolved_at": "2026-03-09T17:20:57+00:00",
       "reopen_count": 0,
       "lang": "rust",
       "zone": "production",
       "suppressed": false,
       "suppressed_at": null,
-      "suppression_pattern": null
+      "suppression_pattern": null,
+      "resolution_attestation": {
+        "kind": "scan_verified",
+        "text": "Disappeared from detector output",
+        "attested_at": "2026-03-09T17:20:57+00:00",
+        "scan_verified": true
+      }
     },
     "unused::src/iced_ui/mod.rs::unused_import::797": {
       "id": "unused::src/iced_ui/mod.rs::unused_import::797",
@@ -7360,17 +7897,23 @@
       "confidence": "medium",
       "summary": "Unused import: *",
       "detail": {},
-      "status": "open",
-      "note": null,
+      "status": "auto_resolved",
+      "note": "Disappeared from scan \u2014 likely fixed",
       "first_seen": "2026-03-09T16:38:48+00:00",
       "last_seen": "2026-03-09T16:38:48+00:00",
-      "resolved_at": null,
+      "resolved_at": "2026-03-09T17:20:57+00:00",
       "reopen_count": 0,
       "lang": "rust",
       "zone": "production",
       "suppressed": false,
       "suppressed_at": null,
-      "suppression_pattern": null
+      "suppression_pattern": null,
+      "resolution_attestation": {
+        "kind": "scan_verified",
+        "text": "Disappeared from detector output",
+        "attested_at": "2026-03-09T17:20:57+00:00",
+        "scan_verified": true
+      }
     },
     "unused::src/iced_ui/search.rs::unused_import::3": {
       "id": "unused::src/iced_ui/search.rs::unused_import::3",
@@ -7383,7 +7926,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-09T16:38:48+00:00",
-      "last_seen": "2026-03-09T16:38:48+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -7403,7 +7946,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-09T16:38:48+00:00",
-      "last_seen": "2026-03-09T16:38:48+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -7420,17 +7963,23 @@
       "confidence": "medium",
       "summary": "Unused import: *",
       "detail": {},
-      "status": "open",
-      "note": null,
+      "status": "auto_resolved",
+      "note": "Disappeared from scan \u2014 likely fixed",
       "first_seen": "2026-03-09T16:38:48+00:00",
       "last_seen": "2026-03-09T16:38:48+00:00",
-      "resolved_at": null,
+      "resolved_at": "2026-03-09T17:20:57+00:00",
       "reopen_count": 0,
       "lang": "rust",
       "zone": "production",
       "suppressed": false,
       "suppressed_at": null,
-      "suppression_pattern": null
+      "suppression_pattern": null,
+      "resolution_attestation": {
+        "kind": "scan_verified",
+        "text": "Disappeared from detector output",
+        "attested_at": "2026-03-09T17:20:57+00:00",
+        "scan_verified": true
+      }
     },
     "unused::src/models.rs::unused_import::2": {
       "id": "unused::src/models.rs::unused_import::2",
@@ -7443,7 +7992,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-09T16:38:48+00:00",
-      "last_seen": "2026-03-09T16:38:48+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -7460,17 +8009,23 @@
       "confidence": "medium",
       "summary": "Unused import: *",
       "detail": {},
-      "status": "open",
-      "note": null,
+      "status": "auto_resolved",
+      "note": "Disappeared from scan \u2014 likely fixed",
       "first_seen": "2026-03-09T16:38:48+00:00",
       "last_seen": "2026-03-09T16:38:48+00:00",
-      "resolved_at": null,
+      "resolved_at": "2026-03-09T17:20:57+00:00",
       "reopen_count": 0,
       "lang": "rust",
       "zone": "production",
       "suppressed": false,
       "suppressed_at": null,
-      "suppression_pattern": null
+      "suppression_pattern": null,
+      "resolution_attestation": {
+        "kind": "scan_verified",
+        "text": "Disappeared from detector output",
+        "attested_at": "2026-03-09T17:20:57+00:00",
+        "scan_verified": true
+      }
     },
     "unused::src/parsers/mod.rs::unused_import::82": {
       "id": "unused::src/parsers/mod.rs::unused_import::82",
@@ -7480,17 +8035,23 @@
       "confidence": "medium",
       "summary": "Unused import: Write",
       "detail": {},
-      "status": "open",
-      "note": null,
+      "status": "auto_resolved",
+      "note": "Disappeared from scan \u2014 likely fixed",
       "first_seen": "2026-03-09T16:38:48+00:00",
       "last_seen": "2026-03-09T16:38:48+00:00",
-      "resolved_at": null,
+      "resolved_at": "2026-03-09T17:20:57+00:00",
       "reopen_count": 0,
       "lang": "rust",
       "zone": "production",
       "suppressed": false,
       "suppressed_at": null,
-      "suppression_pattern": null
+      "suppression_pattern": null,
+      "resolution_attestation": {
+        "kind": "scan_verified",
+        "text": "Disappeared from detector output",
+        "attested_at": "2026-03-09T17:20:57+00:00",
+        "scan_verified": true
+      }
     },
     "unused::src/watcher.rs::unused_import::239": {
       "id": "unused::src/watcher.rs::unused_import::239",
@@ -7503,7 +8064,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-09T16:38:48+00:00",
-      "last_seen": "2026-03-09T16:38:48+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -7523,7 +8084,7 @@
       "status": "open",
       "note": null,
       "first_seen": "2026-03-09T16:38:48+00:00",
-      "last_seen": "2026-03-09T16:38:48+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -7538,17 +8099,17 @@
       "file": "src/parsers/mod.rs",
       "tier": 3,
       "confidence": "high",
-      "summary": "Untested module (103 LOC, 0 importers)",
+      "summary": "Untested module (87 LOC, 0 importers)",
       "detail": {
         "kind": "untested_module",
-        "loc": 103,
+        "loc": 87,
         "importer_count": 0,
-        "loc_weight": 10.14889156509222
+        "loc_weight": 9.327379053088816
       },
       "status": "open",
       "note": null,
       "first_seen": "2026-03-09T16:38:49+00:00",
-      "last_seen": "2026-03-09T16:38:49+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
       "resolved_at": null,
       "reopen_count": 0,
       "lang": "rust",
@@ -7556,6 +8117,178 @@
       "suppressed": false,
       "suppressed_at": null,
       "suppression_pattern": null
+    },
+    "unused::src/iced_ui/mod.rs::unused_import::724": {
+      "id": "unused::src/iced_ui/mod.rs::unused_import::724",
+      "detector": "unused",
+      "file": "src/iced_ui/mod.rs",
+      "tier": 3,
+      "confidence": "medium",
+      "summary": "Unused import: {button, column, container, text, Space}",
+      "detail": {},
+      "status": "open",
+      "note": null,
+      "first_seen": "2026-03-09T17:20:57+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
+      "resolved_at": null,
+      "reopen_count": 0,
+      "lang": "rust",
+      "zone": "production",
+      "suppressed": false,
+      "suppressed_at": null,
+      "suppression_pattern": null
+    },
+    "unused::src/iced_ui/mod.rs::unused_import::725": {
+      "id": "unused::src/iced_ui/mod.rs::unused_import::725",
+      "detector": "unused",
+      "file": "src/iced_ui/mod.rs",
+      "tier": 3,
+      "confidence": "medium",
+      "summary": "Unused import: {Alignment, Length, Padding}",
+      "detail": {},
+      "status": "open",
+      "note": null,
+      "first_seen": "2026-03-09T17:20:57+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
+      "resolved_at": null,
+      "reopen_count": 0,
+      "lang": "rust",
+      "zone": "production",
+      "suppressed": false,
+      "suppressed_at": null,
+      "suppression_pattern": null
+    },
+    "unused::src/iced_ui/mod.rs::unused_import::802": {
+      "id": "unused::src/iced_ui/mod.rs::unused_import::802",
+      "detector": "unused",
+      "file": "src/iced_ui/mod.rs",
+      "tier": 3,
+      "confidence": "medium",
+      "summary": "Unused import: *",
+      "detail": {},
+      "status": "open",
+      "note": null,
+      "first_seen": "2026-03-09T17:20:57+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
+      "resolved_at": null,
+      "reopen_count": 0,
+      "lang": "rust",
+      "zone": "production",
+      "suppressed": false,
+      "suppressed_at": null,
+      "suppression_pattern": null
+    },
+    "unused::src/indexer/searcher.rs::unused_import::461": {
+      "id": "unused::src/indexer/searcher.rs::unused_import::461",
+      "detector": "unused",
+      "file": "src/indexer/searcher.rs",
+      "tier": 3,
+      "confidence": "medium",
+      "summary": "Unused import: *",
+      "detail": {},
+      "status": "open",
+      "note": null,
+      "first_seen": "2026-03-09T17:20:57+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
+      "resolved_at": null,
+      "reopen_count": 0,
+      "lang": "rust",
+      "zone": "production",
+      "suppressed": false,
+      "suppressed_at": null,
+      "suppression_pattern": null
+    },
+    "unused::src/parsers/mod.rs::unused_import::54": {
+      "id": "unused::src/parsers/mod.rs::unused_import::54",
+      "detector": "unused",
+      "file": "src/parsers/mod.rs",
+      "tier": 3,
+      "confidence": "medium",
+      "summary": "Unused import: *",
+      "detail": {},
+      "status": "open",
+      "note": null,
+      "first_seen": "2026-03-09T17:20:57+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
+      "resolved_at": null,
+      "reopen_count": 0,
+      "lang": "rust",
+      "zone": "production",
+      "suppressed": false,
+      "suppressed_at": null,
+      "suppression_pattern": null
+    },
+    "unused::src/parsers/mod.rs::unused_import::66": {
+      "id": "unused::src/parsers/mod.rs::unused_import::66",
+      "detector": "unused",
+      "file": "src/parsers/mod.rs",
+      "tier": 3,
+      "confidence": "medium",
+      "summary": "Unused import: Write",
+      "detail": {},
+      "status": "open",
+      "note": null,
+      "first_seen": "2026-03-09T17:20:57+00:00",
+      "last_seen": "2026-03-09T17:32:35+00:00",
+      "resolved_at": null,
+      "reopen_count": 0,
+      "lang": "rust",
+      "zone": "production",
+      "suppressed": false,
+      "suppressed_at": null,
+      "suppression_pattern": null
+    },
+    "review::.::holistic::ai_generated_debt::unused_extension_matches::0d9606c2": {
+      "id": "review::.::holistic::ai_generated_debt::unused_extension_matches::0d9606c2",
+      "detector": "review",
+      "file": ".",
+      "tier": 1,
+      "confidence": "high",
+      "summary": "Unused `extension_matches` helper in `parsers/mod.rs`",
+      "detail": {
+        "holistic": true,
+        "dimension": "ai_generated_debt",
+        "related_files": [
+          "src/parsers/mod.rs"
+        ],
+        "evidence": [
+          "Line 17: #[allow(dead_code)] fn extension_matches(...)"
+        ],
+        "suggestion": "Remove the unused helper function to reduce code noise.",
+        "reasoning": ""
+      },
+      "status": "open",
+      "note": null,
+      "first_seen": "2026-03-09T17:32:31+00:00",
+      "last_seen": "2026-03-09T17:32:31+00:00",
+      "resolved_at": null,
+      "reopen_count": 0,
+      "lang": "rust",
+      "suppressed": false,
+      "suppressed_at": null,
+      "suppression_pattern": null
     }
-  }
+  },
+  "review_cache": {
+    "files": {},
+    "holistic": {
+      "reviewed_at": "2026-03-09T17:32:31+00:00",
+      "file_count_at_review": 35,
+      "issue_count": 1
+    }
+  },
+  "assessment_import_audit": [
+    {
+      "timestamp": "2026-03-09T17:32:31+00:00",
+      "mode": "attested_external",
+      "trusted": true,
+      "reason": "attested external blind subagent provenance",
+      "override_used": false,
+      "attested_external": true,
+      "provisional": false,
+      "provisional_count": 0,
+      "attest": "I validated this review was completed without awareness of overall score and is unbiased.",
+      "import_file": "D:\\FindAll\\.desloppify\\external_review_sessions\\ext_20260309_172307_d3471b9d\\canonical_import_20260309_173231.json"
+    }
+  ]
 }

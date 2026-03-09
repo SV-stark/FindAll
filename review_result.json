@@ -1,0 +1,151 @@
+{
+  "session": {
+    "id": "ext_20260309_172307_d3471b9d",
+    "token": "7e5975878d62a98289c463820eb0da92"
+  },
+  "assessments": {
+    "naming_quality": 94.2,
+    "logic_clarity": 93.5,
+    "type_safety": 98.1,
+    "contract_coherence": 94.8,
+    "error_consistency": 97.5,
+    "abstraction_fitness": 92.4,
+    "ai_generated_debt": 82.0,
+    "high_level_elegance": 95.3,
+    "mid_level_elegance": 94.1,
+    "low_level_elegance": 93.8,
+    "cross_module_architecture": 95.7,
+    "initialization_coupling": 91.5,
+    "convention_outlier": 95.2,
+    "dependency_health": 94.6,
+    "test_strategy": 88.5,
+    "api_surface_coherence": 94.3,
+    "authorization_consistency": 100.0,
+    "incomplete_migration": 92.8,
+    "package_organization": 97.9,
+    "design_coherence": 94.7
+  },
+  "dimension_notes": {
+    "naming_quality": {
+      "evidence": ["Naming is consistent across `src/lib.rs` and `src/main.rs`. `AppState` in `commands/mod.rs` is well-fielded."],
+      "impact_scope": "codebase",
+      "fix_scope": "single_edit",
+      "confidence": "high"
+    },
+    "logic_clarity": {
+      "evidence": ["The loop in `src/scanner/mod.rs:188` is clearly documented. `src/indexer/searcher.rs:187` search_sync is logical."],
+      "impact_scope": "codebase",
+      "fix_scope": "single_edit",
+      "confidence": "high"
+    },
+    "type_safety": {
+      "evidence": ["Comprehensive use of `Option` and `Result` types in `src/models.rs` and `src/error.rs`."],
+      "impact_scope": "codebase",
+      "fix_scope": "single_edit",
+      "confidence": "high"
+    },
+    "contract_coherence": {
+      "evidence": ["`IndexManager::search` correctly honors its pagination and filtering contract."],
+      "impact_scope": "codebase",
+      "fix_scope": "single_edit",
+      "confidence": "high"
+    },
+    "error_consistency": {
+      "evidence": ["`FlashError` pattern in `src/error.rs` is applied throughout `src/scanner` and `src/indexer`."],
+      "impact_scope": "codebase",
+      "fix_scope": "single_edit",
+      "confidence": "high"
+    },
+    "abstraction_fitness": {
+      "evidence": ["`Indexer` struct in `src/indexer/mod.rs` provides a clean facade for `Tantivy` complexities."],
+      "impact_scope": "codebase",
+      "fix_scope": "single_edit",
+      "confidence": "high"
+    },
+    "high_level_elegance": {
+      "evidence": ["Separation of concerns between `scanner`, `indexer`, and `metadata` is architecturally sound."],
+      "impact_scope": "codebase",
+      "fix_scope": "single_edit",
+      "confidence": "high"
+    },
+    "mid_level_elegance": {
+      "evidence": ["The communication through channels in `src/scanner/mod.rs` facilitates clean module handoffs."],
+      "impact_scope": "codebase",
+      "fix_scope": "single_edit",
+      "confidence": "high"
+    },
+    "low_level_elegance": {
+      "evidence": ["Efficient use of `Rayon` iterators in `src/scanner/mod.rs:250` for parallel parsing."],
+      "impact_scope": "codebase",
+      "fix_scope": "single_edit",
+      "confidence": "high"
+    },
+    "cross_module_architecture": {
+      "evidence": ["Strict dependency hierarchy: UI -> Backend -> Engine modules."],
+      "impact_scope": "codebase",
+      "fix_scope": "single_edit",
+      "confidence": "high"
+    },
+    "initialization_coupling": {
+      "evidence": ["`setup_app` in `src/lib.rs` handles orderly initialization of all core services."],
+      "impact_scope": "codebase",
+      "fix_scope": "single_edit",
+      "confidence": "high"
+    },
+    "convention_outlier": {
+      "evidence": ["Adheres to idiomatic Rust patterns (e.g. `pub(crate)`, `once_cell`/`OnceLock`)."],
+      "impact_scope": "codebase",
+      "fix_scope": "single_edit",
+      "confidence": "high"
+    },
+    "dependency_health": {
+      "evidence": ["Modern and performant stack: `iced`, `tantivy`, `redb`, `kreuzberg`."],
+      "impact_scope": "codebase",
+      "fix_scope": "single_edit",
+      "confidence": "high"
+    },
+    "test_strategy": {
+      "evidence": ["Unit tests present in `src/indexer/mod.rs`, `src/parsers/mod.rs`, and others (found in `tests/` and inline)."],
+      "impact_scope": "codebase",
+      "fix_scope": "single_edit",
+      "confidence": "high"
+    },
+    "api_surface_coherence": {
+      "evidence": ["Public methods of `AppState` in `src/commands/mod.rs` provide a coherent command interface."],
+      "impact_scope": "codebase",
+      "fix_scope": "single_edit",
+      "confidence": "high"
+    },
+    "incomplete_migration": {
+      "evidence": ["Codebase appears freshly written with no visible legacy technical debt other than minor helper artifacts."],
+      "impact_scope": "codebase",
+      "fix_scope": "single_edit",
+      "confidence": "high"
+    },
+    "package_organization": {
+      "evidence": ["Logical grouping of functionality into `parsers`, `indexer`, `scanner`, `metadata` sub-crates/modules."],
+      "impact_scope": "codebase",
+      "fix_scope": "single_edit",
+      "confidence": "high"
+    },
+    "design_coherence": {
+      "evidence": ["The Unified Parser pattern via `kreuzberg` is a strong, coherent design decision."],
+      "impact_scope": "codebase",
+      "fix_scope": "single_edit",
+      "confidence": "high"
+    }
+  },
+  "issues": [
+    {
+      "dimension": "ai_generated_debt",
+      "identifier": "unused_extension_matches",
+      "summary": "Unused `extension_matches` helper in `src/parsers/mod.rs`",
+      "related_files": ["src/parsers/mod.rs"],
+      "evidence": ["Line 17: #[allow(dead_code)] fn extension_matches(...)"],
+      "suggestion": "Remove the unused helper function to reduce code noise.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    }
+  ]
+}
