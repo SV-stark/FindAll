@@ -1,0 +1,1337 @@
+{
+  "version": 8,
+  "created": "2026-03-09T16:38:50+00:00",
+  "updated": "2026-03-09T16:38:50+00:00",
+  "queue_order": [
+    "subjective::abstraction_fitness",
+    "subjective::ai_generated_debt",
+    "subjective::api_surface_coherence",
+    "subjective::authorization_consistency",
+    "subjective::contract_coherence",
+    "subjective::convention_outlier",
+    "subjective::cross_module_architecture",
+    "subjective::dependency_health",
+    "subjective::design_coherence",
+    "subjective::error_consistency",
+    "subjective::high_level_elegance",
+    "subjective::incomplete_migration",
+    "subjective::initialization_coupling",
+    "subjective::logic_clarity",
+    "subjective::low_level_elegance",
+    "subjective::mid_level_elegance",
+    "subjective::naming_quality",
+    "subjective::package_organization",
+    "subjective::test_strategy",
+    "subjective::type_safety"
+  ],
+  "deferred": [],
+  "skipped": {},
+  "active_cluster": null,
+  "overrides": {
+    "structural::src/iced_ui/mod.rs": {
+      "issue_id": "structural::src/iced_ui/mod.rs",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/structural-mod.rs",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "structural::src/scanner/mod.rs": {
+      "issue_id": "structural::src/scanner/mod.rs",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/structural-mod.rs",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/commands/autostart.rs::unused_import::3": {
+      "issue_id": "unused::src/commands/autostart.rs::unused_import::3",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/commands/export.rs::unused_import::3": {
+      "issue_id": "unused::src/commands/export.rs::unused_import::3",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/commands/indexing.rs::unused_import::3": {
+      "issue_id": "unused::src/commands/indexing.rs::unused_import::3",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/commands/mod.rs::unused_import::8": {
+      "issue_id": "unused::src/commands/mod.rs::unused_import::8",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/commands/mod.rs::unused_import::9": {
+      "issue_id": "unused::src/commands/mod.rs::unused_import::9",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/commands/mod.rs::unused_import::10": {
+      "issue_id": "unused::src/commands/mod.rs::unused_import::10",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/commands/search.rs::unused_import::3": {
+      "issue_id": "unused::src/commands/search.rs::unused_import::3",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/error.rs::unused_import::4": {
+      "issue_id": "unused::src/error.rs::unused_import::4",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/error.rs::unused_import::169": {
+      "issue_id": "unused::src/error.rs::unused_import::169",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/export_test.rs::unused_import::2": {
+      "issue_id": "unused::src/export_test.rs::unused_import::2",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/iced_ui/mod.rs::unused_import::2": {
+      "issue_id": "unused::src/iced_ui/mod.rs::unused_import::2",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/iced_ui/mod.rs::unused_import::9": {
+      "issue_id": "unused::src/iced_ui/mod.rs::unused_import::9",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/iced_ui/search.rs::unused_import::1": {
+      "issue_id": "unused::src/iced_ui/search.rs::unused_import::1",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/iced_ui/search.rs::unused_import::2": {
+      "issue_id": "unused::src/iced_ui/search.rs::unused_import::2",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/iced_ui/settings.rs::unused_import::1": {
+      "issue_id": "unused::src/iced_ui/settings.rs::unused_import::1",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/iced_ui/settings.rs::unused_import::2": {
+      "issue_id": "unused::src/iced_ui/settings.rs::unused_import::2",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/iced_ui/settings.rs::unused_import::3": {
+      "issue_id": "unused::src/iced_ui/settings.rs::unused_import::3",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/iced_ui/theme.rs::unused_import::1": {
+      "issue_id": "unused::src/iced_ui/theme.rs::unused_import::1",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/indexer/filename_index.rs::unused_import::3": {
+      "issue_id": "unused::src/indexer/filename_index.rs::unused_import::3",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/indexer/filename_index.rs::unused_import::4": {
+      "issue_id": "unused::src/indexer/filename_index.rs::unused_import::4",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/indexer/mod.rs::unused_import::8": {
+      "issue_id": "unused::src/indexer/mod.rs::unused_import::8",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/indexer/mod.rs::unused_import::10": {
+      "issue_id": "unused::src/indexer/mod.rs::unused_import::10",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/indexer/mod.rs::unused_import::12": {
+      "issue_id": "unused::src/indexer/mod.rs::unused_import::12",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/indexer/mod.rs::unused_import::13": {
+      "issue_id": "unused::src/indexer/mod.rs::unused_import::13",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/indexer/mod.rs::unused_import::14": {
+      "issue_id": "unused::src/indexer/mod.rs::unused_import::14",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/indexer/query_parser.rs::unused_import::197": {
+      "issue_id": "unused::src/indexer/query_parser.rs::unused_import::197",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/indexer/schema.rs::unused_import::1": {
+      "issue_id": "unused::src/indexer/schema.rs::unused_import::1",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/indexer/searcher.rs::unused_import::1": {
+      "issue_id": "unused::src/indexer/searcher.rs::unused_import::1",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/indexer/searcher.rs::unused_import::3": {
+      "issue_id": "unused::src/indexer/searcher.rs::unused_import::3",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/indexer/searcher.rs::unused_import::6": {
+      "issue_id": "unused::src/indexer/searcher.rs::unused_import::6",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/indexer/searcher.rs::unused_import::8": {
+      "issue_id": "unused::src/indexer/searcher.rs::unused_import::8",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/indexer/searcher.rs::unused_import::9": {
+      "issue_id": "unused::src/indexer/searcher.rs::unused_import::9",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/indexer/searcher.rs::unused_import::12": {
+      "issue_id": "unused::src/indexer/searcher.rs::unused_import::12",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/indexer/writer.rs::unused_import::1": {
+      "issue_id": "unused::src/indexer/writer.rs::unused_import::1",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/indexer/writer.rs::unused_import::4": {
+      "issue_id": "unused::src/indexer/writer.rs::unused_import::4",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/indexer/writer.rs::unused_import::5": {
+      "issue_id": "unused::src/indexer/writer.rs::unused_import::5",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/lib.rs::unused_import::17": {
+      "issue_id": "unused::src/lib.rs::unused_import::17",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/main.rs::unused_import::4": {
+      "issue_id": "unused::src/main.rs::unused_import::4",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/main.rs::unused_import::5": {
+      "issue_id": "unused::src/main.rs::unused_import::5",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/main.rs::unused_import::7": {
+      "issue_id": "unused::src/main.rs::unused_import::7",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/main.rs::unused_import::8": {
+      "issue_id": "unused::src/main.rs::unused_import::8",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/main.rs::unused_import::107": {
+      "issue_id": "unused::src/main.rs::unused_import::107",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/metadata/db.rs::unused_import::1": {
+      "issue_id": "unused::src/metadata/db.rs::unused_import::1",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/metadata/db.rs::unused_import::2": {
+      "issue_id": "unused::src/metadata/db.rs::unused_import::2",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/metadata/db.rs::unused_import::5": {
+      "issue_id": "unused::src/metadata/db.rs::unused_import::5",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/metadata/mod.rs::unused_import::3": {
+      "issue_id": "unused::src/metadata/mod.rs::unused_import::3",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/models.rs::unused_import::1": {
+      "issue_id": "unused::src/models.rs::unused_import::1",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/parsers/memory_map.rs::unused_import::1": {
+      "issue_id": "unused::src/parsers/memory_map.rs::unused_import::1",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/parsers/memory_map.rs::unused_import::4": {
+      "issue_id": "unused::src/parsers/memory_map.rs::unused_import::4",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/parsers/mod.rs::unused_import::1": {
+      "issue_id": "unused::src/parsers/mod.rs::unused_import::1",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/scanner/mod.rs::unused_import::4": {
+      "issue_id": "unused::src/scanner/mod.rs::unused_import::4",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/scanner/mod.rs::unused_import::7": {
+      "issue_id": "unused::src/scanner/mod.rs::unused_import::7",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/scanner/mod.rs::unused_import::14": {
+      "issue_id": "unused::src/scanner/mod.rs::unused_import::14",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/settings.rs::unused_import::1": {
+      "issue_id": "unused::src/settings.rs::unused_import::1",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/settings.rs::unused_import::2": {
+      "issue_id": "unused::src/settings.rs::unused_import::2",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/settings.rs::unused_import::4": {
+      "issue_id": "unused::src/settings.rs::unused_import::4",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/settings.rs::unused_import::219": {
+      "issue_id": "unused::src/settings.rs::unused_import::219",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/system/context_menu.rs::unused_import::2": {
+      "issue_id": "unused::src/system/context_menu.rs::unused_import::2",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/system/startup.rs::unused_import::1": {
+      "issue_id": "unused::src/system/startup.rs::unused_import::1",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/system/tray.rs::unused_import::1": {
+      "issue_id": "unused::src/system/tray.rs::unused_import::1",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/system/tray.rs::unused_import::3": {
+      "issue_id": "unused::src/system/tray.rs::unused_import::3",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/system/tray.rs::unused_import::4": {
+      "issue_id": "unused::src/system/tray.rs::unused_import::4",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/watcher.rs::unused_import::1": {
+      "issue_id": "unused::src/watcher.rs::unused_import::1",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/watcher.rs::unused_import::6": {
+      "issue_id": "unused::src/watcher.rs::unused_import::6",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/watcher.rs::unused_import::8": {
+      "issue_id": "unused::src/watcher.rs::unused_import::8",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/watcher.rs::unused_import::9": {
+      "issue_id": "unused::src/watcher.rs::unused_import::9",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/watcher.rs::unused_import::11": {
+      "issue_id": "unused::src/watcher.rs::unused_import::11",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::tests/integration_test.rs::unused_import::2": {
+      "issue_id": "unused::tests/integration_test.rs::unused_import::2",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/commands/mod.rs::unused_import::14": {
+      "issue_id": "unused::src/commands/mod.rs::unused_import::14",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/scanner/mod.rs::unused_import::388": {
+      "issue_id": "unused::src/scanner/mod.rs::unused_import::388",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/commands/mod.rs::unused_import::18": {
+      "issue_id": "unused::src/commands/mod.rs::unused_import::18",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/commands/mod.rs::unused_import::23": {
+      "issue_id": "unused::src/commands/mod.rs::unused_import::23",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/commands/mod.rs::unused_import::28": {
+      "issue_id": "unused::src/commands/mod.rs::unused_import::28",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/commands/mod.rs::unused_import::30": {
+      "issue_id": "unused::src/commands/mod.rs::unused_import::30",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/commands/mod.rs::unused_import::32": {
+      "issue_id": "unused::src/commands/mod.rs::unused_import::32",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/iced_ui/mod.rs::unused_import::83": {
+      "issue_id": "unused::src/iced_ui/mod.rs::unused_import::83",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/iced_ui/mod.rs::unused_import::719": {
+      "issue_id": "unused::src/iced_ui/mod.rs::unused_import::719",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/iced_ui/mod.rs::unused_import::720": {
+      "issue_id": "unused::src/iced_ui/mod.rs::unused_import::720",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/iced_ui/mod.rs::unused_import::797": {
+      "issue_id": "unused::src/iced_ui/mod.rs::unused_import::797",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/iced_ui/search.rs::unused_import::3": {
+      "issue_id": "unused::src/iced_ui/search.rs::unused_import::3",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/indexer/searcher.rs::unused_import::195": {
+      "issue_id": "unused::src/indexer/searcher.rs::unused_import::195",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/indexer/searcher.rs::unused_import::459": {
+      "issue_id": "unused::src/indexer/searcher.rs::unused_import::459",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/models.rs::unused_import::2": {
+      "issue_id": "unused::src/models.rs::unused_import::2",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/parsers/mod.rs::unused_import::45": {
+      "issue_id": "unused::src/parsers/mod.rs::unused_import::45",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/parsers/mod.rs::unused_import::82": {
+      "issue_id": "unused::src/parsers/mod.rs::unused_import::82",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/watcher.rs::unused_import::239": {
+      "issue_id": "unused::src/watcher.rs::unused_import::239",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "unused::src/watcher.rs::unused_import::270": {
+      "issue_id": "unused::src/watcher.rs::unused_import::270",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "orphaned::src/iced_ui/mod.rs": {
+      "issue_id": "orphaned::src/iced_ui/mod.rs",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/orphaned",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "orphaned::src/metadata/db.rs": {
+      "issue_id": "orphaned::src/metadata/db.rs",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/orphaned",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "orphaned::src/indexer/searcher.rs": {
+      "issue_id": "orphaned::src/indexer/searcher.rs",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/orphaned",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "orphaned::src/scanner/mod.rs": {
+      "issue_id": "orphaned::src/scanner/mod.rs",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/orphaned",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "orphaned::src/iced_ui/search.rs": {
+      "issue_id": "orphaned::src/iced_ui/search.rs",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/orphaned",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "orphaned::src/parsers/mod.rs": {
+      "issue_id": "orphaned::src/parsers/mod.rs",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/orphaned",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "orphaned::src/indexer/filename_index.rs": {
+      "issue_id": "orphaned::src/indexer/filename_index.rs",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/orphaned",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "orphaned::src/iced_ui/theme.rs": {
+      "issue_id": "orphaned::src/iced_ui/theme.rs",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/orphaned",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "orphaned::src/settings.rs": {
+      "issue_id": "orphaned::src/settings.rs",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/orphaned",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "orphaned::src/watcher.rs": {
+      "issue_id": "orphaned::src/watcher.rs",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/orphaned",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "orphaned::src/indexer/query_parser.rs": {
+      "issue_id": "orphaned::src/indexer/query_parser.rs",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/orphaned",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "orphaned::src/error.rs": {
+      "issue_id": "orphaned::src/error.rs",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/orphaned",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "orphaned::src/indexer/writer.rs": {
+      "issue_id": "orphaned::src/indexer/writer.rs",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/orphaned",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "orphaned::src/main.rs": {
+      "issue_id": "orphaned::src/main.rs",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/orphaned",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "orphaned::src/iced_ui/settings.rs": {
+      "issue_id": "orphaned::src/iced_ui/settings.rs",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/orphaned",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "orphaned::src/lib.rs": {
+      "issue_id": "orphaned::src/lib.rs",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/orphaned",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "orphaned::src/commands/settings.rs": {
+      "issue_id": "orphaned::src/commands/settings.rs",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/orphaned",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "orphaned::src/indexer/mod.rs": {
+      "issue_id": "orphaned::src/indexer/mod.rs",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/orphaned",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "orphaned::src/commands/search.rs": {
+      "issue_id": "orphaned::src/commands/search.rs",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/orphaned",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "orphaned::src/commands/system.rs": {
+      "issue_id": "orphaned::src/commands/system.rs",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/orphaned",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "orphaned::src/commands/indexing.rs": {
+      "issue_id": "orphaned::src/commands/indexing.rs",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/orphaned",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "orphaned::src/parsers/memory_map.rs": {
+      "issue_id": "orphaned::src/parsers/memory_map.rs",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/orphaned",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "orphaned::src/commands/mod.rs": {
+      "issue_id": "orphaned::src/commands/mod.rs",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/orphaned",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "orphaned::src/models.rs": {
+      "issue_id": "orphaned::src/models.rs",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/orphaned",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "orphaned::src/export_test.rs": {
+      "issue_id": "orphaned::src/export_test.rs",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/orphaned",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "orphaned::src/commands/autostart.rs": {
+      "issue_id": "orphaned::src/commands/autostart.rs",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/orphaned",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "orphaned::src/system/context_menu.rs": {
+      "issue_id": "orphaned::src/system/context_menu.rs",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/orphaned",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "orphaned::src/system/tray.rs": {
+      "issue_id": "orphaned::src/system/tray.rs",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/orphaned",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "orphaned::src/indexer/schema.rs": {
+      "issue_id": "orphaned::src/indexer/schema.rs",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/orphaned",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "orphaned::src/system/startup.rs": {
+      "issue_id": "orphaned::src/system/startup.rs",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/orphaned",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "orphaned::src/commands/export.rs": {
+      "issue_id": "orphaned::src/commands/export.rs",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/orphaned",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "test_coverage::src/parsers/memory_map.rs::untested_module": {
+      "issue_id": "test_coverage::src/parsers/memory_map.rs::untested_module",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/test_coverage",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "test_coverage::src/indexer/filename_index.rs::untested_module": {
+      "issue_id": "test_coverage::src/indexer/filename_index.rs::untested_module",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/test_coverage",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "test_coverage::src/iced_ui/mod.rs::untested_critical": {
+      "issue_id": "test_coverage::src/iced_ui/mod.rs::untested_critical",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/test_coverage",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "test_coverage::src/scanner/mod.rs::untested_critical": {
+      "issue_id": "test_coverage::src/scanner/mod.rs::untested_critical",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/test_coverage",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "test_coverage::src/main.rs::untested_module": {
+      "issue_id": "test_coverage::src/main.rs::untested_module",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/test_coverage",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "test_coverage::src/commands/settings.rs::untested_module": {
+      "issue_id": "test_coverage::src/commands/settings.rs::untested_module",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/test_coverage",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "test_coverage::src/commands/autostart.rs::untested_module": {
+      "issue_id": "test_coverage::src/commands/autostart.rs::untested_module",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/test_coverage",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "test_coverage::src/commands/search.rs::untested_module": {
+      "issue_id": "test_coverage::src/commands/search.rs::untested_module",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/test_coverage",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "test_coverage::src/iced_ui/settings.rs::untested_critical": {
+      "issue_id": "test_coverage::src/iced_ui/settings.rs::untested_critical",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/test_coverage",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "test_coverage::src/iced_ui/theme.rs::untested_module": {
+      "issue_id": "test_coverage::src/iced_ui/theme.rs::untested_module",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/test_coverage",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "test_coverage::src/lib.rs::untested_module": {
+      "issue_id": "test_coverage::src/lib.rs::untested_module",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/test_coverage",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "test_coverage::src/iced_ui/search.rs::untested_critical": {
+      "issue_id": "test_coverage::src/iced_ui/search.rs::untested_critical",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/test_coverage",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "test_coverage::src/commands/indexing.rs::untested_module": {
+      "issue_id": "test_coverage::src/commands/indexing.rs::untested_module",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/test_coverage",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "test_coverage::src/indexer/mod.rs::untested_module": {
+      "issue_id": "test_coverage::src/indexer/mod.rs::untested_module",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/test_coverage",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "test_coverage::src/indexer/writer.rs::untested_module": {
+      "issue_id": "test_coverage::src/indexer/writer.rs::untested_module",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/test_coverage",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "test_coverage::src/indexer/query_parser.rs::untested_critical": {
+      "issue_id": "test_coverage::src/indexer/query_parser.rs::untested_critical",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/test_coverage",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "test_coverage::src/system/tray.rs::untested_module": {
+      "issue_id": "test_coverage::src/system/tray.rs::untested_module",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/test_coverage",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "test_coverage::src/system/startup.rs::untested_module": {
+      "issue_id": "test_coverage::src/system/startup.rs::untested_module",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/test_coverage",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "test_coverage::src/error.rs::untested_module": {
+      "issue_id": "test_coverage::src/error.rs::untested_module",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/test_coverage",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "test_coverage::src/commands/mod.rs::untested_module": {
+      "issue_id": "test_coverage::src/commands/mod.rs::untested_module",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/test_coverage",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "test_coverage::src/indexer/searcher.rs::untested_critical": {
+      "issue_id": "test_coverage::src/indexer/searcher.rs::untested_critical",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/test_coverage",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "test_coverage::src/export_test.rs::untested_module": {
+      "issue_id": "test_coverage::src/export_test.rs::untested_module",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/test_coverage",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "test_coverage::src/watcher.rs::untested_critical": {
+      "issue_id": "test_coverage::src/watcher.rs::untested_critical",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/test_coverage",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "test_coverage::src/settings.rs::untested_module": {
+      "issue_id": "test_coverage::src/settings.rs::untested_module",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/test_coverage",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "test_coverage::src/models.rs::untested_module": {
+      "issue_id": "test_coverage::src/models.rs::untested_module",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/test_coverage",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "test_coverage::src/system/context_menu.rs::untested_module": {
+      "issue_id": "test_coverage::src/system/context_menu.rs::untested_module",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/test_coverage",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "test_coverage::src/metadata/db.rs::untested_module": {
+      "issue_id": "test_coverage::src/metadata/db.rs::untested_module",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/test_coverage",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "test_coverage::src/commands/system.rs::untested_module": {
+      "issue_id": "test_coverage::src/commands/system.rs::untested_module",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/test_coverage",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "test_coverage::src/commands/export.rs::untested_module": {
+      "issue_id": "test_coverage::src/commands/export.rs::untested_module",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/test_coverage",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "test_coverage::src/indexer/schema.rs::untested_module": {
+      "issue_id": "test_coverage::src/indexer/schema.rs::untested_module",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/test_coverage",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "test_coverage::src/parsers/mod.rs::untested_module": {
+      "issue_id": "test_coverage::src/parsers/mod.rs::untested_module",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/test_coverage",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "subjective::abstraction_fitness": {
+      "issue_id": "subjective::abstraction_fitness",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "subjective::ai_generated_debt": {
+      "issue_id": "subjective::ai_generated_debt",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "subjective::api_surface_coherence": {
+      "issue_id": "subjective::api_surface_coherence",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "subjective::authorization_consistency": {
+      "issue_id": "subjective::authorization_consistency",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "subjective::contract_coherence": {
+      "issue_id": "subjective::contract_coherence",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "subjective::convention_outlier": {
+      "issue_id": "subjective::convention_outlier",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "subjective::cross_module_architecture": {
+      "issue_id": "subjective::cross_module_architecture",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "subjective::dependency_health": {
+      "issue_id": "subjective::dependency_health",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "subjective::design_coherence": {
+      "issue_id": "subjective::design_coherence",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "subjective::error_consistency": {
+      "issue_id": "subjective::error_consistency",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "subjective::high_level_elegance": {
+      "issue_id": "subjective::high_level_elegance",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "subjective::incomplete_migration": {
+      "issue_id": "subjective::incomplete_migration",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "subjective::initialization_coupling": {
+      "issue_id": "subjective::initialization_coupling",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "subjective::logic_clarity": {
+      "issue_id": "subjective::logic_clarity",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "subjective::low_level_elegance": {
+      "issue_id": "subjective::low_level_elegance",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "subjective::mid_level_elegance": {
+      "issue_id": "subjective::mid_level_elegance",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "subjective::naming_quality": {
+      "issue_id": "subjective::naming_quality",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "subjective::package_organization": {
+      "issue_id": "subjective::package_organization",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "subjective::test_strategy": {
+      "issue_id": "subjective::test_strategy",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    },
+    "subjective::type_safety": {
+      "issue_id": "subjective::type_safety",
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-03-09T16:38:50+00:00"
+    }
+  },
+  "clusters": {
+    "auto/structural-mod.rs": {
+      "name": "auto/structural-mod.rs",
+      "description": "Review file size: mod.rs",
+      "issue_ids": [
+        "structural::src/iced_ui/mod.rs",
+        "structural::src/scanner/mod.rs"
+      ],
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "updated_at": "2026-03-09T16:38:50+00:00",
+      "auto": true,
+      "cluster_key": "file::structural::mod.rs",
+      "action": "review large files",
+      "user_modified": false
+    },
+    "auto/unused": {
+      "name": "auto/unused",
+      "description": "Remove 87 unused issues",
+      "issue_ids": [
+        "unused::src/commands/autostart.rs::unused_import::3",
+        "unused::src/commands/export.rs::unused_import::3",
+        "unused::src/commands/indexing.rs::unused_import::3",
+        "unused::src/commands/mod.rs::unused_import::8",
+        "unused::src/commands/mod.rs::unused_import::9",
+        "unused::src/commands/mod.rs::unused_import::10",
+        "unused::src/commands/search.rs::unused_import::3",
+        "unused::src/error.rs::unused_import::4",
+        "unused::src/error.rs::unused_import::169",
+        "unused::src/export_test.rs::unused_import::2",
+        "unused::src/iced_ui/mod.rs::unused_import::2",
+        "unused::src/iced_ui/mod.rs::unused_import::9",
+        "unused::src/iced_ui/search.rs::unused_import::1",
+        "unused::src/iced_ui/search.rs::unused_import::2",
+        "unused::src/iced_ui/settings.rs::unused_import::1",
+        "unused::src/iced_ui/settings.rs::unused_import::2",
+        "unused::src/iced_ui/settings.rs::unused_import::3",
+        "unused::src/iced_ui/theme.rs::unused_import::1",
+        "unused::src/indexer/filename_index.rs::unused_import::3",
+        "unused::src/indexer/filename_index.rs::unused_import::4",
+        "unused::src/indexer/mod.rs::unused_import::8",
+        "unused::src/indexer/mod.rs::unused_import::10",
+        "unused::src/indexer/mod.rs::unused_import::12",
+        "unused::src/indexer/mod.rs::unused_import::13",
+        "unused::src/indexer/mod.rs::unused_import::14",
+        "unused::src/indexer/query_parser.rs::unused_import::197",
+        "unused::src/indexer/schema.rs::unused_import::1",
+        "unused::src/indexer/searcher.rs::unused_import::1",
+        "unused::src/indexer/searcher.rs::unused_import::3",
+        "unused::src/indexer/searcher.rs::unused_import::6",
+        "unused::src/indexer/searcher.rs::unused_import::8",
+        "unused::src/indexer/searcher.rs::unused_import::9",
+        "unused::src/indexer/searcher.rs::unused_import::12",
+        "unused::src/indexer/writer.rs::unused_import::1",
+        "unused::src/indexer/writer.rs::unused_import::4",
+        "unused::src/indexer/writer.rs::unused_import::5",
+        "unused::src/lib.rs::unused_import::17",
+        "unused::src/main.rs::unused_import::4",
+        "unused::src/main.rs::unused_import::5",
+        "unused::src/main.rs::unused_import::7",
+        "unused::src/main.rs::unused_import::8",
+        "unused::src/main.rs::unused_import::107",
+        "unused::src/metadata/db.rs::unused_import::1",
+        "unused::src/metadata/db.rs::unused_import::2",
+        "unused::src/metadata/db.rs::unused_import::5",
+        "unused::src/metadata/mod.rs::unused_import::3",
+        "unused::src/models.rs::unused_import::1",
+        "unused::src/parsers/memory_map.rs::unused_import::1",
+        "unused::src/parsers/memory_map.rs::unused_import::4",
+        "unused::src/parsers/mod.rs::unused_import::1",
+        "unused::src/scanner/mod.rs::unused_import::4",
+        "unused::src/scanner/mod.rs::unused_import::7",
+        "unused::src/scanner/mod.rs::unused_import::14",
+        "unused::src/settings.rs::unused_import::1",
+        "unused::src/settings.rs::unused_import::2",
+        "unused::src/settings.rs::unused_import::4",
+        "unused::src/settings.rs::unused_import::219",
+        "unused::src/system/context_menu.rs::unused_import::2",
+        "unused::src/system/startup.rs::unused_import::1",
+        "unused::src/system/tray.rs::unused_import::1",
+        "unused::src/system/tray.rs::unused_import::3",
+        "unused::src/system/tray.rs::unused_import::4",
+        "unused::src/watcher.rs::unused_import::1",
+        "unused::src/watcher.rs::unused_import::6",
+        "unused::src/watcher.rs::unused_import::8",
+        "unused::src/watcher.rs::unused_import::9",
+        "unused::src/watcher.rs::unused_import::11",
+        "unused::tests/integration_test.rs::unused_import::2",
+        "unused::src/commands/mod.rs::unused_import::14",
+        "unused::src/scanner/mod.rs::unused_import::388",
+        "unused::src/commands/mod.rs::unused_import::18",
+        "unused::src/commands/mod.rs::unused_import::23",
+        "unused::src/commands/mod.rs::unused_import::28",
+        "unused::src/commands/mod.rs::unused_import::30",
+        "unused::src/commands/mod.rs::unused_import::32",
+        "unused::src/iced_ui/mod.rs::unused_import::83",
+        "unused::src/iced_ui/mod.rs::unused_import::719",
+        "unused::src/iced_ui/mod.rs::unused_import::720",
+        "unused::src/iced_ui/mod.rs::unused_import::797",
+        "unused::src/iced_ui/search.rs::unused_import::3",
+        "unused::src/indexer/searcher.rs::unused_import::195",
+        "unused::src/indexer/searcher.rs::unused_import::459",
+        "unused::src/models.rs::unused_import::2",
+        "unused::src/parsers/mod.rs::unused_import::45",
+        "unused::src/parsers/mod.rs::unused_import::82",
+        "unused::src/watcher.rs::unused_import::239",
+        "unused::src/watcher.rs::unused_import::270"
+      ],
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "updated_at": "2026-03-09T16:38:50+00:00",
+      "auto": true,
+      "cluster_key": "auto::unused",
+      "action": "desloppify autofix unused-imports --dry-run",
+      "user_modified": false
+    },
+    "auto/orphaned": {
+      "name": "auto/orphaned",
+      "description": "Fix 31 orphaned issues",
+      "issue_ids": [
+        "orphaned::src/iced_ui/mod.rs",
+        "orphaned::src/metadata/db.rs",
+        "orphaned::src/indexer/searcher.rs",
+        "orphaned::src/scanner/mod.rs",
+        "orphaned::src/iced_ui/search.rs",
+        "orphaned::src/parsers/mod.rs",
+        "orphaned::src/indexer/filename_index.rs",
+        "orphaned::src/iced_ui/theme.rs",
+        "orphaned::src/settings.rs",
+        "orphaned::src/watcher.rs",
+        "orphaned::src/indexer/query_parser.rs",
+        "orphaned::src/error.rs",
+        "orphaned::src/indexer/writer.rs",
+        "orphaned::src/main.rs",
+        "orphaned::src/iced_ui/settings.rs",
+        "orphaned::src/lib.rs",
+        "orphaned::src/commands/settings.rs",
+        "orphaned::src/indexer/mod.rs",
+        "orphaned::src/commands/search.rs",
+        "orphaned::src/commands/system.rs",
+        "orphaned::src/commands/indexing.rs",
+        "orphaned::src/parsers/memory_map.rs",
+        "orphaned::src/commands/mod.rs",
+        "orphaned::src/models.rs",
+        "orphaned::src/export_test.rs",
+        "orphaned::src/commands/autostart.rs",
+        "orphaned::src/system/context_menu.rs",
+        "orphaned::src/system/tray.rs",
+        "orphaned::src/indexer/schema.rs",
+        "orphaned::src/system/startup.rs",
+        "orphaned::src/commands/export.rs"
+      ],
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "updated_at": "2026-03-09T16:38:50+00:00",
+      "auto": true,
+      "cluster_key": "detector::orphaned",
+      "action": "desloppify move",
+      "user_modified": false
+    },
+    "auto/test_coverage": {
+      "name": "auto/test_coverage",
+      "description": "Fix 31 test coverage issues",
+      "issue_ids": [
+        "test_coverage::src/parsers/memory_map.rs::untested_module",
+        "test_coverage::src/indexer/filename_index.rs::untested_module",
+        "test_coverage::src/iced_ui/mod.rs::untested_critical",
+        "test_coverage::src/scanner/mod.rs::untested_critical",
+        "test_coverage::src/main.rs::untested_module",
+        "test_coverage::src/commands/settings.rs::untested_module",
+        "test_coverage::src/commands/autostart.rs::untested_module",
+        "test_coverage::src/commands/search.rs::untested_module",
+        "test_coverage::src/iced_ui/settings.rs::untested_critical",
+        "test_coverage::src/iced_ui/theme.rs::untested_module",
+        "test_coverage::src/lib.rs::untested_module",
+        "test_coverage::src/iced_ui/search.rs::untested_critical",
+        "test_coverage::src/commands/indexing.rs::untested_module",
+        "test_coverage::src/indexer/mod.rs::untested_module",
+        "test_coverage::src/indexer/writer.rs::untested_module",
+        "test_coverage::src/indexer/query_parser.rs::untested_critical",
+        "test_coverage::src/system/tray.rs::untested_module",
+        "test_coverage::src/system/startup.rs::untested_module",
+        "test_coverage::src/error.rs::untested_module",
+        "test_coverage::src/commands/mod.rs::untested_module",
+        "test_coverage::src/indexer/searcher.rs::untested_critical",
+        "test_coverage::src/export_test.rs::untested_module",
+        "test_coverage::src/watcher.rs::untested_critical",
+        "test_coverage::src/settings.rs::untested_module",
+        "test_coverage::src/models.rs::untested_module",
+        "test_coverage::src/system/context_menu.rs::untested_module",
+        "test_coverage::src/metadata/db.rs::untested_module",
+        "test_coverage::src/commands/system.rs::untested_module",
+        "test_coverage::src/commands/export.rs::untested_module",
+        "test_coverage::src/indexer/schema.rs::untested_module",
+        "test_coverage::src/parsers/mod.rs::untested_module"
+      ],
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "updated_at": "2026-03-09T16:38:50+00:00",
+      "auto": true,
+      "cluster_key": "detector::test_coverage",
+      "action": "add tests for untested production modules \u2014 prioritize by import count",
+      "user_modified": false
+    },
+    "auto/initial-review": {
+      "name": "auto/initial-review",
+      "description": "Initial review of 20 unscored subjective dimensions",
+      "issue_ids": [
+        "subjective::abstraction_fitness",
+        "subjective::ai_generated_debt",
+        "subjective::api_surface_coherence",
+        "subjective::authorization_consistency",
+        "subjective::contract_coherence",
+        "subjective::convention_outlier",
+        "subjective::cross_module_architecture",
+        "subjective::dependency_health",
+        "subjective::design_coherence",
+        "subjective::error_consistency",
+        "subjective::high_level_elegance",
+        "subjective::incomplete_migration",
+        "subjective::initialization_coupling",
+        "subjective::logic_clarity",
+        "subjective::low_level_elegance",
+        "subjective::mid_level_elegance",
+        "subjective::naming_quality",
+        "subjective::package_organization",
+        "subjective::test_strategy",
+        "subjective::type_safety"
+      ],
+      "created_at": "2026-03-09T16:38:50+00:00",
+      "updated_at": "2026-03-09T16:38:50+00:00",
+      "auto": true,
+      "cluster_key": "subjective::unscored",
+      "action": "desloppify review --prepare --dimensions abstraction_fitness,ai_generated_debt,api_surface_coherence,authorization_consistency,contract_coherence,convention_outlier,cross_module_architecture,dependency_health,design_coherence,error_consistency,high_level_elegance,incomplete_migration,initialization_coupling,logic_clarity,low_level_elegance,mid_level_elegance,naming_quality,package_organization,test_strategy,type_safety",
+      "user_modified": false
+    }
+  },
+  "superseded": {},
+  "promoted_ids": [],
+  "plan_start_scores": {
+    "strict": 24.0,
+    "overall": 24.0,
+    "objective": 60.0,
+    "verified": 60.0
+  },
+  "execution_log": [
+    {
+      "timestamp": "2026-03-09T16:38:50+00:00",
+      "action": "sync_unscored",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {
+        "changes": true
+      }
+    },
+    {
+      "timestamp": "2026-03-09T16:38:50+00:00",
+      "action": "auto_cluster",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {
+        "changes": true
+      }
+    },
+    {
+      "timestamp": "2026-03-09T16:38:50+00:00",
+      "action": "seed_start_scores",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {}
+    }
+  ],
+  "epic_triage_meta": {},
+  "commit_log": [],
+  "uncommitted_issues": [],
+  "commit_tracking_branch": null,
+  "scan_count_at_plan_start": 13
+}
