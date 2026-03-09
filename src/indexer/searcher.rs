@@ -452,6 +452,8 @@ impl IndexSearcher {
             last_updated: Some(chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()),
         })
     }
+
+    }
 }
 
 #[cfg(test)]

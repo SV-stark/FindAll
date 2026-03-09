@@ -39,7 +39,7 @@ memmap2 = "0.9"
 
 # Document Parsing
 # Simplified with Kreuzberg
-kreuzberg = { version = "4.4.4", features = ["archives", "bundled-pdfium"] }
+kreuzberg = { version = "4.4.4", features = ["full"] }
 
 # Performance Libraries
 moka = { version = "0.12", features = ["sync"] }

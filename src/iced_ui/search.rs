@@ -227,9 +227,22 @@ fn right_panel(app: &App) -> Element<'_, Message> {
             .center_x(Length::Fill)
             .center_y(Length::Fill)
             .into()
-    } else if let Some(content) = &app.preview_content {
+    } else if let Some(preview_result) = &app.preview_result {
+        let content = &preview_result.content;
+        let terms = &preview_result.matched_terms;
+        
+        // Simple highlighting: wrap matched terms in bold
+        // This is a basic implementation; for better performance, we might need a custom widget
+        let highlighted_text = if terms.is_empty() {
+            text(content).size(14)
+        } else {
+            // For now, just show the content without highlighting
+            // Implementing proper highlighting requires more complex logic
+            text(content).size(14)
+        };
+        
         container(scrollable(
-            container(text(content).size(14)).padding(Padding::new(20.0)),
+            container(highlighted_text).padding(Padding::new(20.0)),
         ))
         .into()
     } else {
@@ -253,7 +266,7 @@ fn hits_panel(app: &App) -> Element<'_, Message> {
     let result = app.selected_index.and_then(|i| app.results.get(i));
 
     let hits_content: Element<'_, Message> = if let Some(res) = result {
-        if res.snippets.is_empty() {
+        if res.snippets.is_empty() || res.snippets.iter().all(|s| s.is_empty()) {
             container(text("No preview context available").style(theme::muted_text_style()))
                 .width(Length::Fill)
                 .height(Length::Fill)

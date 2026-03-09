@@ -7,13 +7,15 @@ pub fn create_schema() -> Schema {
     // File path - stored for retrieval, indexed for exact matches
     schema_builder.add_text_field("file_path", STRING | STORED);
 
-    // Content - indexed for search but NOT stored (to save RAM)
-    // We retrieve content from disk on demand
-    let text_options = TextOptions::default().set_indexing_options(
-        TextFieldIndexing::default()
-            .set_tokenizer("default")
-            .set_index_option(IndexRecordOption::WithFreqsAndPositions),
-    );
+    // Content - indexed for search AND stored for fast preview retrieval
+    // Storing content allows fast previews without re-parsing files
+    let text_options = TextOptions::default()
+        .set_indexing_options(
+            TextFieldIndexing::default()
+                .set_tokenizer("default")
+                .set_index_option(IndexRecordOption::WithFreqsAndPositions),
+        )
+        .set_stored(false);
     schema_builder.add_text_field("content", text_options);
 
     // Title - stored for display, indexed for search

@@ -115,7 +115,7 @@ pub enum Message {
     FilterExtensionChanged(String),
     FilterSizeChanged(String),
     PreviewRequested(usize),
-    PreviewLoaded(Option<String>),
+    PreviewLoaded(Option<crate::models::PreviewResult>),
     MoveUp,
     MoveDown,
     DismissError,
@@ -149,7 +149,7 @@ pub struct App {
     search_mode: SearchMode,
     filter_extension: String,
     filter_size: String,
-    preview_content: Option<String>,
+    preview_result: Option<crate::models::PreviewResult>,
     is_loading_preview: bool,
     rebuild_progress: Option<f32>,
     rebuild_status: Option<String>,
@@ -183,7 +183,7 @@ impl App {
                     search_mode: SearchMode::FullText,
                     filter_extension: String::new(),
                     filter_size: String::new(),
-                    preview_content: None,
+                    preview_result: None,
                     is_loading_preview: false,
                     rebuild_progress: None,
                     rebuild_status: None,
@@ -230,7 +230,7 @@ impl App {
                 search_mode: SearchMode::FullText,
                 filter_extension: String::new(),
                 filter_size: String::new(),
-                preview_content: None,
+                preview_result: None,
                 is_loading_preview: false,
                 rebuild_progress: None,
                 rebuild_status: None,
@@ -303,7 +303,7 @@ impl App {
 
         self.is_searching = true;
         self.results.clear();
-        self.preview_content = None;
+        self.preview_result = None;
 
         Task::future(async move {
             let result = match mode {
@@ -352,9 +352,14 @@ impl App {
         let query = self.search_query.clone();
         self.is_loading_preview = true;
 
+        let state = match &self.state {
+            Some(s) => s.clone(),
+            None => return Task::none(),
+        };
+
         Task::future(async move {
-            let preview = match get_file_preview_highlighted_internal(path, query).await {
-                Ok(result) => Some(result.content),
+            let preview = match get_file_preview_highlighted_internal(path, query, &state).await {
+                Ok(result) => Some(result),
                 Err(_) => None,
             };
             Message::PreviewLoaded(preview)
@@ -632,8 +637,8 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 app.selected_index = Some(idx);
                 app.load_preview()
             }
-            Message::PreviewLoaded(content) => {
-                app.preview_content = content;
+            Message::PreviewLoaded(result) => {
+                app.preview_result = result;
                 app.is_loading_preview = false;
                 Task::none()
             }

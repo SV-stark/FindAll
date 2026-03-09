@@ -142,7 +142,7 @@ pub fn hits_container(_theme: &Theme) -> container::Style {
 
 pub fn primary_button() -> impl Fn(&Theme, button::Status) -> button::Style {
     move |_theme: &Theme, status: button::Status| {
-        let _is_dark = is_dark_theme(_theme);
+        // let _is_dark = is_dark_theme(_theme);
         let base = button::Style {
             background: Some(Background::Color(ACCENT_BLUE)),
             text_color: Color::WHITE,

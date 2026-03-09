@@ -40,14 +40,16 @@ pub async fn get_file_preview_internal(path: String) -> Result<String, String> {
 pub async fn get_file_preview_highlighted_internal(
     path: String,
     query: String,
+    _state: &Arc<AppState>,
 ) -> Result<PreviewResult, String> {
     use crate::indexer::query_parser::extract_highlight_terms;
-    let path_buf = std::path::PathBuf::from(path);
     let matched_terms = extract_highlight_terms(&query);
+    
+    let path_buf = std::path::PathBuf::from(path);
     let result = tokio::task::spawn_blocking(move || parse_file(&path_buf))
         .await
         .map_err(|e| format!("Preview task failed: {}", e))?;
-
+    
     match result {
         Ok(doc) => Ok(PreviewResult {
             content: doc.content[..std::cmp::min(doc.content.len(), 10000)].to_string(),

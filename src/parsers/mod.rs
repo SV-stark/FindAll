@@ -30,9 +30,18 @@ fn extension_matches(ext: &OsStr, target: &str) -> bool {
 
 /// Detect file type and route to appropriate parser using Kreuzberg
 pub fn parse_file(path: &Path) -> Result<ParsedDocument> {
+    // Log the file extension for debugging
+    let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("none");
+    tracing::info!("Parsing file: {} (extension: {})", path.display(), extension);
+    
     let result = kreuzberg::extract_file_sync(path, None, &Default::default())
-        .map_err(|e| FlashError::parse(path, format!("Extraction failed: {}", e)))?;
+        .map_err(|e| {
+            tracing::error!("Failed to extract file {}: {}", path.display(), e);
+            FlashError::parse(path, format!("Extraction failed: {}", e))
+        })?;
 
+    tracing::info!("Successfully parsed file: {}", path.display());
+    
     Ok(ParsedDocument {
         path: path.to_string_lossy().to_string(),
         content: result.content,

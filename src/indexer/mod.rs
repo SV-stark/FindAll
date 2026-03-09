@@ -14,7 +14,7 @@ use tantivy::{directory::MmapDirectory, Index};
 use tracing::{info, warn};
 
 /// Current schema version - bump this when schema changes
-pub const SCHEMA_VERSION: &str = "1.1.0";
+pub const SCHEMA_VERSION: &str = "1.2.0";
 
 fn get_schema_version_path(index_path: &Path) -> PathBuf {
     index_path.join(".schema_version")
@@ -169,5 +169,10 @@ impl IndexManager {
     /// Get index statistics
     pub fn get_statistics(&self) -> Result<IndexStatistics> {
         self.searcher.get_statistics()
+    }
+
+    /// Get the searcher for direct document access
+    pub fn get_searcher(&self) -> &IndexSearcher {
+        &self.searcher
     }
 }
