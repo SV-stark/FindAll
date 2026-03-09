@@ -26,8 +26,12 @@ pub async fn search_query_internal(
 }
 
 pub async fn get_file_preview_internal(path: String) -> Result<String, String> {
-    let path = std::path::PathBuf::from(path);
-    match parse_file(&path) {
+    let path_buf = std::path::PathBuf::from(path);
+    let result = tokio::task::spawn_blocking(move || parse_file(&path_buf))
+        .await
+        .map_err(|e| format!("Preview task failed: {}", e))?;
+
+    match result {
         Ok(doc) => Ok(doc.content[..std::cmp::min(doc.content.len(), 10000)].to_string()),
         Err(e) => Err(e.to_string()),
     }
@@ -38,9 +42,13 @@ pub async fn get_file_preview_highlighted_internal(
     query: String,
 ) -> Result<PreviewResult, String> {
     use crate::indexer::query_parser::extract_highlight_terms;
-    let path = std::path::PathBuf::from(path);
+    let path_buf = std::path::PathBuf::from(path);
     let matched_terms = extract_highlight_terms(&query);
-    match parse_file(&path) {
+    let result = tokio::task::spawn_blocking(move || parse_file(&path_buf))
+        .await
+        .map_err(|e| format!("Preview task failed: {}", e))?;
+
+    match result {
         Ok(doc) => Ok(PreviewResult {
             content: doc.content[..std::cmp::min(doc.content.len(), 10000)].to_string(),
             matched_terms,

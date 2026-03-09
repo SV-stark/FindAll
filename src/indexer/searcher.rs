@@ -54,6 +54,7 @@ pub(crate) struct CacheKey {
 }
 
 /// LRU-style query result cache using moka + ahash
+#[derive(Clone)]
 pub struct QueryCache {
     cache: Cache<CacheKey, CachedResult>,
 }
@@ -94,6 +95,7 @@ impl Default for QueryCache {
 }
 
 /// Manages searching the Tantivy index
+#[derive(Clone)]
 pub struct IndexSearcher {
     reader: IndexReader,
     query_parser: QueryParser,
@@ -162,6 +164,32 @@ impl IndexSearcher {
 
     /// Search the index and return top results with optional filters
     pub async fn search(
+        &self,
+        query: &str,
+        limit: usize,
+        min_size: Option<u64>,
+        max_size: Option<u64>,
+        file_extensions: Option<&[String]>,
+    ) -> Result<Vec<SearchResult>> {
+        let query_owned = query.to_string();
+        let extensions_owned = file_extensions.map(|e| e.to_vec());
+        let this = self.clone();
+
+        tokio::task::spawn_blocking(move || {
+            this.search_sync(
+                &query_owned,
+                limit,
+                min_size,
+                max_size,
+                extensions_owned.as_deref(),
+            )
+        })
+        .await
+        .map_err(|e| FlashError::search(query, format!("Search task failed: {}", e)))?
+    }
+
+    /// Synchronous search implementation
+    pub fn search_sync(
         &self,
         query: &str,
         limit: usize,
