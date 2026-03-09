@@ -11,22 +11,6 @@ pub struct ParsedDocument {
     pub title: Option<String>,
 }
 
-/// Parse file without allocating - uses byte comparison
-#[inline]
-#[allow(dead_code)]
-fn extension_matches(ext: &OsStr, target: &str) -> bool {
-    if let Some(ext_bytes) = ext.to_str().map(|s| s.as_bytes()) {
-        if ext_bytes.len() != target.len() {
-            return false;
-        }
-        ext_bytes
-            .iter()
-            .zip(target.bytes())
-            .all(|(a, b)| a.eq_ignore_ascii_case(&b))
-    } else {
-        false
-    }
-}
 
 /// Detect file type and route to appropriate parser using Kreuzberg
 pub fn parse_file(path: &Path) -> Result<ParsedDocument> {
