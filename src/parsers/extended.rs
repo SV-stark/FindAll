@@ -11,24 +11,24 @@ static TEXT_EXTENSIONS: phf::Set<&'static str> = phf_set![
 ];
 
 pub fn parse_rtf(path: &Path) -> Result<ParsedDocument> {
-    // Litchi integration is currently disabled due to crate API incompatibility
-    /*
-    match litchi::extract(path) {
-        Ok(text) => return Ok(ParsedDocument {
-            path: path.to_string_lossy().to_string(),
-            content: text,
-            title: None,
-        }),
-        Err(_) => {}
+    match litchi::Document::open(path) {
+        Ok(doc) => {
+            let text = doc.text().unwrap_or_default();
+            Ok(ParsedDocument {
+                path: path.to_string_lossy().to_string(),
+                content: text,
+                title: None,
+            })
+        }
+        Err(e) => {
+            let metadata = memory_map::get_file_size(path)?;
+            Ok(ParsedDocument {
+                path: path.to_string_lossy().to_string(),
+                content: format!("RTF Document (Litchi error: {:?}): {} bytes.", e, metadata),
+                title: None,
+            })
+        }
     }
-    */
-
-    let metadata = memory_map::get_file_size(path)?;
-    Ok(ParsedDocument {
-        path: path.to_string_lossy().to_string(),
-        content: format!("RTF Document (Litchi disabled): {} bytes.", metadata),
-        title: None,
-    })
 }
 
 pub fn parse_eml(path: &Path) -> Result<ParsedDocument> {
@@ -225,45 +225,120 @@ pub fn parse_zip_content(path: &Path) -> Result<ParsedDocument> {
 }
 
 pub fn parse_7z_content(path: &Path) -> Result<ParsedDocument> {
-    let metadata = memory_map::get_file_size(path)?;
+    let mut all_text = String::new();
+    let max_size = 10 * 1024 * 1024; // 10MB limit
+
+    match sevenz_rust::decompress_file(path, std::env::temp_dir().join("flash_7z_tmp")) {
+        Ok(_) => {
+            let tmp_dir = std::env::temp_dir().join("flash_7z_tmp");
+            for entry in walkdir::WalkDir::new(&tmp_dir) {
+                if let Ok(entry) = entry {
+                    if entry.path().is_file() {
+                        if let Some(ext) = entry.path().extension().and_then(|e| e.to_str()) {
+                            if TEXT_EXTENSIONS.contains(ext.to_lowercase().as_str()) {
+                                if let Ok(content) = std::fs::read_to_string(entry.path()) {
+                                    all_text.push_str(&content);
+                                    all_text.push_str("\n\n");
+                                }
+                            }
+                        }
+                    }
+                }
+                if all_text.len() >= max_size {
+                    break;
+                }
+            }
+            // Cleanup
+            let _ = std::fs::remove_dir_all(tmp_dir);
+        }
+        Err(e) => {
+            return Ok(ParsedDocument {
+                path: path.to_string_lossy().to_string(),
+                content: format!("7z archive (Decompression error: {}): {} bytes", e, memory_map::get_file_size(path)?),
+                title: None,
+            });
+        }
+    }
 
     Ok(ParsedDocument {
         path: path.to_string_lossy().to_string(),
-        content: format!("7z archive: {} bytes", metadata),
+        content: all_text,
         title: None,
     })
 }
 
 pub fn parse_rar_content(path: &Path) -> Result<ParsedDocument> {
-    let metadata = memory_map::get_file_size(path)?;
+    let mut all_text = String::new();
+    let max_size = 10 * 1024 * 1024; // 10MB limit
+
+    let tmp_dir = std::env::temp_dir().join("flash_rar_tmp");
+    let _ = std::fs::create_dir_all(&tmp_dir);
+
+    match unrar::Archive::new(path).open_for_processing() {
+        Ok(mut arch) => {
+            while let Ok(Some(entry)) = arch.read_header() {
+                arch = match entry.extract_to(&tmp_dir) {
+                    Ok(a) => a,
+                    Err(_) => break,
+                };
+            }
+
+            for entry in walkdir::WalkDir::new(&tmp_dir) {
+                if let Ok(entry) = entry {
+                    if entry.path().is_file() {
+                        if let Some(ext) = entry.path().extension().and_then(|e| e.to_str()) {
+                            if TEXT_EXTENSIONS.contains(ext.to_lowercase().as_str()) {
+                                if let Ok(content) = std::fs::read_to_string(entry.path()) {
+                                    all_text.push_str(&content);
+                                    all_text.push_str("\n\n");
+                                }
+                            }
+                        }
+                    }
+                }
+                if all_text.len() >= max_size {
+                    break;
+                }
+            }
+            // Cleanup
+            let _ = std::fs::remove_dir_all(&tmp_dir);
+        }
+        Err(e) => {
+            return Ok(ParsedDocument {
+                path: path.to_string_lossy().to_string(),
+                content: format!("RAR archive (Open error: {:?}): {} bytes", e, memory_map::get_file_size(path)?),
+                title: None,
+            });
+        }
+    }
 
     Ok(ParsedDocument {
         path: path.to_string_lossy().to_string(),
-        content: format!("RAR archive: {} bytes", metadata),
+        content: all_text,
         title: None,
     })
 }
 
 pub fn parse_legacy_office(path: &Path) -> Result<ParsedDocument> {
-    // Litchi integration is currently disabled due to crate API incompatibility
-    /*
-    match litchi::extract(path) {
-         Ok(text) => return Ok(ParsedDocument {
-            path: path.to_string_lossy().to_string(),
-            content: text,
-            title: None,
-        }),
-        Err(_) => {}
+    match litchi::Document::open(path) {
+        Ok(doc) => {
+            let text = doc.text().unwrap_or_default();
+            Ok(ParsedDocument {
+                path: path.to_string_lossy().to_string(),
+                content: text,
+                title: None,
+            })
+        }
+        Err(e) => {
+            let metadata = memory_map::get_file_size(path)?;
+            Ok(ParsedDocument {
+                path: path.to_string_lossy().to_string(),
+                content: format!(
+                    "Legacy Office Document (Litchi error: {:?}): {} bytes.",
+                    e, metadata
+                ),
+                title: None,
+            })
+        }
     }
-    */
-
-    let metadata = memory_map::get_file_size(path)?;
-    Ok(ParsedDocument {
-        path: path.to_string_lossy().to_string(),
-        content: format!(
-            "Legacy Office Document (Litchi disabled): {} bytes.",
-            metadata
-        ),
-        title: None,
-    })
 }

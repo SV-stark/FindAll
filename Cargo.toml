@@ -82,6 +82,8 @@ litchi = { git = "https://github.com/DevExzh/litchi.git", rev = "0f9973bc59afaa9
     "rtf",
 ] }
 calamine = "0.33"
+sevenz-rust = "0.6.1"
+unrar = "0.5.8"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"
