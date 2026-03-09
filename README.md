@@ -1,4 +1,4 @@
-# Flash Search
+<h1 align="center">Flash Search</h1>
 
 <p align="center">
   <img src="assets/logo.png" alt="Flash Search Logo" width="120">
@@ -25,7 +25,9 @@
 
 ---
 
-## 🚀 Features
+<h2 align="center">🚀 Features</h2>
+
+<div align="center">
 
 - **⚡ Blazing Fast**: Sub-50ms search results across millions of documents
 - **📂 Filename Search**: Instant filename-only search mode for ultra-fast navigation
@@ -37,19 +39,29 @@
 - **🎯 Smart Filtering**: .gitignore support, custom exclude patterns
 - **🌙 Native UI**: Beautiful dark/light themes using Iced's high-performance renderer.
 
-## 📥 Installation
+</div>
 
-### Prerequisites
+<h2 align="center">📥 Installation</h2>
+
+<h3 align="center">Prerequisites</h3>
+
+<div align="center">
 
 - **Windows**: Windows 10/11
 - **macOS**: macOS 10.15+
 - **Linux**: Vulkan-compatible drivers & development tools (pkg-config, libfontconfig1-dev)
 
-### Download
+</div>
+
+<h3 align="center">Download</h3>
+
+<div align="center">
 
 Download the latest release for your platform from the [Releases](https://github.com/SV-stark/FindAll/releases) page.
 
-### Build from Source
+</div>
+
+<h3 align="center">Build from Source</h3>
 
 ```bash
 # Clone the repository
@@ -63,15 +75,21 @@ cargo build --release
 cargo run
 ```
 
-## 🎮 Usage
+<h2 align="center">🎮 Usage</h2>
 
-### First Launch
+<h3 align="center">First Launch</h3>
+
+<div align="center">
 
 1. **Initial Setup**: Select folders to index on first launch
 2. **Indexing**: The app will scan and index your files (this may take a few minutes for large directories)
 3. **Search**: Press `Alt+Space` (or your custom hotkey) to open the search bar from anywhere
 
-### Search Syntax
+</div>
+
+<h3 align="center">Search Syntax</h3>
+
+<div align="center">
 
 | Query | Description |
 |-------|-------------|
@@ -84,7 +102,11 @@ cargo run
 | `path:docs` | Filter by folder path |
 | `size:>5MB` | Filter by file size (KB, MB, GB) |
 
-### Keyboard Shortcuts
+</div>
+
+<h3 align="center">Keyboard Shortcuts</h3>
+
+<div align="center">
 
 | Shortcut | Action |
 |----------|--------|
@@ -94,9 +116,13 @@ cargo run
 | `Esc` | Close search window |
 | `↑/↓` | Navigate results |
 
-## 🏗️ Tech Stack
+</div>
 
-### Core Architecture
+<h2 align="center">🏗️ Tech Stack</h2>
+
+<h3 align="center">Core Architecture</h3>
+
+<div align="center">
 
 | Component | Technology | Purpose |
 |-----------|------------|---------|
@@ -106,7 +132,11 @@ cargo run
 | **Metadata DB** | redb | Pure Rust key-value storage |
 | **Concurrency** | Rayon + Tokio | Parallel processing + async I/O |
 
-### Supported File Formats
+</div>
+
+<h3 align="center">Supported File Formats</h3>
+
+<div align="center">
 
 | Format | Parser | Status |
 |--------|--------|--------|
@@ -119,9 +149,17 @@ cargo run
 | ODT, ODP, ODS | `litchi` | ✅ Supported |
 | Images (OCR) | `ocrs` / Tesseract | 🚧 Planned |
 
-## 📊 Performance
+</div>
+
+<h2 align="center">📊 Performance</h2>
+
+<div align="center">
 
 Benchmarks on AMD Ryzen 7 5800X with NVMe SSD:
+
+</div>
+
+<div align="center">
 
 | Metric | Value |
 |--------|-------|
@@ -132,7 +170,11 @@ Benchmarks on AMD Ryzen 7 5800X with NVMe SSD:
 | **Idle RAM usage** | ~25MB |
 | **Peak RAM (indexing)** | ~180MB |
 
-### Comparison
+</div>
+
+<h3 align="center">Comparison</h3>
+
+<div align="center">
 
 | Feature | Flash Search | AnyTXT | Windows Search | Recoll |
 |---------|-------------|---------|----------------|---------|
@@ -142,39 +184,61 @@ Benchmarks on AMD Ryzen 7 5800X with NVMe SSD:
 | Live Updates | ✅ | ✅ | ✅ | ❌ |
 | Cross-Platform | ✅ | ⚠️ | ❌ | ✅ |
 
-## 🗺️ Roadmap
+</div>
 
-### Phase 1: Core (Completed ✅)
+<h2 align="center">🗺️ Roadmap</h2>
+
+<h3 align="center">Phase 1: Core (Completed ✅)</h3>
+<div align="center">
+
 - [x] Project setup with Iced
 - [x] Basic file parsers (PDF, DOCX, TXT)
 - [x] Tantivy integration
 - [x] Parallel file scanning
 
-### Phase 2: Polish (Completed ✅)
+</div>
+
+<h3 align="center">Phase 2: Polish (Completed ✅)</h3>
+<div align="center">
+
 - [x] Advanced search filters (date, size, type)
 - [x] Search result preview panel
 - [x] Export search results (CSV, JSON)
 - [x] Fast filename-only search & indexing
 - [x] Enhanced indexing telemetry
 
-### Phase 3: Advanced Features (In Progress 🚧)
+</div>
+
+<h3 align="center">Phase 3: Advanced Features (In Progress 🚧)</h3>
+<div align="center">
+
 - [x] Search history and favorites (Pinned files)
 - [ ] Natural language queries
 - [ ] Plugin system for custom parsers
 - [ ] OCR support for images and scanned PDFs
 - [ ] Cloud sync for index
 
-### Phase 4: Enterprise (Future 🔮)
+</div>
+
+<h3 align="center">Phase 4: Enterprise (Future 🔮)</h3>
+<div align="center">
+
 - [ ] Network drive support
 - [ ] Multi-user indexing
 - [ ] Web interface
 - [ ] API for integrations
 
-## 🤝 Contributing
+</div>
+
+<h2 align="center">🤝 Contributing</h2>
+
+<div align="center">
 
 We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
 
-### Development Setup
+</div>
+
+<h3 align="center">Development Setup</h3>
 
 ```bash
 # Install Rust
@@ -188,15 +252,23 @@ cd FindAll
 cargo run
 ```
 
-## 📄 License
+<h2 align="center">📄 License</h2>
+
+<div align="center">
 
 This project is licensed under the GNU General Public License v3 - see the [LICENSE](LICENSE) file for details.
 
-## 🙏 Acknowledgments
+</div>
+
+<h2 align="center">🙏 Acknowledgments</h2>
+
+<div align="center">
 
 - [Tantivy](https://github.com/quickwit-oss/tantivy) - The blazing-fast search engine library
 - [Iced](https://iced.rs/) - The cross-platform UI framework for Rust
 - [Redb](https://github.com/cberner/redb) - The pure Rust embedded database
+
+</div>
 
 ---
 
