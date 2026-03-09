@@ -164,9 +164,8 @@ impl WatcherManager {
                                     guard.insert(path.clone(), WatcherAction::Remove);
                                 }
                                 _ => {
-                                    if path.is_file() {
-                                        guard.insert(path.clone(), WatcherAction::Index);
-                                    }
+                                    // Don't check if file exists here - let reindex_single_file handle missing files
+                                    guard.insert(path.clone(), WatcherAction::Index);
                                 }
                             }
                         }
