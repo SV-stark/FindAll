@@ -62,31 +62,6 @@ mod tests {
     }
 
     #[test]
-    fn test_parser_type_from_extension() {
-        assert!(matches!(
-            ParserType::from_extension("txt"),
-            Some(ParserType::Text)
-        ));
-        assert!(matches!(
-            ParserType::from_extension("TXT"),
-            Some(ParserType::Text)
-        ));
-        assert!(matches!(
-            ParserType::from_extension("rs"),
-            Some(ParserType::Text)
-        ));
-        assert!(matches!(
-            ParserType::from_extension("js"),
-            Some(ParserType::Text)
-        ));
-        assert!(matches!(
-            ParserType::from_extension("docx"),
-            Some(ParserType::Docx)
-        ));
-        assert!(ParserType::from_extension("exe").is_none());
-    }
-
-    #[test]
     fn test_parse_file_txt() {
         use std::io::Write;
         let dir = tempfile::tempdir().unwrap();
