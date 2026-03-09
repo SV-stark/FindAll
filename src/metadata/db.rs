@@ -5,7 +5,6 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::SystemTime;
-// use tracing::warn;
 
 const FILES_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("files");
 
@@ -369,7 +368,11 @@ impl MetadataDb {
                         }
                     }
                     Ok(None) => true, // File not indexed yet
-                    Err(_) => true,   // Error reading, safer to reindex
+                    Err(e) => {
+                        // Log error but assume safe to reindex rather than silently reindexing
+                        tracing::warn!("Error reading metadata for '{}': {}", path, e);
+                        true
+                    }
                 }
             })
             .collect();
@@ -411,7 +414,6 @@ impl MetadataDb {
 
         // Use select_nth_unstable for O(n) partial sort instead of O(n log n) full sort
         if files.len() > limit {
-            // use std::cmp::Ordering;
             files.select_nth_unstable_by(limit, |a, b| b.1.cmp(&a.1)); // Reverse order for max-heap behavior
             files.truncate(limit);
         } else {
