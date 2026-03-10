@@ -27,8 +27,6 @@
 
 <h2 align="center">🚀 Features</h2>
 
-<div align="center">
-
 - **⚡ Blazing Fast**: Sub-50ms search results across millions of documents
 - **📂 Filename Search**: Instant filename-only search mode for ultra-fast navigation
 - **💾 Minimal Footprint**: <30MB RAM usage at idle (vs 200MB+ for Electron apps)
@@ -40,27 +38,17 @@
 - **🎯 Smart Filtering**: .gitignore support, custom exclude patterns
 - **🌙 Native UI**: Beautiful dark/light themes using Iced's high-performance renderer.
 
-</div>
-
 <h2 align="center">📥 Installation</h2>
 
 <h3 align="center">Prerequisites</h3>
-
-<div align="center">
 
 - **Windows**: Windows 10/11
 - **macOS**: macOS 10.15+
 - **Linux**: Vulkan-compatible drivers & development tools (pkg-config, libfontconfig1-dev)
 
-</div>
-
 <h3 align="center">Download</h3>
 
-<div align="center">
-
 Download the latest release for your platform from the [Releases](https://github.com/SV-stark/FindAll/releases) page.
-
-</div>
 
 <h3 align="center">Build from Source</h3>
 
@@ -80,20 +68,14 @@ cargo run
 
 <h3 align="center">First Launch</h3>
 
-<div align="center">
-
-1. **Initial Setup**: Select folders to index on first launch
-2. **Indexing**: The app will scan and index your files (this may take a few minutes for large directories)
-3. **Search**: Press `Alt+Space` (or your custom hotkey) to open the search bar from anywhere
-
-</div>
+1.  **Initial Setup**: Select folders to index on first launch
+2.  **Indexing**: The app will scan and index your files (this may take a few minutes for large directories)
+3.  **Search**: Press `Alt+Space` (or your custom hotkey) to open the search bar from anywhere
 
 <h3 align="center">Search Syntax</h3>
 
-<div align="center">
-
 | Query | Description |
-|-------|-------------|
+|:---|:---|
 | `rust tutorial` | Find documents containing both words |
 | `"exact phrase"` | Find exact phrase matches |
 | `rust OR python` | Boolean OR operator |
@@ -103,30 +85,22 @@ cargo run
 | `path:docs` | Filter by folder path |
 | `size:>5MB` | Filter by file size (KB, MB, GB) |
 
-</div>
-
 <h3 align="center">Keyboard Shortcuts</h3>
 
-<div align="center">
-
 | Shortcut | Action |
-|----------|--------|
+|:---|:---|
 | `Alt+Space` | Toggle search window (Global Hotkey, configurable in Settings) |
 | `Ctrl+Enter` | Open selected file |
 | `Ctrl+C` | Copy file path |
 | `Esc` | Close search window |
 | `↑/↓` | Navigate results |
 
-</div>
-
 <h2 align="center">🏗️ Tech Stack</h2>
 
 <h3 align="center">Core Architecture</h3>
 
-<div align="center">
-
 | Component | Technology | Purpose |
-|-----------|------------|---------|
+|:---|:---|:---|
 | **Language** | Rust | Zero-overhead, memory-safe core |
 | **GUI** | Iced | High-performance, cross-platform UI framework (<30MB RAM) |
 | **Search Engine** | Tantivy | Full-text indexing with BM25 scoring |
@@ -134,23 +108,17 @@ cargo run
 | **Metadata DB** | redb | Pure Rust key-value storage |
 | **Concurrency** | Rayon + Tokio | Parallel processing + async I/O |
 
-</div>
-
 <h3 align="center">Supported File Formats</h3>
 
-<div align="center">
-
-| Format Category | Examples | Status |
-|-----------------|----------|--------|
-| **Documents** | PDF, DOCX, XLSX, PPTX, ODT, RTF | ✅ Supported |
-| **Images (OCR)** | JPEG, PNG, TIFF, HEIC, Scanned PDF | ✅ Supported |
-| **Archives** | ZIP, 7z, RAR, TAR | ✅ Supported |
-| **Email** | EML, MSG, Outlook PST | ✅ Supported |
-| **Ebooks** | EPUB, MOBI, AZW3 | ✅ Supported |
-| **Code & Text** | 100+ programing languages, MD, JSON, XML | ✅ Supported |
-| **Structured Data** | CSV, TSV, Parquet | ✅ Supported |
-
-</div>
+| Category | Supported Formats | OCR |
+|:---|:---|:---:|
+| **Digital Documents** | PDF (Native & Scanned), XPS, OXPS, PS, EPS | ✅ |
+| **MS Office** | DOC, DOCX, XLS, XLSX, PPT, PPTX (incl. Macro/Template variations) | ❌ |
+| **Images** | JPG, PNG, WEBP, BMP, GIF, TIFF, JP2, PNM, PBM, PGM, PPM | ✅ |
+| **Text & Markup** | MD, TXT, RTF, HTML, HTM, XML, SVG, LaTeX (TEX), RST, ORG | ❌ |
+| **E-books & Comics** | EPUB, FB2, MOBI, AZW3, CHM, CBZ, CBR | ❌ |
+| **Archives** | ZIP, 7Z, TAR, TGZ, GZ, RAR | ❌ |
+| **Data & Emails** | JSON, YAML, TOML, CSV, ODS, EML, MSG | ❌ |
 
 <h2 align="center">📊 Performance</h2>
 
@@ -160,10 +128,8 @@ Benchmarks on AMD Ryzen 7 5800X with NVMe SSD:
 
 </div>
 
-<div align="center">
-
 | Metric | Value |
-|--------|-------|
+|:---|:---|
 | **Index 10,000 PDFs** | ~45 seconds |
 | **Index 100,000 TXT files** | ~12 seconds |
 | **Search latency (p50)** | 12ms |
@@ -171,14 +137,12 @@ Benchmarks on AMD Ryzen 7 5800X with NVMe SSD:
 | **Idle RAM usage** | ~25MB |
 | **Peak RAM (indexing)** | ~180MB |
 
-</div>
-
 <h3 align="center">Comparison</h3>
 
 <div align="center">
 
 | Feature | Flash Search | AnyTXT | Windows Search | Recoll |
-|---------|-------------|---------|----------------|---------|
+|:---|:---|:---|:---|:---|
 | Startup Time | Instant | ~2s | System | ~3s |
 | RAM Usage | 25MB | 80MB | 150MB+ | 120MB |
 | PDF Search | ✅ (Bundled) | ✅ | ⚠️ | ✅ |
@@ -192,50 +156,32 @@ Benchmarks on AMD Ryzen 7 5800X with NVMe SSD:
 <h2 align="center">🗺️ Roadmap</h2>
 
 <h3 align="center">Phase 1: Core (Completed ✅)</h3>
-<div align="center">
-
 - [x] Project setup with Iced
 - [x] Basic file parsers (PDF, DOCX, TXT)
 - [x] Tantivy integration
 - [x] Parallel file scanning
 
-</div>
-
 <h3 align="center">Phase 2: Polish (Completed ✅)</h3>
-<div align="center">
-
 - [x] Advanced search filters (date, size, type)
 - [x] Search result preview panel
 - [x] Export search results (CSV, JSON)
 - [x] Fast filename-only search & indexing
 - [x] Enhanced indexing telemetry
 
-</div>
-
 <h3 align="center">Phase 3: Advanced Features (In Progress 🚧)</h3>
-<div align="center">
-
 - [x] Universal Format Support (75+ formats via Kreuzberg)
 - [x] Integrated OCR for images and scanned PDFs
 - [x] Search history and favorites (Pinned files)
 - [ ] Natural language queries
 - [ ] Cloud sync for index
 
-</div>
-
 <h3 align="center">Phase 4: Enterprise (Future 🔮)</h3>
-<div align="center">
-
 - [ ] Network drive support
 - [ ] Multi-user indexing
 - [ ] Web interface
 - [ ] API for integrations
 
-</div>
-
 <h2 align="center">🤝 Contributing</h2>
-
-<div align="center">
 
 We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
 
