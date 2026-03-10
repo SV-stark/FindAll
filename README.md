@@ -211,7 +211,6 @@ This project is licensed under the GNU General Public License v3 - see the [LICE
 
 <h2 align="center">🙏 Acknowledgments</h2>
 
-<div align="center">
 
 Flash Search is built on the shoulders of giants. We are deeply grateful to the following projects:
 
@@ -221,7 +220,6 @@ Flash Search is built on the shoulders of giants. We are deeply grateful to the 
 - **[Redb](https://github.com/cberner/redb)** - A simple, portable, and high-performance embedded key-value store.
 - **[Tokio](https://tokio.rs/)** & **[Rayon](https://github.com/rayon-rs/rayon)** - The powerhouses behind our asynchronous I/O and parallel processing.
 
-</div>
 
 ---
 
