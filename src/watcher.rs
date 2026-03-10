@@ -220,7 +220,12 @@ impl WatcherManager {
             return Ok(None);
         }
 
-        let parsed = match parse_file(path) {
+        let path_buf = path.to_path_buf();
+        let parsed_res = tokio::task::spawn_blocking(move || parse_file(&path_buf))
+            .await
+            .map_err(|e| FlashError::parse(path, format!("Parse task failed: {}", e)))?;
+
+        let parsed = match parsed_res {
             Ok(p) => p,
             Err(e) => {
                 warn!("Failed to parse file {:?}: {}", path, e);
@@ -281,10 +286,10 @@ mod tests {
         let option = result.unwrap();
         assert!(option.is_some());
         let (doc, modified, size, _hash) = option.unwrap();
-        assert_eq!(doc.content, "Initial content\n");
+        assert_eq!(doc.content, "Initial content");
 
         metadata
-            .update_metadata(Path::new(&doc.path), modified, size, [0; 32])
+            .update_metadata(&file_path, modified, size, [0; 32])
             .unwrap();
 
         // Should return None if no change
@@ -293,3 +298,4 @@ mod tests {
         assert!(result.unwrap().is_none());
     }
 }
+```

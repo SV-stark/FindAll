@@ -1,5 +1,4 @@
 use crate::error::{FlashError, Result};
-use std::ffi::OsStr;
 use std::path::Path;
 
 pub mod memory_map;
@@ -11,21 +10,23 @@ pub struct ParsedDocument {
     pub title: Option<String>,
 }
 
-
 /// Detect file type and route to appropriate parser using Kreuzberg
 pub fn parse_file(path: &Path) -> Result<ParsedDocument> {
     // Log the file extension for debugging
     let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("none");
-    tracing::info!("Parsing file: {} (extension: {})", path.display(), extension);
-    
-    let result = kreuzberg::extract_file_sync(path, None, &Default::default())
-        .map_err(|e| {
-            tracing::error!("Failed to extract file {}: {}", path.display(), e);
-            FlashError::parse(path, format!("Extraction failed: {}", e))
-        })?;
+    tracing::debug!(
+        "Parsing file: {} (extension: {})",
+        path.display(),
+        extension
+    );
 
-    tracing::info!("Successfully parsed file: {}", path.display());
-    
+    let result = kreuzberg::extract_file_sync(path, None, &Default::default()).map_err(|e| {
+        tracing::error!("Failed to extract file {}: {}", path.display(), e);
+        FlashError::parse(path, format!("Extraction failed: {}", e))
+    })?;
+
+    tracing::debug!("Successfully parsed file: {}", path.display());
+
     Ok(ParsedDocument {
         path: path.to_string_lossy().to_string(),
         content: result.content,
@@ -36,6 +37,14 @@ pub fn parse_file(path: &Path) -> Result<ParsedDocument> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::OsStr;
+
+    fn extension_matches(extension: &OsStr, expected: &str) -> bool {
+        extension
+            .to_str()
+            .map(|s| s.to_lowercase() == expected)
+            .unwrap_or(false)
+    }
 
     #[test]
     fn test_extension_matches() {

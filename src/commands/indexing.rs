@@ -53,16 +53,16 @@ pub async fn get_recent_files_internal(
     state: &Arc<AppState>,
 ) -> Result<Vec<RecentFile>, String> {
     let files = state
-        .metadata_db
+        .indexer
         .get_recent_files(limit)
         .map_err(|e| e.to_string())?;
     Ok(files
         .into_iter()
-        .map(|(p, t, m, s)| RecentFile {
-            path: p,
-            title: t,
-            modified: m,
-            size: s,
+        .map(|r| RecentFile {
+            path: r.file_path,
+            title: r.title,
+            modified: r.modified.unwrap_or(0),
+            size: r.size.unwrap_or(0),
         })
         .collect())
 }

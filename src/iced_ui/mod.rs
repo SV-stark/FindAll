@@ -130,6 +130,7 @@ pub enum Message {
     ToggleContextMenu(bool),
     GlobalHotkeyChanged(String),
     PollHotkey,
+    PollSearchDeadline,
     NotImplemented(String),
 }
 
@@ -156,6 +157,7 @@ pub struct App {
     progress_rx: Option<Arc<tokio::sync::Mutex<mpsc::Receiver<ProgressEvent>>>>,
     tray_icon: Option<tray_icon::TrayIcon>,
     hotkey_manager: Option<global_hotkey::GlobalHotKeyManager>,
+    search_deadline: Option<std::time::Instant>,
 }
 
 impl App {
@@ -190,6 +192,7 @@ impl App {
                     progress_rx: None,
                     tray_icon: crate::system::tray::create_tray_icon().ok(),
                     hotkey_manager: None,
+                    search_deadline: None,
                 };
 
                 if let Ok(manager) = global_hotkey::GlobalHotKeyManager::new() {
@@ -237,6 +240,7 @@ impl App {
                 progress_rx: None,
                 tray_icon: crate::system::tray::create_tray_icon().ok(),
                 hotkey_manager: None,
+                search_deadline: None,
             },
         }
     }
@@ -390,8 +394,11 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             Message::SearchQueryChanged(q) => {
                 app.search_query = q;
                 if !app.search_query.is_empty() {
-                    app.perform_search()
+                    app.search_deadline =
+                        Some(std::time::Instant::now() + std::time::Duration::from_millis(150));
+                    Task::none()
                 } else {
+                    app.search_deadline = None;
                     Task::none()
                 }
             }
@@ -669,6 +676,15 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 Task::none()
             }
             Message::StartPollingProgress => Task::none(),
+            Message::PollSearchDeadline => {
+                if let Some(deadline) = app.search_deadline {
+                    if std::time::Instant::now() >= deadline {
+                        app.search_deadline = None;
+                        return app.perform_search();
+                    }
+                }
+                Task::none()
+            }
             Message::PollHotkey => {
                 if let Ok(event) = global_hotkey::GlobalHotKeyEvent::receiver().try_recv() {
                     // Hotkey pressed, we just log it or toggle search window focus
@@ -704,6 +720,8 @@ fn subscription(_app: &App) -> Subscription<Message> {
     let subs = vec![
         iced::time::every(std::time::Duration::from_millis(100)).map(|_| Message::PollHotkey),
         iced::time::every(std::time::Duration::from_millis(100)).map(|_| Message::PollTray),
+        iced::time::every(std::time::Duration::from_millis(50))
+            .map(|_| Message::PollSearchDeadline),
     ];
 
     Subscription::batch(subs)
@@ -809,12 +827,12 @@ mod tests {
             title: Some("My File".to_string()),
             modified: None,
             size: None,
-            extension: None,
+            extension: Some("txt".to_string()),
             matched_terms: vec![],
             snippets: Vec::new(),
         };
         let fi = FileItem::from(sr);
-        assert_eq!(fi.title, "file.txt");
+        assert_eq!(fi.title, "My File");
         assert_eq!(fi.path, "C:\\path\\to\\file.txt");
         assert_eq!(fi.score, 0.95);
         assert_eq!(fi.extension.as_deref(), Some("txt"));

@@ -6,6 +6,7 @@ pub mod writer;
 
 use self::schema::create_schema;
 use self::searcher::{IndexSearcher, IndexStatistics, SearchResult};
+use std::sync::Arc;
 use self::writer::IndexWriterManager;
 use crate::error::{FlashError, Result};
 use crate::parsers::ParsedDocument;
@@ -35,7 +36,7 @@ pub struct IndexManager {
     #[allow(dead_code)]
     index: Index,
     writer: IndexWriterManager,
-    searcher: IndexSearcher,
+    searcher: Arc<IndexSearcher>,
 }
 
 impl IndexManager {
@@ -118,7 +119,7 @@ impl IndexManager {
         Ok(Self {
             index,
             writer,
-            searcher,
+            searcher: Arc::new(searcher),
         })
     }
 
@@ -161,6 +162,11 @@ impl IndexManager {
             .await
     }
 
+    /// Get recent files
+    pub fn get_recent_files(&self, limit: usize) -> Result<Vec<SearchResult>> {
+        self.searcher.get_recent_files(limit)
+    }
+
     /// Invalidate search cache (call after index updates)
     pub fn invalidate_cache(&self) {
         self.searcher.invalidate_cache();
@@ -172,7 +178,7 @@ impl IndexManager {
     }
 
     /// Get the searcher for direct document access
-    pub fn get_searcher(&self) -> &IndexSearcher {
+    pub fn get_searcher(&self) -> &Arc<IndexSearcher> {
         &self.searcher
     }
 }

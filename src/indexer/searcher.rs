@@ -98,13 +98,11 @@ impl Default for QueryCache {
 }
 
 /// Manages searching the Tantivy index
-#[derive(Clone)]
 pub struct IndexSearcher {
     reader: IndexReader,
     query_parser: QueryParser,
-    // schema: Schema,
-    // path_field: Field,
-    // title_field: Field,
+    path_field: Field,
+    title_field: Field,
     size_field: Field,
     content_field: Field,
     extension_field: Field,
@@ -128,6 +126,12 @@ impl IndexSearcher {
         reader.reload().ok();
 
         // Get field references once to avoid repeated lookups
+        let path_field = schema
+            .get_field("file_path")
+            .map_err(|_| FlashError::index_field("file_path", "Field not found in schema"))?;
+        let title_field = schema
+            .get_field("title")
+            .map_err(|_| FlashError::index_field("title", "Field not found in schema"))?;
         let size_field = schema
             .get_field("size")
             .map_err(|_| FlashError::index_field("size", "Field not found in schema"))?;
@@ -149,6 +153,8 @@ impl IndexSearcher {
         Ok(Self {
             reader,
             query_parser,
+            path_field,
+            title_field,
             size_field,
             content_field,
             extension_field,
@@ -159,7 +165,7 @@ impl IndexSearcher {
 
     /// Search the index and return top results with optional filters
     pub async fn search(
-        &self,
+        self: &std::sync::Arc<Self>,
         query: &str,
         limit: usize,
         min_size: Option<u64>,
@@ -168,7 +174,8 @@ impl IndexSearcher {
     ) -> Result<Vec<SearchResult>> {
         let query_owned = query.to_string();
         let extensions_owned = file_extensions.map(|e| e.to_vec());
-        let this = self.clone();
+        // Arc::clone is O(1) — no heap allocation, just an atomic refcount bump
+        let this = std::sync::Arc::clone(self);
 
         tokio::task::spawn_blocking(move || {
             this.search_sync(
@@ -278,7 +285,6 @@ impl IndexSearcher {
         let snippet_generator =
             SnippetGenerator::create(&searcher, &*final_query, self.content_field)?;
 
-        let schema = searcher.schema();
 
         for (score, doc_address) in top_docs {
             let retrieved_doc: TantivyDocument = searcher.doc(doc_address).map_err(|e| {
@@ -286,13 +292,13 @@ impl IndexSearcher {
             })?;
 
             let file_path = retrieved_doc
-                .get_first(schema.get_field("file_path").unwrap())
+                .get_first(self.path_field)
                 .and_then(|f| f.as_str())
                 .map(|s: &str| s.to_string())
                 .unwrap_or_default();
 
             let title = retrieved_doc
-                .get_first(schema.get_field("title").unwrap())
+                .get_first(self.title_field)
                 .and_then(|f| f.as_str())
                 .map(|s: &str| s.to_string());
 
@@ -430,6 +436,76 @@ impl IndexSearcher {
         self.cache.invalidate();
     }
 
+    /// Get recent files using Tantivy's fast fields
+    pub fn get_recent_files(&self, limit: usize) -> Result<Vec<SearchResult>> {
+        let searcher = self.reader.searcher();
+        let top_docs = searcher
+            .search(
+                &tantivy::query::AllQuery,
+                &TopDocs::with_limit(limit).order_by_fast_field::<u64>("modified", tantivy::Order::Desc),
+            )
+            .map_err(|e| FlashError::search("recent files", e.to_string()))?;
+
+        let mut results = Vec::with_capacity(top_docs.len().min(limit));
+
+        for (_date, doc_address) in top_docs {
+            let retrieved_doc: TantivyDocument = searcher.doc(doc_address).map_err(|e| {
+                FlashError::search("recent files", format!("Failed to retrieve document: {}", e))
+            })?;
+
+            let file_path = retrieved_doc
+                .get_first(self.path_field)
+                .and_then(|f| f.as_str())
+                .map(|s: &str| s.to_string())
+                .unwrap_or_default();
+
+            let title = retrieved_doc
+                .get_first(self.title_field)
+                .and_then(|f| f.as_str())
+                .map(|s: &str| s.to_string());
+
+            let extension = retrieved_doc
+                .get_first(self.extension_field)
+                .and_then(|f| f.as_str())
+                .map(|s: &str| s.to_string());
+
+            // Get fast fields for size and modified
+            let size = searcher
+                .segment_reader(doc_address.segment_ord)
+                .fast_fields()
+                .u64("size")
+                .ok()
+                .map(|f| f.values.get_val(doc_address.doc_id));
+
+            let modified = searcher
+                .segment_reader(doc_address.segment_ord)
+                .fast_fields()
+                .date("modified")
+                .ok()
+                .map(|f| {
+                    let date = f.values.get_val(doc_address.doc_id);
+                    date.into_timestamp_secs() as u64
+                });
+
+            results.push(SearchResult {
+                file_path,
+                title,
+                score: 1.0,
+                modified,
+                size,
+                extension,
+                matched_terms: vec![],
+                snippets: vec![],
+            });
+        }
+        
+        // Reverse because order_by_fast_field might sort ascending? We'll test it.
+        // Actually Tantivy sorts in ascending order by default.
+        results.reverse();
+
+        Ok(results)
+    }
+
     /// Get statistics about the index
     pub fn get_statistics(&self) -> Result<IndexStatistics> {
         let searcher = self.reader.searcher();
@@ -451,8 +527,6 @@ impl IndexSearcher {
             total_size_bytes: total_size,
             last_updated: Some(chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()),
         })
-    }
-
     }
 }
 

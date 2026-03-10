@@ -245,6 +245,17 @@ impl Scanner {
                     } else {
                         0.0
                     };
+
+                    // Batch summary every 1000 files
+                    if processed % 1000 == 0 {
+                        info!(
+                            "Indexed {} / {} files ({:.1} files/s)",
+                            processed,
+                            current_total,
+                            rate
+                        );
+                    }
+
                     if let Some(tx) = &progress_tx_clone {
                         let _ = tx.try_send(ProgressEvent {
                             ptype: ProgressType::Content,

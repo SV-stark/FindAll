@@ -32,7 +32,7 @@ const LEGACY_INDEX_FILENAME: &str = "filenames.json";
 pub struct FilenameIndex {
     entries: Arc<RwLock<Vec<FilenameEntry>>>,
     data_path: std::path::PathBuf,
-    fst_map: Arc<RwLock<Vec<u8>>>,
+    fst_map: Arc<RwLock<Arc<[u8]>>>,
 }
 
 impl FilenameIndex {
@@ -93,7 +93,7 @@ impl FilenameIndex {
             Vec::new()
         };
 
-        let fst_map = Arc::new(RwLock::new(Self::build_fst(&entries)));
+        let fst_map = Arc::new(RwLock::new(Arc::from(Self::build_fst(&entries))));
 
         Ok(Self {
             entries: Arc::new(RwLock::new(entries)),
@@ -139,7 +139,7 @@ impl FilenameIndex {
                 .collect();
 
             if let Ok(mut fst_guard) = self.fst_map.write() {
-                *fst_guard = Self::build_fst(&data);
+                *fst_guard = Arc::from(Self::build_fst(&data));
             }
 
             std::thread::spawn(move || {
@@ -178,13 +178,13 @@ impl FilenameIndex {
     }
 
     pub fn search(&self, query: &str, limit: usize) -> Result<Vec<FilenameSearchResult>> {
-        let fst_bytes = self.fst_map.read().unwrap();
-        if fst_bytes.is_empty() {
+        let fst_guard = self.fst_map.read().unwrap();
+        if fst_guard.is_empty() {
             return Ok(Vec::new());
         }
 
-        // FST Map
-        let map = match fst::Map::new(fst_bytes.clone()) {
+        // FST Map - use reference borrow from the guard to avoid trait bound issues with Arc
+        let map = match fst::Map::new(&**fst_guard) {
             Ok(m) => m,
             Err(_) => return Ok(Vec::new()),
         };
@@ -274,7 +274,7 @@ impl FilenameIndex {
                 .collect();
 
             if let Ok(mut fst_guard) = self.fst_map.write() {
-                *fst_guard = Self::build_fst(&data);
+                *fst_guard = Arc::from(Self::build_fst(&data));
             }
 
             std::thread::spawn(move || {
