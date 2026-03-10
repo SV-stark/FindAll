@@ -155,31 +155,31 @@ Benchmarks on AMD Ryzen 7 5800X with NVMe SSD:
 
 <h2 align="center">🗺️ Roadmap</h2>
 
-<h3 align="center">Phase 1: Core (Completed ✅)</h3>
-- [x] Project setup with Iced
-- [x] Basic file parsers (PDF, DOCX, TXT)
-- [x] Tantivy integration
-- [x] Parallel file scanning
+### Phase 1: Foundation (Completed ✅)
+- [x] High-performance core with **Rust**
+- [x] Efficient UI framework with **Iced**
+- [x] Basic file parsers for PDF, DOCX, and TXT
+- [x] Parallel filesystem scanning and incremental indexing
 
-<h3 align="center">Phase 2: Polish (Completed ✅)</h3>
-- [x] Advanced search filters (date, size, type)
-- [x] Search result preview panel
-- [x] Export search results (CSV, JSON)
-- [x] Fast filename-only search & indexing
-- [x] Enhanced indexing telemetry
+### Phase 2: Polish & UX (Completed ✅)
+- [x] Advanced search filters (date, size, extension)
+- [x] Global "Spotlight-style" search bar (Alt+Space)
+- [x] Real-time file indexing and system tray integration
+- [x] Fast filename-only search mode for instant navigation
+- [x] Optimized result preview and metadata retrieval
 
-<h3 align="center">Phase 3: Advanced Features (In Progress 🚧)</h3>
-- [x] Universal Format Support (75+ formats via Kreuzberg)
-- [x] Integrated OCR for images and scanned PDFs
-- [x] Search history and favorites (Pinned files)
-- [ ] Natural language queries
-- [ ] Cloud sync for index
+### Phase 3: Advanced Intelligence (In Progress 🚧)
+- [x] **Universal Text Extraction**: 75+ formats supported via **Kreuzberg**
+- [x] **Integrated OCR**: Native support for scanned PDFs and images
+- [x] **Pinned Results**: Favorite important files for instant access
+- [ ] **Semantic Search**: Vector embeddings for context-aware queries
+- [ ] **Natural Language Queries**: "files from last week about taxes"
 
-<h3 align="center">Phase 4: Enterprise (Future 🔮)</h3>
-- [ ] Network drive support
-- [ ] Multi-user indexing
-- [ ] Web interface
-- [ ] API for integrations
+### Phase 4: Expansion & Connectivity (Future 🔮)
+- [ ] **Plugin System**: Community-built parsers and search extensions
+- [ ] **Network Discovery**: Support for SMB/CIFS and NAS drives
+- [ ] **Cloud Indexing**: Optional encrypted metadata sync across devices
+- [ ] **Developer API**: Headless search service for other applications
 
 <h2 align="center">🤝 Contributing</h2>
 
@@ -213,9 +213,13 @@ This project is licensed under the GNU General Public License v3 - see the [LICE
 
 <div align="center">
 
-- [Tantivy](https://github.com/quickwit-oss/tantivy) - The blazing-fast search engine library
-- [Iced](https://iced.rs/) - The cross-platform UI framework for Rust
-- [Redb](https://github.com/cberner/redb) - The pure Rust embedded database
+Flash Search is built on the shoulders of giants. We are deeply grateful to the following projects:
+
+- **[Kreuzberg](https://github.com/kreuzberg-dev/kreuzberg)** - Our secret weapon for universal document parsing and high-performance OCR.
+- **[Tantivy](https://github.com/quickwit-oss/tantivy)** - The blazing-fast, index-based search engine that powers our core.
+- **[Iced](https://iced.rs/)** - A battery-included, type-safe GUI library that keeps our RAM usage minimal.
+- **[Redb](https://github.com/cberner/redb)** - A simple, portable, and high-performance embedded key-value store.
+- **[Tokio](https://tokio.rs/)** & **[Rayon](https://github.com/rayon-rs/rayon)** - The powerhouses behind our asynchronous I/O and parallel processing.
 
 </div>
 
