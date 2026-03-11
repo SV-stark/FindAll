@@ -101,6 +101,19 @@ pub fn settings_view(app: &App) -> Element<'_, Message> {
 
     let sys_toggles = column![tray_toggle, autostart_toggle, context_toggle].spacing(12);
 
+    let rebuild_btn = button(text("Force Rebuild Index").size(14))
+        .on_press(Message::RebuildIndex)
+        .padding(Padding::new(12.0))
+        .style(theme::secondary_button());
+
+    let data_mgmt_section = column![
+        text("Data Management").size(18),
+        Space::new().height(Length::Fixed(8.0)),
+        text("Clear the current index and rescan all configured directories.").size(14),
+        Space::new().height(Length::Fixed(12.0)),
+        rebuild_btn
+    ].spacing(4);
+
     let settings_form = column![
         text("Search").size(18),
         Space::new().height(Length::Fixed(8.0)),
@@ -124,6 +137,8 @@ pub fn settings_view(app: &App) -> Element<'_, Message> {
         sys_int_section,
         Space::new().height(Length::Fixed(8.0)),
         sys_toggles,
+        Space::new().height(Length::Fixed(32.0)),
+        data_mgmt_section,
         Space::new().height(Length::Fixed(40.0)),
         save_btn,
     ]
