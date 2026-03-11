@@ -11,10 +11,12 @@ name = "flash_search"
 
 [build-dependencies]
 winres = "0.1"
+verglas = { version = "0.1.2", features = ["forge", "index"] }
 
 [dependencies]
 # UI Framework
 iced = { version = "0.14", features = ["image", "svg", "tokio"] }
+verglas = { version = "0.1.2", features = ["index"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -38,7 +40,7 @@ memmap2 = "0.9"
 
 # Document Parsing
 # Simplified with Kreuzberg
-kreuzberg = { version = "4.4.4", features = ["full"] }
+kreuzberg = { version = "4.4.4", features = ["tokio-runtime", "pdf", "ocr"] }
 
 # Performance Libraries
 moka = { version = "0.12", features = ["sync"] }

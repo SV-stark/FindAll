@@ -20,7 +20,13 @@ pub fn parse_file(path: &Path) -> Result<ParsedDocument> {
         extension
     );
 
-    let result = kreuzberg::extract_file_sync(path, None, &Default::default()).map_err(|e| {
+    // Disable cache to prevent unbounded memory growth during deep directory scans.
+    let config = kreuzberg::ExtractionConfig {
+        use_cache: false,
+        ..Default::default()
+    };
+
+    let result = kreuzberg::extract_file_sync(path, None, &config).map_err(|e| {
         tracing::error!("Failed to extract file {}: {}", path.display(), e);
         FlashError::parse(path, format!("Extraction failed: {}", e))
     })?;
