@@ -14,6 +14,7 @@ use tokio::sync::mpsc;
 pub mod search;
 pub mod settings;
 pub mod theme;
+pub mod icons;
 
 #[derive(Clone, Debug)]
 pub struct FileItem {
@@ -803,6 +804,7 @@ pub fn run_ui(
     )
     .title(app_title)
     .theme(app_theme)
+    .font(icons::FONT_BYTES)
     .subscription(subscription)
     .window(iced::window::Settings {
         size: iced::Size::new(1000.0, 700.0),
