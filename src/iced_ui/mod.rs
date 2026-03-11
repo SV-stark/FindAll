@@ -11,10 +11,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
+pub mod icons;
 pub mod search;
 pub mod settings;
 pub mod theme;
-pub mod icons;
 
 #[derive(Clone, Debug)]
 pub struct FileItem {
@@ -774,7 +774,8 @@ fn app_theme(app: &App) -> iced::Theme {
     }
 }
 fn load_app_icon() -> Option<iced::window::icon::Icon> {
-    match image::open("FindAll.png") {
+    let icon_bytes = include_bytes!("../../FindAll.png");
+    match image::load_from_memory(icon_bytes) {
         Ok(img) => {
             let rgba = img.to_rgba8();
             let (width, height) = rgba.dimensions();
@@ -804,7 +805,7 @@ pub fn run_ui(
     )
     .title(app_title)
     .theme(app_theme)
-    .font(icons::FONT_BYTES)
+    // .font(icons::FONT_BYTES) // Temporarily disabled due to corrupted font file
     .subscription(subscription)
     .window(iced::window::Settings {
         size: iced::Size::new(1000.0, 700.0),

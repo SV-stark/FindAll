@@ -168,8 +168,9 @@ impl Scanner {
         let threads = self.settings.indexing_threads as usize;
         let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(threads)
+            .stack_size(8 * 1024 * 1024) // Increase stack size to 8MB to prevent overflow during parsing
             .build()
-            .unwrap_or_else(|_| rayon::ThreadPoolBuilder::new().build().unwrap());
+            .unwrap_or_else(|_| rayon::ThreadPoolBuilder::new().stack_size(8*1024*1024).build().unwrap());
         let file_size_limit_mb = self.settings.index_file_size_limit_mb;
 
         // --- Stage 2a: Parallel parsing (Rayon) → sends IndexTask into channel ---
@@ -250,9 +251,7 @@ impl Scanner {
                     if processed % 1000 == 0 {
                         info!(
                             "Indexed {} / {} files ({:.1} files/s)",
-                            processed,
-                            current_total,
-                            rate
+                            processed, current_total, rate
                         );
                     }
 

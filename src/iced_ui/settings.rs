@@ -112,7 +112,8 @@ pub fn settings_view(app: &App) -> Element<'_, Message> {
         text("Clear the current index and rescan all configured directories.").size(14),
         Space::new().height(Length::Fixed(12.0)),
         rebuild_btn
-    ].spacing(4);
+    ]
+    .spacing(4);
 
     let settings_form = column![
         text("Search").size(18),

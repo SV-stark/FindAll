@@ -25,6 +25,7 @@ pub fn accent_color_light() -> Color {
     c
 }
 
+#[allow(dead_code)]
 fn is_dark_theme(theme: &Theme) -> bool {
     matches!(theme, Theme::Dark)
 }

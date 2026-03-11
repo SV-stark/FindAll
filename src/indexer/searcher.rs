@@ -285,7 +285,6 @@ impl IndexSearcher {
         let snippet_generator =
             SnippetGenerator::create(&searcher, &*final_query, self.content_field)?;
 
-
         for (score, doc_address) in top_docs {
             let retrieved_doc: TantivyDocument = searcher.doc(doc_address).map_err(|e| {
                 FlashError::search(query, format!("Failed to retrieve document: {}", e))
@@ -442,7 +441,8 @@ impl IndexSearcher {
         let top_docs = searcher
             .search(
                 &tantivy::query::AllQuery,
-                &TopDocs::with_limit(limit).order_by_fast_field::<u64>("modified", tantivy::Order::Desc),
+                &TopDocs::with_limit(limit)
+                    .order_by_fast_field::<u64>("modified", tantivy::Order::Desc),
             )
             .map_err(|e| FlashError::search("recent files", e.to_string()))?;
 
@@ -450,7 +450,10 @@ impl IndexSearcher {
 
         for (_date, doc_address) in top_docs {
             let retrieved_doc: TantivyDocument = searcher.doc(doc_address).map_err(|e| {
-                FlashError::search("recent files", format!("Failed to retrieve document: {}", e))
+                FlashError::search(
+                    "recent files",
+                    format!("Failed to retrieve document: {}", e),
+                )
             })?;
 
             let file_path = retrieved_doc
@@ -498,7 +501,7 @@ impl IndexSearcher {
                 snippets: vec![],
             });
         }
-        
+
         // Reverse because order_by_fast_field might sort ascending? We'll test it.
         // Actually Tantivy sorts in ascending order by default.
         results.reverse();

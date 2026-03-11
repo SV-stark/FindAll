@@ -6,11 +6,11 @@ pub mod writer;
 
 use self::schema::create_schema;
 use self::searcher::{IndexSearcher, IndexStatistics, SearchResult};
-use std::sync::Arc;
 use self::writer::IndexWriterManager;
 use crate::error::{FlashError, Result};
 use crate::parsers::ParsedDocument;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use tantivy::{directory::MmapDirectory, Index};
 use tracing::{info, warn};
 

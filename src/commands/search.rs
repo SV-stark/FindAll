@@ -44,12 +44,12 @@ pub async fn get_file_preview_highlighted_internal(
 ) -> Result<PreviewResult, String> {
     use crate::indexer::query_parser::extract_highlight_terms;
     let matched_terms = extract_highlight_terms(&query);
-    
+
     let path_buf = std::path::PathBuf::from(path);
     let result = tokio::task::spawn_blocking(move || parse_file(&path_buf))
         .await
         .map_err(|e| format!("Preview task failed: {}", e))?;
-    
+
     match result {
         Ok(doc) => Ok(PreviewResult {
             content: doc.content[..std::cmp::min(doc.content.len(), 10000)].to_string(),
