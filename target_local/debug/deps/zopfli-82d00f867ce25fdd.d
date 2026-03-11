@@ -1,0 +1,18 @@
+E:\findall\target_local\debug\deps\zopfli-82d00f867ce25fdd.d: E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\lib.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\blocksplitter.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\cache.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\deflate.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\gzip.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\hash.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\iter.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\katajainen.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\lz77.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\squeeze.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\symbols.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\tree.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\util.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\zlib.rs
+
+E:\findall\target_local\debug\deps\libzopfli-82d00f867ce25fdd.rmeta: E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\lib.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\blocksplitter.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\cache.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\deflate.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\gzip.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\hash.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\iter.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\katajainen.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\lz77.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\squeeze.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\symbols.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\tree.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\util.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\zlib.rs
+
+E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\lib.rs:
+E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\blocksplitter.rs:
+E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\cache.rs:
+E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\deflate.rs:
+E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\gzip.rs:
+E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\hash.rs:
+E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\iter.rs:
+E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\katajainen.rs:
+E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\lz77.rs:
+E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\squeeze.rs:
+E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\symbols.rs:
+E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\tree.rs:
+E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\util.rs:
+E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zopfli-0.8.3\src\zlib.rs:

@@ -1,0 +1,4 @@
+E:/findall/target_local/debug/build/kreuzberg-tesseract-acaa429d286aad54/out/build/CMakeFiles/_CMakeLTOTest-CXX/bin/CMakeFiles/foo.dir
+E:/findall/target_local/debug/build/kreuzberg-tesseract-acaa429d286aad54/out/build/CMakeFiles/_CMakeLTOTest-CXX/bin/CMakeFiles/boo.dir
+E:/findall/target_local/debug/build/kreuzberg-tesseract-acaa429d286aad54/out/build/CMakeFiles/_CMakeLTOTest-CXX/bin/CMakeFiles/ALL_BUILD.dir
+E:/findall/target_local/debug/build/kreuzberg-tesseract-acaa429d286aad54/out/build/CMakeFiles/_CMakeLTOTest-CXX/bin/CMakeFiles/ZERO_CHECK.dir

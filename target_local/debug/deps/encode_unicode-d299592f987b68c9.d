@@ -1,0 +1,12 @@
+E:\findall\target_local\debug\deps\encode_unicode-d299592f987b68c9.d: E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\encode_unicode-1.0.0\src\lib.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\encode_unicode-1.0.0\src\errors.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\encode_unicode-1.0.0\src\traits.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\encode_unicode-1.0.0\src\utf8_char.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\encode_unicode-1.0.0\src\utf8_iterators.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\encode_unicode-1.0.0\src\utf16_char.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\encode_unicode-1.0.0\src\utf16_iterators.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\encode_unicode-1.0.0\src\decoding_iterators.rs
+
+E:\findall\target_local\debug\deps\libencode_unicode-d299592f987b68c9.rmeta: E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\encode_unicode-1.0.0\src\lib.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\encode_unicode-1.0.0\src\errors.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\encode_unicode-1.0.0\src\traits.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\encode_unicode-1.0.0\src\utf8_char.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\encode_unicode-1.0.0\src\utf8_iterators.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\encode_unicode-1.0.0\src\utf16_char.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\encode_unicode-1.0.0\src\utf16_iterators.rs E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\encode_unicode-1.0.0\src\decoding_iterators.rs
+
+E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\encode_unicode-1.0.0\src\lib.rs:
+E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\encode_unicode-1.0.0\src\errors.rs:
+E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\encode_unicode-1.0.0\src\traits.rs:
+E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\encode_unicode-1.0.0\src\utf8_char.rs:
+E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\encode_unicode-1.0.0\src\utf8_iterators.rs:
+E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\encode_unicode-1.0.0\src\utf16_char.rs:
+E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\encode_unicode-1.0.0\src\utf16_iterators.rs:
+E:\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\encode_unicode-1.0.0\src\decoding_iterators.rs:

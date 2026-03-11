@@ -1,0 +1,10 @@
+^E:\FINDALL\TARGET_LOCAL\DEBUG\BUILD\KREUZBERG-TESSERACT-ACAA429D286AAD54\OUT\BUILD\CMAKEFILES\_CMAKELTOTEST-CXX\BIN\CMAKEFILES\AA8C28D3E624D5146BAED15C7F51BE4F\GENERATE.STAMP.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SE:/findall/target_local/debug/build/kreuzberg-tesseract-acaa429d286aad54/out/build/CMakeFiles/_CMakeLTOTest-CXX/src -BE:/findall/target_local/debug/build/kreuzberg-tesseract-acaa429d286aad54/out/build/CMakeFiles/_CMakeLTOTest-CXX/bin --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file E:/findall/target_local/debug/build/kreuzberg-tesseract-acaa429d286aad54/out/build/CMakeFiles/_CMakeLTOTest-CXX/bin/lto-test.sln
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

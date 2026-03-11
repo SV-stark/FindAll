@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="16.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="E:\findall\target_local\debug\build\kreuzberg-tesseract-acaa429d286aad54\out\build\CMakeFiles\_CMakeLTOTest-C\bin\CMakeFiles\99ecf2c67f7358b4255e97143d386f0e\generate.stamp.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{6C1A07F8-3680-389B-8DBC-17371147A419}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>
