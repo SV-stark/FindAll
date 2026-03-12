@@ -120,6 +120,9 @@ pub enum Message {
     FilterSizeChanged(String),
     PreviewRequested(usize),
     PreviewLoaded(Option<crate::models::PreviewResult>),
+    ShowContextMenu(usize),
+    CloseContextMenu,
+    OpenFolder(String),
     MoveUp,
     MoveDown,
     DismissError,
@@ -163,6 +166,7 @@ pub struct App {
     tray_icon: Option<tray_icon::TrayIcon>,
     hotkey_manager: Option<global_hotkey::GlobalHotKeyManager>,
     search_deadline: Option<std::time::Instant>,
+    pub context_menu_index: Option<usize>,
 }
 
 impl App {
@@ -198,6 +202,7 @@ impl App {
                     tray_icon: crate::system::tray::create_tray_icon().ok(),
                     hotkey_manager: None,
                     search_deadline: None,
+                    context_menu_index: None,
                 };
 
                 if let Ok(manager) = global_hotkey::GlobalHotKeyManager::new() {
@@ -246,6 +251,7 @@ impl App {
                 tray_icon: crate::system::tray::create_tray_icon().ok(),
                 hotkey_manager: None,
                 search_deadline: None,
+                context_menu_index: None,
             },
         }
     }
@@ -438,10 +444,12 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                 Task::none()
             }
             Message::ResultSelected(idx) => {
+                app.context_menu_index = None;
                 app.selected_index = Some(idx);
                 app.load_preview()
             }
             Message::OpenFile(path) => {
+                app.context_menu_index = None;
                 let p = PathBuf::from(&path);
                 if p.is_absolute() && p.exists() {
                     // Offload the file opening to a background thread to avoid blocking the UI
@@ -454,13 +462,40 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                 }
             }
             Message::CopyPath(path) => {
+                app.context_menu_index = None;
                 if let Ok(mut clipboard) = arboard::Clipboard::new() {
                     let _ = clipboard.set_text(&path);
                 }
                 Task::none()
             }
             Message::TabChanged(tab) => {
+                app.context_menu_index = None;
                 app.active_tab = tab;
+                Task::none()
+            }
+            Message::ShowContextMenu(idx) => {
+                app.context_menu_index = Some(idx);
+                app.selected_index = Some(idx);
+                app.load_preview()
+            }
+            Message::CloseContextMenu => {
+                app.context_menu_index = None;
+                Task::none()
+            }
+            Message::OpenFolder(path) => {
+                app.context_menu_index = None;
+                let p = PathBuf::from(&path);
+                if p.is_absolute() {
+                    if let Some(parent) = p.parent() {
+                        let parent_buf = parent.to_path_buf();
+                        if parent_buf.exists() {
+                            return Task::perform(async move {
+                                let _ = opener::open(parent_buf);
+                            }, |_| Message::NoOp);
+                        }
+                    }
+                }
+                tracing::warn!("Blocked attempt to open folder for invalid path: {}", path);
                 Task::none()
             }
             Message::RebuildIndex => {

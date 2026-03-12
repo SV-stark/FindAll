@@ -1,5 +1,5 @@
 use super::{theme, App, Message, SearchMode, Tab};
-use iced::widget::{button, checkbox, column, container, row, scrollable, text, rich_text, span, Space, TextInput};
+use iced::widget::{button, checkbox, column, container, mouse_area, row, scrollable, text, rich_text, span, Space, TextInput};
 use iced::{font, Alignment, Element, Font, Length, Padding};
 
 // --- Icons from TTF Font ---
@@ -158,7 +158,8 @@ fn left_sidebar(app: &App) -> Element<'_, Message> {
             .enumerate()
             .map(|(i, res)| {
                 let is_selected = app.selected_index == Some(i);
-                button(
+                
+                let item_area = mouse_area(
                     container(
                         row![
                             row![load_icon("file"), text(&res.title).size(13)]
@@ -188,8 +189,8 @@ fn left_sidebar(app: &App) -> Element<'_, Message> {
                         .align_y(Alignment::Center),
                     )
                     .padding(Padding {
-                        top: 4.0,
-                        bottom: 4.0,
+                        top: 6.0,
+                        bottom: 6.0,
                         left: 8.0,
                         right: 8.0,
                     })
@@ -198,12 +199,50 @@ fn left_sidebar(app: &App) -> Element<'_, Message> {
                     } else {
                         theme::result_card_normal
                     })
-                    .width(Length::Fill),
+                    .width(Length::Fill)
                 )
                 .on_press(Message::ResultSelected(i))
-                .style(theme::ghost_button())
-                .width(Length::Fill)
-                .into()
+                .on_right_press(Message::ShowContextMenu(i));
+
+                let mut col = column![item_area];
+
+                if app.context_menu_index == Some(i) {
+                    let ctx_menu = container(
+                        row![
+                            button(text("Open File").size(11))
+                                .on_press(Message::OpenFile(res.path.clone()))
+                                .style(theme::secondary_button())
+                                .padding(Padding::new(4.0)),
+                            button(text("Open Location").size(11))
+                                .on_press(Message::OpenFolder(res.path.clone()))
+                                .style(theme::secondary_button())
+                                .padding(Padding::new(4.0)),
+                            button(text("Copy Path").size(11))
+                                .on_press(Message::CopyPath(res.path.clone()))
+                                .style(theme::secondary_button())
+                                .padding(Padding::new(4.0)),
+                            Space::new().width(Length::Fill),
+                            button(text("Close").size(11))
+                                .on_press(Message::CloseContextMenu)
+                                .style(theme::ghost_button())
+                                .padding(Padding::new(4.0)),
+                        ]
+                        .spacing(8)
+                        .align_y(Alignment::Center)
+                    )
+                    .padding(Padding {
+                        top: 6.0,
+                        bottom: 6.0,
+                        left: 32.0,
+                        right: 8.0,
+                    })
+                    .style(theme::table_header_container)
+                    .width(Length::Fill);
+                    
+                    col = col.push(ctx_menu);
+                }
+
+                col.width(Length::Fill).into()
             })
             .collect::<Vec<Element<Message>>>(),
     ))
