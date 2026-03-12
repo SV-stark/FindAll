@@ -27,6 +27,8 @@ pub struct AppSettings {
     pub search_history_enabled: bool,
     pub fuzzy_matching: bool,
     pub case_sensitive: bool,
+    #[serde(default)]
+    pub whole_word: bool,
     pub default_filters: DefaultFilters,
     pub recent_searches: Option<Vec<String>>,
     pub search_history: Option<Vec<SearchHistoryItem>>,
@@ -153,6 +155,7 @@ impl Default for AppSettings {
             search_history_enabled: true,
             fuzzy_matching: true,
             case_sensitive: false,
+            whole_word: false,
             default_filters: DefaultFilters::default(),
             recent_searches: Some(vec![]),
             search_history: Some(vec![]),

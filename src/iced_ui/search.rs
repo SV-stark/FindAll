@@ -1,5 +1,5 @@
 use super::{theme, App, Message, SearchMode, Tab};
-use iced::widget::{button, column, container, row, scrollable, text, Space, TextInput};
+use iced::widget::{button, checkbox, column, container, row, scrollable, text, rich_text, span, Space, TextInput};
 use iced::{font, Alignment, Element, Font, Length, Padding};
 
 // --- Icons from TTF Font ---
@@ -105,22 +105,40 @@ fn main_layout(app: &App) -> Element<'_, Message> {
 }
 
 fn left_sidebar(app: &App) -> Element<'_, Message> {
-    let nav_tree = column![
-        button(row![load_icon("folder"), text("All Folders").size(13)].spacing(8))
-            .on_press(Message::NotImplemented("Filter: All Folders".to_string()))
-            .width(Length::Fill)
-            .style(theme::nav_button(true)),
-        button(row![load_icon("file"), text("File Types").size(13)].spacing(8))
-            .on_press(Message::NotImplemented("Filter: File Types".to_string()))
-            .width(Length::Fill)
-            .style(theme::nav_button(false)),
-        button(row![load_icon("search"), text("All Files").size(13)].spacing(8))
-            .on_press(Message::NotImplemented("Filter: All Files".to_string()))
-            .width(Length::Fill)
-            .style(theme::nav_button(false)),
+    let filter_panel = column![
+        text("Search Filters").size(14).font(Font {
+            weight: font::Weight::Bold,
+            ..Font::default()
+        }),
+        Space::new().height(Length::Fixed(8.0)),
+        
+        text("File Extension").size(12).style(theme::dim_text_style()),
+        TextInput::new("e.g. pdf, txt", &app.filter_extension)
+            .on_input(Message::FilterExtensionChanged)
+            .padding(Padding::new(6.0))
+            .size(12),
+        Space::new().height(Length::Fixed(8.0)),
+        
+        text("File Size").size(12).style(theme::dim_text_style()),
+        TextInput::new("e.g. >5MB, <10KB", &app.filter_size)
+            .on_input(Message::FilterSizeChanged)
+            .padding(Padding::new(6.0))
+            .size(12),
+        Space::new().height(Length::Fixed(12.0)),
+        
+        checkbox("Match Case", app.settings.case_sensitive)
+            .on_toggle(Message::ToggleCaseSensitive)
+            .size(14)
+            .text_size(12),
+        Space::new().height(Length::Fixed(4.0)),
+            
+        checkbox("Whole Word", app.settings.whole_word)
+            .on_toggle(Message::ToggleWholeWord)
+            .size(14)
+            .text_size(12),
     ]
     .spacing(4)
-    .padding(Padding::new(8.0));
+    .padding(Padding::new(12.0));
 
     let table_header = container(
         row![
@@ -191,11 +209,122 @@ fn left_sidebar(app: &App) -> Element<'_, Message> {
     ))
     .height(Length::Fill);
 
-    container(column![nav_tree, table_header, results].width(Length::Fill))
+    container(column![filter_panel, table_header, results].width(Length::Fill))
         .style(theme::sidebar_container)
         .width(Length::FillPortion(2))
         .height(Length::Fill)
         .into()
+}
+
+fn highlight_text<'a>(content: &'a str, terms: &[String]) -> Element<'a, Message> {
+    if terms.is_empty() || content.is_empty() {
+        return text(content).size(14).into();
+    }
+    
+    let lower_content = content.to_lowercase();
+    let mut matches = Vec::new();
+    
+    for term in terms {
+        if term.is_empty() { continue; }
+        let lower_term = term.to_lowercase();
+        let mut start = 0;
+        while let Some(idx) = lower_content[start..].find(&lower_term) {
+            let abs_idx = start + idx;
+            matches.push((abs_idx, abs_idx + term.len()));
+            start = abs_idx + term.len();
+        }
+    }
+    
+    if matches.is_empty() {
+        return text(content).size(14).into();
+    }
+
+    matches.sort_by_key(|m| m.0);
+    let mut merged = Vec::new();
+    for m in matches {
+        if let Some(last) = merged.last_mut() {
+            if m.0 <= last.1 {
+                last.1 = last.1.max(m.1);
+                continue;
+            }
+        }
+        merged.push(m);
+    }
+    
+    let mut spans = Vec::new();
+    let mut current = 0;
+    
+    for (start, end) in merged {
+        if start > current {
+            spans.push(span(&content[current..start]).size(14));
+        }
+        spans.push(
+            span(&content[start..end])
+                .size(14)
+                .font(Font {
+                    weight: font::Weight::Bold,
+                    ..Font::default()
+                })
+                .color(iced::Color::from_rgb8(234, 179, 8)) // Highlight color (yellow)
+        );
+        current = end;
+    }
+    
+    if current < content.len() {
+        spans.push(span(&content[current..]).size(14));
+    }
+    
+    rich_text(spans).into()
+}
+
+fn parse_snippet<'a>(content: &'a str) -> Element<'a, Message> {
+    let mut spans = Vec::new();
+    let mut current_pos = 0;
+
+    while let Some(start) = content[current_pos..].find("<b>") {
+        let absolute_start = current_pos + start;
+        
+        if absolute_start > current_pos {
+            spans.push(span(&content[current_pos..absolute_start]).size(12));
+        }
+        
+        current_pos = absolute_start + 3; // length of <b>
+        
+        if let Some(end) = content[current_pos..].find("</b>") {
+            let absolute_end = current_pos + end;
+            spans.push(
+                span(&content[current_pos..absolute_end])
+                    .size(12)
+                    .font(Font {
+                        weight: font::Weight::Bold,
+                        ..Font::default()
+                    })
+                    .color(iced::Color::from_rgb8(234, 179, 8))
+            );
+            current_pos = absolute_end + 4; // length of </b>
+        } else {
+            spans.push(
+                span(&content[current_pos..])
+                    .size(12)
+                    .font(Font {
+                        weight: font::Weight::Bold,
+                        ..Font::default()
+                    })
+            );
+            current_pos = content.len();
+            break;
+        }
+    }
+
+    if current_pos < content.len() {
+        spans.push(span(&content[current_pos..]).size(12));
+    }
+
+    if spans.is_empty() {
+        return text(content).size(12).into();
+    }
+
+    rich_text(spans).into()
 }
 
 fn right_panel(app: &App) -> Element<'_, Message> {
@@ -217,18 +346,7 @@ fn right_panel(app: &App) -> Element<'_, Message> {
             .center_y(Length::Fill)
             .into()
     } else if let Some(preview_result) = &app.preview_result {
-        let content = &preview_result.content;
-        let terms = &preview_result.matched_terms;
-
-        // Simple highlighting: wrap matched terms in bold
-        // This is a basic implementation; for better performance, we might need a custom widget
-        let highlighted_text = if terms.is_empty() {
-            text(content).size(14)
-        } else {
-            // For now, just show the content without highlighting
-            // Implementing proper highlighting requires more complex logic
-            text(content).size(14)
-        };
+        let highlighted_text = highlight_text(&preview_result.content, &preview_result.matched_terms);
 
         container(scrollable(
             container(highlighted_text).padding(Padding::new(20.0)),
@@ -271,7 +389,7 @@ fn hits_panel(app: &App) -> Element<'_, Message> {
                         .map(|(i, s)| hit_row(i + 1, s))
                         .collect::<Vec<_>>(),
                 )
-                .spacing(4)
+                .spacing(8)
                 .padding(8),
             )
             .height(Length::Fill)
@@ -319,10 +437,10 @@ fn hit_row(_idx: usize, content: &str) -> Element<'_, Message> {
         text(_idx.to_string())
             .size(11)
             .style(theme::dim_text_style()),
-        container(text(content).size(12)).padding(Padding::new(4.0)),
+        container(parse_snippet(content)).padding(Padding::new(4.0)),
     ]
     .spacing(12)
-    .align_y(Alignment::Center)
+    .align_y(Alignment::Start)
     .into()
 }
 

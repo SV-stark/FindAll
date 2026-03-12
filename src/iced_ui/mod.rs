@@ -114,6 +114,8 @@ pub enum Message {
     SaveSettings,
     ToggleTheme,
     ToggleSearchMode,
+    ToggleCaseSensitive(bool),
+    ToggleWholeWord(bool),
     FilterExtensionChanged(String),
     FilterSizeChanged(String),
     PreviewRequested(usize),
@@ -303,13 +305,20 @@ impl App {
             None => return Task::none(),
         };
 
-        let query = self.search_query.clone();
+        let mut query = self.search_query.clone();
+        
+        // Wrap in quotes if whole_word is enabled and not already wrapped
+        if self.settings.whole_word && !query.starts_with('"') && !query.ends_with('"') && !query.contains(':') {
+            query = format!("\"{}\"", query);
+        }
+
         let max_results = self.settings.max_results;
         let mode = self.search_mode.clone();
         let extension = if self.filter_extension.is_empty() {
             None
         } else {
-            Some(vec![self.filter_extension.clone()])
+            // Split by comma for multiple extensions
+            Some(self.filter_extension.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
         };
         let (min_size, max_size) = Self::parse_size_filter(&self.filter_size);
 
@@ -639,6 +648,24 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                     SearchMode::FullText => SearchMode::Filename,
                     SearchMode::Filename => SearchMode::FullText,
                 };
+                if !app.search_query.is_empty() {
+                    app.perform_search()
+                } else {
+                    Task::none()
+                }
+            }
+            Message::ToggleCaseSensitive(val) => {
+                app.settings.case_sensitive = val;
+                app.save_settings();
+                if !app.search_query.is_empty() {
+                    app.perform_search()
+                } else {
+                    Task::none()
+                }
+            }
+            Message::ToggleWholeWord(val) => {
+                app.settings.whole_word = val;
+                app.save_settings();
                 if !app.search_query.is_empty() {
                     app.perform_search()
                 } else {

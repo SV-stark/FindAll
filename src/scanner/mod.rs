@@ -1,9 +1,11 @@
+pub mod drive_scanner;
+
 use crate::error::Result;
 use crate::indexer::IndexManager;
 use crate::metadata::MetadataDb;
 use crate::parsers::{parse_file, ParsedDocument};
 use blake3;
-use ignore::WalkBuilder;
+use drive_scanner::{DefaultDriveScanner, DriveScanner};
 use rayon::prelude::*;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicUsize;
@@ -66,94 +68,48 @@ impl Scanner {
         }
     }
 
+    fn get_scanner(&self) -> Box<dyn DriveScanner> {
+        #[cfg(target_os = "windows")]
+        {
+            Box::new(drive_scanner::WindowsDriveScanner)
+        }
+        #[cfg(target_os = "macos")]
+        {
+            Box::new(drive_scanner::MacDriveScanner)
+        }
+        #[cfg(target_os = "linux")]
+        {
+            Box::new(drive_scanner::LinuxDriveScanner)
+        }
+        #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+        {
+            Box::new(drive_scanner::DefaultDriveScanner)
+        }
+    }
+
+    #[instrument(skip(self, tx))]
+    pub fn watch_drive(&self, root: PathBuf, tx: mpsc::Sender<(PathBuf, crate::watcher::WatcherAction)>) -> Result<()> {
+        let scanner = self.get_scanner();
+        scanner.watch(root, tx)
+    }
+
     #[instrument(skip(self, exclude_patterns), fields(root = %root.display()))]
     pub async fn scan_directory(&self, root: PathBuf, exclude_patterns: Vec<String>) -> Result<()> {
         info!("Starting directory scan for {}", root.display());
 
-        // P3/P4: Run blocking WalkBuilder in a separate thread to avoid blocking Tokio runtime
-        // and allow pipelined consumption.
         let (path_tx, path_rx): (
             std::sync::mpsc::Sender<PathBuf>,
             std::sync::mpsc::Receiver<PathBuf>,
         ) = std::sync::mpsc::channel();
-        let total = Arc::new(AtomicUsize::new(0));
+        
         let root_clone = root.clone();
         let tx_clone = self.progress_tx.clone();
-        let total_clone = total.clone();
+        let scanner = self.get_scanner();
+        let total = Arc::new(AtomicUsize::new(0));
+        let total_for_scan = total.clone();
 
         let walker_handle = tokio::task::spawn_blocking(move || {
-            let mut builder = WalkBuilder::new(&root_clone);
-            // ... (keep logic same) ...
-
-            // Add overrides
-            let mut override_builder = ignore::overrides::OverrideBuilder::new(&root_clone);
-            for pattern in &exclude_patterns {
-                let ignore_pattern = format!("!{}", pattern);
-                if let Err(e) = override_builder.add(&ignore_pattern) {
-                    warn!("Invalid exclude pattern '{}': {}", pattern, e);
-                }
-            }
-            if let Ok(overrides) = override_builder.build() {
-                builder.overrides(overrides);
-            }
-
-            builder.follow_links(true).standard_filters(false);
-            // Limit the depth of the walk to avoid excessively deep traversals.
-            // We set a reasonable limit (e.g., 20) to prevent infinite loops in case of symlink cycles.
-            builder.max_depth(Some(20));
-
-            // --- Stage 1: Filename Indexing ---
-            info!("Stage 1: Filename Indexing");
-            let builder = builder.build_parallel();
-            builder.run(|| {
-                let path_tx = path_tx.clone();
-                let tx = tx_clone.clone();
-                let total = total_clone.clone();
-                Box::new(move |entry| {
-                    if let Ok(entry) = entry {
-                        if entry.file_type().map(|ft| ft.is_file()).unwrap_or(false) {
-                            let path = entry.path().to_path_buf();
-                            let _ = path_tx.send(path);
-                            let count = total.fetch_add(1, Ordering::Relaxed);
-
-                            // Send progress update periodically
-                            if count % 100 == 0 {
-                                if let Some(tx) = &tx {
-                                    let _ = tx.try_send(ProgressEvent {
-                                        ptype: ProgressType::Filename,
-                                        current_file: entry
-                                            .file_name()
-                                            .to_string_lossy()
-                                            .to_string(),
-                                        current_folder: "".to_string(),
-                                        processed: count,
-                                        total: 0, // Unknown
-                                        status: "Scanning filenames...".to_string(),
-                                        eta_seconds: 0,
-                                        files_per_second: 0.0,
-                                    });
-                                }
-                            }
-                        }
-                    }
-                    ignore::WalkState::Continue
-                })
-            });
-
-            // Final update for stage 1
-            let final_count = total_clone.load(Ordering::Relaxed);
-            if let Some(tx) = &tx_clone {
-                let _ = tx.try_send(ProgressEvent {
-                    ptype: ProgressType::Filename,
-                    current_file: "".to_string(),
-                    current_folder: "".to_string(),
-                    processed: final_count,
-                    total: final_count,
-                    status: "Filename scan complete".to_string(),
-                    eta_seconds: 0,
-                    files_per_second: 0.0,
-                });
-            }
+            scanner.scan(root_clone, exclude_patterns, path_tx, tx_clone, total_for_scan)
         });
 
         // --- Stage 2: Content Indexing (Batched) ---
