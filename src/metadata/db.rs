@@ -1,6 +1,7 @@
 use crate::error::{FlashError, Result};
 use redb::{Database, ReadableTable, TableDefinition};
 use rkyv;
+use std::cmp::Reverse;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -417,7 +418,7 @@ impl MetadataDb {
     }
 
     /// Get recently modified files sorted by modification time
-    /// Note: This loads all files into memory. For large datasets, consider using a separate index.
+    /// Uses a bounded min-heap to avoid loading all files into memory.
     pub fn get_recent_files(&self, limit: usize) -> Result<Vec<RecentFileEntry>> {
         let txn = self.db.begin_read().map_err(|e| {
             FlashError::database("database_operation", "files_table", e.to_string())
@@ -427,34 +428,58 @@ impl MetadataDb {
             FlashError::database("database_operation", "files_table", e.to_string())
         })?;
 
-        let mut files: Vec<(String, u64, u64)> = table
+        // Use a min-heap to keep the top `limit` most recent files.
+        // We store (modified, path, size) and the heap is ordered by modified (smallest at top).
+        use std::collections::BinaryHeap;
+        // We define a wrapper struct to have a min-heap based on modified time.
+        // Since BinaryHeap is a max-heap, we invert the order by using Reverse.
+        let mut heap: BinaryHeap<Reverse<(u64, String, u64)>> = BinaryHeap::new();
+
+        for entry in table
             .iter()
             .map_err(|e| FlashError::database("database_operation", "files_table", e.to_string()))?
-            .filter_map(|entry| {
-                entry.ok().map(|(k, v)| {
-                    let bytes = v.value();
-                    if let Ok(meta) =
-                        rkyv::access::<rkyv::Archived<FileMetadata>, rkyv::rancor::Error>(bytes)
-                    {
-                        (
-                            k.value().to_string(),
-                            meta.modified.to_native(),
-                            meta.size.to_native(),
-                        )
-                    } else {
-                        (k.value().to_string(), 0, 0)
-                    }
-                })
+        {
+            let (k, v) = entry.map_err(|e| {
+                FlashError::database("database_operation", "files_table", e.to_string())
+            })?;
+            let bytes = v.value();
+            let modified = if let Ok(meta) =
+                rkyv::access::<rkyv::Archived<FileMetadata>, rkyv::rancor::Error>(bytes)
+            {
+                meta.modified.to_native()
+            } else {
+                0
+            };
+            let path = k.value().to_string();
+            let size = if let Ok(meta) =
+                rkyv::access::<rkyv::Archived<FileMetadata>, rkyv::rancor::Error>(bytes)
+            {
+                meta.size.to_native()
+            } else {
+                0
+            };
+
+            // Push the entry into the heap
+            heap.push(Reverse((modified, path, size)));
+
+            // If heap exceeds limit, remove the least recent (smallest modified)
+            if heap.len() > limit {
+                heap.pop();
+            }
+        }
+
+        // Extract the files from the heap.
+        // They are in arbitrary order (heap order). We want them sorted by modified descending.
+        let mut files: Vec<(String, u64, u64)> = heap
+            .into_iter()
+            .map(|Reverse(tuple)| {
+                let (modified, path, size) = tuple;
+                (path, modified, size)
             })
             .collect();
 
-        // Use select_nth_unstable for O(n) partial sort instead of O(n log n) full sort
-        if files.len() > limit {
-            files.select_nth_unstable_by(limit, |a, b| b.1.cmp(&a.1)); // Reverse order for max-heap behavior
-            files.truncate(limit);
-        } else {
-            files.sort_by(|a, b| b.1.cmp(&a.1));
-        }
+        // Sort by modified descending
+        files.sort_by(|a, b| b.1.cmp(&a.1));
 
         // Convert to the expected format (without titles for now, can be enhanced)
         Ok(files

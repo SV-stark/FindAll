@@ -98,6 +98,9 @@ impl Scanner {
             }
 
             builder.follow_links(true).standard_filters(false);
+            // Limit the depth of the walk to avoid excessively deep traversals.
+            // We set a reasonable limit (e.g., 20) to prevent infinite loops in case of symlink cycles.
+            builder.max_depth(Some(20));
 
             // --- Stage 1: Filename Indexing ---
             info!("Stage 1: Filename Indexing");

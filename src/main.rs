@@ -1,20 +1,16 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use mimalloc::MiMalloc;
-use std::sync::atomic::{AtomicBool, Ordering};
+
+use std::sync::atomic::Ordering;
 use tracing::{error, info};
+
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
-#[global_allocator]
-static GLOBAL: MiMalloc = MiMalloc;
-
-static SHUTDOWN_FLAG: AtomicBool = AtomicBool::new(false);
-
-pub fn is_shutting_down() -> bool {
-    SHUTDOWN_FLAG.load(Ordering::SeqCst)
-}
 
 fn init_logging() -> WorkerGuard {
     let log_dir = dirs::data_local_dir()
@@ -109,8 +105,10 @@ fn main() {
             eprintln!("Flash Search is already running.");
             std::process::exit(1);
         }
-        // Leak the file handle so the lock is held for the lifetime of the process
-        std::mem::forget(file);
+        // Store the lock file in a static to hold it for the lifetime of the process
+        // Using a static with an Option allows us to initialize it after startup
+        static mut LOCK_FILE: Option<std::fs::File> = None;
+        unsafe { LOCK_FILE = Some(file) };
     }
 
     let _guard = init_logging();
@@ -158,16 +156,13 @@ fn main() {
 
     ctrlc::set_handler(|| {
         info!("Shutdown signal received, committing index...");
-        SHUTDOWN_FLAG.store(true, Ordering::SeqCst);
+        flash_search::SHUTDOWN_FLAG.store(true, Ordering::SeqCst);
     })
     .expect("Error setting Ctrl-C handler");
 
-    // Iced requires running on the main thread and runs its own executor
-    match flash_search::run_ui() {
-        Ok(_) => {}
-        Err(e) => {
-            error!("Failed to start application: {}", e);
-            std::process::exit(1);
-        }
+    // Run the UI
+    if let Err(e) = flash_search::run_ui() {
+        error!("Application error: {}", e);
+        std::process::exit(1);
     }
 }

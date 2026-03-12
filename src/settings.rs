@@ -196,14 +196,16 @@ impl SettingsManager {
     pub fn load(&self) -> Result<AppSettings> {
         if !self.path.exists() {
             let defaults = AppSettings::default();
-            self.save(&defaults)?;
-            return Ok(defaults);
+            // If we can't save the defaults, we still return them but log the error
+            if let Err(e) = self.save(&defaults) {
+                tracing::warn!("Failed to save default settings: {}", e);
+            }
+            Ok(defaults)
+        } else {
+            let content = fs::read_to_string(&self.path).map_err(FlashError::Io)?;
+            serde_json::from_str(&content)
+                .map_err(|e| FlashError::config("parse_settings", e.to_string()))
         }
-
-        let content = fs::read_to_string(&self.path).map_err(FlashError::Io)?;
-
-        serde_json::from_str(&content)
-            .map_err(|e| FlashError::config("parse_settings", e.to_string()))
     }
 
     pub fn save(&self, settings: &AppSettings) -> Result<()> {

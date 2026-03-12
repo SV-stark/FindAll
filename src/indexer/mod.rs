@@ -57,6 +57,10 @@ impl IndexManager {
                     "Schema version mismatch: stored={}, current={}. Rebuilding index...",
                     ver, SCHEMA_VERSION
                 );
+                // Try to backup the index before destroying it
+                let backup_path = index_path.with_extension("backup");
+                let _ = std::fs::remove_dir_all(&backup_path); // Remove old backup if exists
+                let _ = copy_dir(index_path, &backup_path); // Try to backup
                 std::fs::remove_dir_all(index_path).map_err(FlashError::Io)?;
                 std::fs::create_dir_all(index_path).map_err(FlashError::Io)?;
                 write_schema_version(index_path, SCHEMA_VERSION)?;
@@ -64,6 +68,10 @@ impl IndexManager {
         } else if index_path.join("meta.json").exists() {
             // Old index without version - rebuild
             warn!("No schema version found. Rebuilding index...");
+            // Try to backup the index before destroying it
+            let backup_path = index_path.with_extension("backup");
+            let _ = std::fs::remove_dir_all(&backup_path); // Remove old backup if exists
+            let _ = copy_dir(index_path, &backup_path); // Try to backup
             std::fs::remove_dir_all(index_path).map_err(FlashError::Io)?;
             std::fs::create_dir_all(index_path).map_err(FlashError::Io)?;
             write_schema_version(index_path, SCHEMA_VERSION)?;
@@ -85,6 +93,11 @@ impl IndexManager {
                         "Tantivy detected schema mismatch: {}. Forcing index rebuild...",
                         err_str
                     );
+
+                    // Try to backup the index before destroying it
+                    let backup_path = index_path.with_extension("backup");
+                    let _ = std::fs::remove_dir_all(&backup_path); // Remove old backup if exists
+                    let _ = copy_dir(index_path, &backup_path); // Try to backup
 
                     // Close the directory/files if needed? MmapDirectory handles it.
                     // Wipe and start over
@@ -181,4 +194,21 @@ impl IndexManager {
     pub fn get_searcher(&self) -> &Arc<IndexSearcher> {
         &self.searcher
     }
+}
+
+fn copy_dir(src: &Path, dst: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in walkdir::WalkDir::new(src).min_depth(1) {
+        let entry = entry?;
+        let ty = entry.file_type();
+        let path = entry.path();
+        let relative = path.strip_prefix(src).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        let target = dst.join(relative);
+        if ty.is_dir() {
+            std::fs::create_dir_all(target)?;
+        } else {
+            std::fs::copy(path, target)?;
+        }
+    }
+    Ok(())
 }

@@ -2,6 +2,7 @@ use crate::commands::AppState;
 use crate::commands::{
     get_file_preview_highlighted_internal, search_filenames_internal, search_query_internal,
 };
+use crate::error::FlashError;
 use crate::indexer::searcher::SearchResult;
 use crate::models::FilenameSearchResult;
 use crate::scanner::ProgressEvent;
@@ -99,7 +100,7 @@ pub enum Message {
     SearchQueryChanged(String),
     SearchSubmitted,
     SearchResultsReceived(Vec<FileItem>),
-    SearchError(String),
+    SearchError(FlashError),
     ResultSelected(usize),
     OpenFile(String),
     CopyPath(String),
@@ -121,18 +122,19 @@ pub enum Message {
     MoveDown,
     DismissError,
     Quit,
-    MaxResultsChanged(String),
-    ExcludePatternsChanged(String),
-    PollProgressResult(Option<ProgressEvent>),
+    GlobalHotkeyChanged(String),
     StartPollingProgress,
+    PollProgressResult(Option<ProgressEvent>),
     PollTray,
     ToggleMinimizeToTray(bool),
     ToggleAutoStart(bool),
     ToggleContextMenu(bool),
-    GlobalHotkeyChanged(String),
     PollHotkey,
     PollSearchDeadline,
     NotImplemented(String),
+    MaxResultsChanged(String),
+    ExcludePatternsChanged(String),
+    NoOp,
 }
 
 pub struct App {
@@ -275,10 +277,15 @@ impl App {
             1
         };
 
-        let num: u64 = num_str
+        let num: u64 = match num_str
             .trim_end_matches(|c: char| c.is_alphabetic())
-            .parse()
-            .unwrap_or(0);
+            .parse() {
+                Ok(n) => n,
+                Err(_) => {
+                    // If we can't parse the number, we treat it as no filter.
+                    return (None, None);
+                }
+            };
         let bytes = num * multiplier;
 
         match op {
@@ -312,31 +319,31 @@ impl App {
 
         Task::future(async move {
             let result = match mode {
-                SearchMode::Filename => {
-                    match search_filenames_internal(query, max_results, &state).await {
-                        Ok(results) => Message::SearchResultsReceived(
-                            results.into_iter().map(FileItem::from).collect(),
-                        ),
-                        Err(e) => Message::SearchError(e.to_string()),
-                    }
-                }
-                SearchMode::FullText => {
-                    match search_query_internal(
-                        query,
-                        max_results,
-                        &state,
-                        min_size,
-                        max_size,
-                        extension,
-                    )
-                    .await
-                    {
-                        Ok(results) => Message::SearchResultsReceived(
-                            results.into_iter().map(FileItem::from).collect(),
-                        ),
-                        Err(e) => Message::SearchError(e.to_string()),
-                    }
-                }
+                 SearchMode::Filename => {
+                     match search_filenames_internal(query.clone(), max_results, &state).await {
+                         Ok(results) => Message::SearchResultsReceived(
+                             results.into_iter().map(FileItem::from).collect(),
+                         ),
+                         Err(e) => Message::SearchError(FlashError::search(&query, e)),
+                     }
+                 }
+                 SearchMode::FullText => {
+                     match search_query_internal(
+                         query.clone(),
+                         max_results,
+                         &state,
+                         min_size,
+                         max_size,
+                         extension,
+                     )
+                     .await
+                     {
+                         Ok(results) => Message::SearchResultsReceived(
+                             results.into_iter().map(FileItem::from).collect(),
+                         ),
+                         Err(e) => Message::SearchError(FlashError::search(&query, e)),
+                     }
+                 }
             };
             result
         })
@@ -378,7 +385,7 @@ impl App {
     }
 }
 
-fn update(app: &mut App, message: Message) -> Task<Message> {
+pub fn update(app: &mut App, message: Message) -> Task<Message> {
     if app.error.is_some() {
         match message {
             Message::DismissError => {
@@ -386,7 +393,9 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 Task::none()
             }
             Message::Quit => {
-                std::process::exit(0);
+                // Set shutdown flag to initiate graceful shutdown
+                crate::SHUTDOWN_FLAG.store(true, std::sync::atomic::Ordering::SeqCst);
+                Task::none()
             }
             _ => Task::none(),
         }
@@ -414,7 +423,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 app.load_preview()
             }
             Message::SearchError(err) => {
-                app.search_error = Some(err);
+                app.search_error = Some(err.to_string());
                 app.is_searching = false;
                 app.results.clear();
                 Task::none()
@@ -426,11 +435,14 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             Message::OpenFile(path) => {
                 let p = PathBuf::from(&path);
                 if p.is_absolute() && p.exists() {
-                    let _ = opener::open(p);
+                    // Offload the file opening to a background thread to avoid blocking the UI
+                    Task::perform(async move {
+                        let _ = opener::open(p);
+                    }, |_| Message::NoOp)
                 } else {
                     tracing::warn!("Blocked attempt to open invalid or relative path: {}", path);
+                    Task::none()
                 }
-                Task::none()
             }
             Message::CopyPath(path) => {
                 if let Ok(mut clipboard) = arboard::Clipboard::new() {
@@ -572,14 +584,14 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     ]);
                 }
                 Task::none()
-            }
+            },
             Message::FolderPicked(None) => Task::none(),
             Message::RemoveFolder(i) => {
                 if i < app.settings.index_dirs.len() {
                     app.settings.index_dirs.remove(i);
                 }
                 Task::none()
-            }
+            },
             Message::SaveSettings => {
                 app.save_settings();
                 Task::none()
@@ -668,9 +680,11 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 }
                 Task::none()
             }
-            Message::DismissError => Task::none(),
-            Message::Quit => {
-                std::process::exit(0);
+             Message::DismissError => Task::none(),
+             Message::Quit => {
+                // Set shutdown flag to initiate graceful shutdown
+                crate::SHUTDOWN_FLAG.store(true, std::sync::atomic::Ordering::SeqCst);
+                Task::none()
             }
             Message::GlobalHotkeyChanged(val) => {
                 app.settings.global_hotkey = val;
@@ -713,11 +727,12 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 ));
                 Task::none()
             }
+            Message::NoOp => Task::none(),
         }
     }
 }
 
-fn subscription(_app: &App) -> Subscription<Message> {
+pub fn subscription(_app: &App) -> Subscription<Message> {
     let subs = vec![
         iced::time::every(std::time::Duration::from_millis(100)).map(|_| Message::PollHotkey),
         iced::time::every(std::time::Duration::from_millis(100)).map(|_| Message::PollTray),
@@ -728,7 +743,7 @@ fn subscription(_app: &App) -> Subscription<Message> {
     Subscription::batch(subs)
 }
 
-fn view(app: &App) -> Element<'_, Message> {
+pub fn view(app: &App) -> Element<'_, Message> {
     if let Some(err) = &app.error {
         return error_view(err);
     }
@@ -762,12 +777,12 @@ fn error_view(error: &str) -> Element<'_, Message> {
     .into()
 }
 
-fn app_title(_app: &App) -> String {
+pub fn app_title(_app: &App) -> String {
     String::from("Flash Search")
 }
 
-fn app_theme(app: &App) -> iced::Theme {
-    if app.is_dark {
+pub fn app_theme(_app: &App) -> iced::Theme {
+    if _app.is_dark {
         iced::Theme::Dark
     } else {
         iced::Theme::Light
@@ -805,7 +820,7 @@ pub fn run_ui(
     )
     .title(app_title)
     .theme(app_theme)
-    // .font(icons::FONT_BYTES) // Temporarily disabled due to corrupted font file
+    .font(icons::FONT_BYTES)
     .subscription(subscription)
     .window(iced::window::Settings {
         size: iced::Size::new(1000.0, 700.0),

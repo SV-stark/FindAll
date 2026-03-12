@@ -1,37 +1,37 @@
 use iced::widget::{text, Text};
 use iced::Element;
 
-pub const FONT: iced::Font = iced::Font::with_name("Icons");
+pub const FONT: iced::Font = iced::Font::with_name("lucide");
 
-// Load the pre-built Phosphor font from assets
-pub const FONT_BYTES: &[u8] = include_bytes!("../../assets/phosphor.ttf");
+// Load the pre-built Lucide font from assets
+pub const FONT_BYTES: &[u8] = include_bytes!("../../assets/lucide.ttf");
 
-/// Icon name to Unicode character mapping for Phosphor Regular font
+/// Icon name to Unicode character mapping for Lucide font
 pub fn get_icon_char(name: &str) -> char {
     match name {
-        "magnifying-glass" | "search" => '\u{e32e}',
-        "magnifying-glass-plus" => '\u{e330}',
-        "magnifying-glass-minus" => '\u{e332}',
-        "gear" | "settings" => '\u{e212}',
-        "trash" => '\u{e49e}',
-        "file" => '\u{e1d4}',
-        "file-text" | "text" => '\u{e1ea}',
-        "folder" => '\u{e204}',
-        "folder-open" => '\u{e206}',
-        "info" => '\u{e27a}',
-        "warning" => '\u{e4e2}',
-        "check" => '\u{e0ec}',
-        "x" => '\u{e4f6}',
-        "plus" => '\u{e3bc}',
-        "minus" => '\u{e344}',
-        "arrow-right" => '\u{e056}',
-        "arrow-left" => '\u{e052}',
-        "arrow-up" => '\u{e05a}',
-        "arrow-down" => '\u{e04a}',
-        "download" => '\u{e194}',
-        "copy" => '\u{e154}',
-        "database" => '\u{e188}',
-        "star" => '\u{e452}',
+        "magnifying-glass" | "search" => '\u{e151}',
+        "magnifying-glass-plus" => '\u{e1b6}',
+        "magnifying-glass-minus" => '\u{e1b7}',
+        "gear" | "settings" => '\u{e154}',
+        "trash" => '\u{e18d}',
+        "file" => '\u{e0c0}',
+        "file-text" | "text" => '\u{e0cc}',
+        "folder" => '\u{e0d7}',
+        "folder-open" => '\u{e247}',
+        "info" => '\u{e0f9}',
+        "warning" => '\u{e193}',
+        "check" => '\u{e06c}',
+        "x" => '\u{e1b2}',
+        "plus" => '\u{e13d}',
+        "minus" => '\u{e11c}',
+        "arrow-right" => '\u{e049}',
+        "arrow-left" => '\u{e048}',
+        "arrow-up" => '\u{e04a}',
+        "arrow-down" => '\u{e042}',
+        "download" => '\u{e0b2}',
+        "copy" => '\u{e09e}',
+        "database" => '\u{e0ad}',
+        "star" => '\u{e176}',
         _ => {
             eprintln!("icon '{}' not found", name);
             '\u{003f}' // Question mark as fallback

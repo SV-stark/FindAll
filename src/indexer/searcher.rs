@@ -123,7 +123,9 @@ impl IndexSearcher {
             .map_err(|e| FlashError::search("create_index_reader", e.to_string()))?;
 
         // Pre-warm: load the index reader
-        reader.reload().ok();
+        if let Err(e) = reader.reload() {
+            tracing::warn!("Failed to pre-warm index reader: {}", e);
+        }
 
         // Get field references once to avoid repeated lookups
         let path_field = schema

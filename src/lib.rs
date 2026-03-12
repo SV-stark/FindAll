@@ -9,6 +9,13 @@ pub mod scanner;
 pub mod settings;
 pub mod system;
 pub mod watcher;
+pub use iced_ui::{app_theme, app_title, subscription, update, view};
+
+pub static SHUTDOWN_FLAG: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn is_shutting_down() -> bool {
+    SHUTDOWN_FLAG.load(std::sync::atomic::Ordering::SeqCst)
+}
 
 use crate::error::FlashError;
 use commands::AppState;
