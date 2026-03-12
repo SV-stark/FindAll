@@ -1792,6 +1792,7 @@ dependencies = [
  "tracing-subscriber",
  "tray-icon",
  "walkdir",
+ "windows 0.58.0",
  "winreg",
  "winres",
 ]

@@ -1,20 +1,23 @@
 #[cfg(target_os = "windows")]
 mod windows_usn {
-    use std::path::{Path, PathBuf};
-    use std::sync::Arc;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::collections::HashMap;
-    use windows::Win32::Foundation::{HANDLE, CloseHandle, GENERIC_READ, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING};
-    use windows::Win32::Storage::FileSystem::{CreateFileW, FILE_FLAG_BACKUP_SEMANTICS, FILE_ATTRIBUTE_SYSTEM};
-    use windows::Win32::System::Ioctl::{
-        FSCTL_ENUM_USN_DATA, FSCTL_QUERY_USN_JOURNAL, FSCTL_READ_USN_JOURNAL, MFT_ENUM_DATA_V0, 
-        USN_JOURNAL_DATA_V0, USN_RECORD_V2, READ_USN_JOURNAL_DATA_V0
-    };
-    use windows::Win32::System::IO::DeviceIoControl;
     use crate::error::{FlashError, Result};
     use crate::scanner::{ProgressEvent, ProgressType};
+    use std::collections::HashMap;
+    use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
     use tokio::sync::mpsc;
-    use tracing::{info, warn, debug};
+    use tracing::{error, info};
+    use windows::Win32::Foundation::{CloseHandle, GENERIC_READ, HANDLE};
+    use windows::Win32::Storage::FileSystem::{
+        CreateFileW, FILE_ATTRIBUTE_SYSTEM, FILE_FLAG_BACKUP_SEMANTICS, FILE_SHARE_READ,
+        FILE_SHARE_WRITE, OPEN_EXISTING,
+    };
+    use windows::Win32::System::Ioctl::{
+        FSCTL_ENUM_USN_DATA, FSCTL_QUERY_USN_JOURNAL, FSCTL_READ_USN_JOURNAL, MFT_ENUM_DATA_V0,
+        READ_USN_JOURNAL_DATA_V0, USN_JOURNAL_DATA_V0, USN_RECORD_V2,
+    };
+    use windows::Win32::System::IO::DeviceIoControl;
 
     #[derive(Debug)]
     struct FileInfo {
@@ -43,9 +46,16 @@ mod windows_usn {
                 OPEN_EXISTING,
                 FILE_FLAG_BACKUP_SEMANTICS,
                 None,
-            ).map_err(|e| FlashError::index(format!("Failed to open volume handle: {}", e)))?;
+            )
+            .map_err(|e| FlashError::index(format!("Failed to open volume handle: {}", e)))?;
 
-            let result = iterate_mft(handle, &drive_letter[..3], path_tx, progress_tx, total_count);
+            let result = iterate_mft(
+                handle,
+                &drive_letter[..3],
+                path_tx,
+                progress_tx,
+                total_count,
+            );
             let _ = CloseHandle(handle);
             result
         }
@@ -70,10 +80,11 @@ mod windows_usn {
             std::mem::size_of::<USN_JOURNAL_DATA_V0>() as u32,
             Some(&mut bytes_returned),
             None,
-        ).map_err(|e| FlashError::index(format!("Query USN Journal failed: {}", e)))?;
+        )
+        .map_err(|e| FlashError::index(format!("Query USN Journal failed: {}", e)))?;
 
         let mut mft_enum_data = MFT_ENUM_DATA_V0 {
-            StartUsn: 0,
+            StartFileReferenceNumber: 0,
             LowUsn: 0,
             HighUsn: journal_data.NextUsn,
         };
@@ -96,39 +107,47 @@ mod windows_usn {
                 None,
             );
 
-            if !success.as_bool() || bytes_returned < 8 {
+            if success.is_err() || bytes_returned < 8 {
                 break;
             }
 
             let next_usn = *(buffer.as_ptr() as *const i64);
-            mft_enum_data.StartUsn = next_usn;
+            mft_enum_data.StartFileReferenceNumber = next_usn as u64;
 
             let mut offset = 8;
             while offset < bytes_returned as usize {
                 let record = &*(buffer.as_ptr().add(offset) as *const USN_RECORD_V2);
-                
+
                 // Skip system files to clean up the output and increase performance
                 if (record.FileAttributes & FILE_ATTRIBUTE_SYSTEM.0) == 0 {
-                    let name_ptr = buffer.as_ptr().add(offset + record.FileNameOffset as usize) as *const u16;
+                    let name_ptr =
+                        buffer.as_ptr().add(offset + record.FileNameOffset as usize) as *const u16;
                     let name_len = (record.FileNameLength / 2) as usize;
-                    let name = String::from_utf16_lossy(std::slice::from_raw_parts(name_ptr, name_len));
+                    let name =
+                        String::from_utf16_lossy(std::slice::from_raw_parts(name_ptr, name_len));
 
                     let frn = record.FileReferenceNumber;
                     let parent_frn = record.ParentFileReferenceNumber;
                     let is_dir = (record.FileAttributes & 0x00000010) != 0; // FILE_ATTRIBUTE_DIRECTORY
 
-                    fs_map.insert(frn, FileInfo {
-                        name,
-                        parent_frn,
-                        is_dir,
-                    });
+                    fs_map.insert(
+                        frn,
+                        FileInfo {
+                            name,
+                            parent_frn,
+                            is_dir,
+                        },
+                    );
                 }
 
                 offset += record.RecordLength as usize;
             }
         }
 
-        info!("MFT Enumeration finished. Reconstructing paths for {} items...", fs_map.len());
+        info!(
+            "MFT Enumeration finished. Reconstructing paths for {} items...",
+            fs_map.len()
+        );
 
         let mut count = 0;
 
@@ -193,8 +212,8 @@ mod windows_usn {
     }
 
     pub fn watch_volume(
-        root: &Path, 
-        tx: tokio::sync::mpsc::Sender<(PathBuf, crate::watcher::WatcherAction)>
+        root: &Path,
+        tx: tokio::sync::mpsc::Sender<(PathBuf, crate::watcher::WatcherAction)>,
     ) -> Result<()> {
         let drive_letter = root.to_string_lossy();
         let volume_path = format!("\\\\.\\{}", &drive_letter[..2]);
@@ -213,16 +232,17 @@ mod windows_usn {
                     OPEN_EXISTING,
                     FILE_FLAG_BACKUP_SEMANTICS,
                     None,
-                ).unwrap_or(HANDLE(0));
+                )
+                .unwrap_or(HANDLE(std::ptr::null_mut()));
 
-                if handle == HANDLE(0) {
+                if handle == HANDLE(std::ptr::null_mut()) {
                     error!("Failed to open handle for USN monitoring.");
                     return;
                 }
 
                 let mut journal_data = USN_JOURNAL_DATA_V0::default();
                 let mut bytes_returned = 0u32;
-                
+
                 let success = DeviceIoControl(
                     handle,
                     FSCTL_QUERY_USN_JOURNAL,
@@ -234,15 +254,12 @@ mod windows_usn {
                     None,
                 );
 
-                if !success.as_bool() {
+                if success.is_err() {
                     let _ = CloseHandle(handle);
                     return;
                 }
 
-                // USN Reasons
-                const USN_REASON_FILE_CREATE: u32 = 0x00000100;
                 const USN_REASON_FILE_DELETE: u32 = 0x00000200;
-                const USN_REASON_CLOSE: u32 = 0x80000000;
 
                 let mut read_data = READ_USN_JOURNAL_DATA_V0 {
                     StartUsn: journal_data.NextUsn,
@@ -251,8 +268,6 @@ mod windows_usn {
                     Timeout: 0,
                     BytesToWaitFor: 0,
                     UsnJournalID: journal_data.UsnJournalID,
-                    MinMajorVersion: 2,
-                    MaxMajorVersion: 2,
                 };
 
                 let mut buffer = [0u8; 8192];
@@ -270,33 +285,37 @@ mod windows_usn {
                         None,
                     );
 
-                    if success.as_bool() && bytes_returned >= 8 {
+                    if success.is_ok() && bytes_returned >= 8 {
                         let next_usn = *(buffer.as_ptr() as *const i64);
                         read_data.StartUsn = next_usn;
 
                         let mut offset = 8;
                         while offset < bytes_returned as usize {
                             let record = &*(buffer.as_ptr().add(offset) as *const USN_RECORD_V2);
-                            
+
                             if (record.FileAttributes & FILE_ATTRIBUTE_SYSTEM.0) == 0 {
-                                let name_ptr = buffer.as_ptr().add(offset + record.FileNameOffset as usize) as *const u16;
+                                let name_ptr =
+                                    buffer.as_ptr().add(offset + record.FileNameOffset as usize)
+                                        as *const u16;
                                 let name_len = (record.FileNameLength / 2) as usize;
-                                let name = String::from_utf16_lossy(std::slice::from_raw_parts(name_ptr, name_len));
-                                
+                                let name = String::from_utf16_lossy(std::slice::from_raw_parts(
+                                    name_ptr, name_len,
+                                ));
+
                                 // Simplified path: In a full impl, we'd use the FRN map.
-                                // For now, we only support top-level changes or 
+                                // For now, we only support top-level changes or
                                 // we'd need to keep the fs_map in memory.
                                 // As a compromise for this prototype, we'll try to get the path
                                 // by using the parent FRN if we have a way to cache it.
                                 let mut changed_path = PathBuf::from(&drive_root_str);
                                 changed_path.push(name);
-                                
+
                                 let action = if (record.Reason & USN_REASON_FILE_DELETE) != 0 {
                                     crate::watcher::WatcherAction::Remove
                                 } else {
                                     crate::watcher::WatcherAction::Index
                                 };
-                                
+
                                 let _ = tx.blocking_send((changed_path, action));
                             }
 
@@ -308,22 +327,22 @@ mod windows_usn {
                 }
             }
         });
-        
+
         Ok(())
     }
 }
 
 #[cfg(target_os = "macos")]
 mod macos_fsevents {
-    use std::path::{Path, PathBuf};
     use crate::error::Result;
+    use std::path::{Path, PathBuf};
     use tracing::info;
 
     pub fn scan_volume(root: &Path) -> Result<()> {
         info!("macOS Spotlight / APFS parallel scan stub for {:?}", root);
         Ok(())
     }
-    
+
     pub fn watch_volume(root: &Path) -> Result<()> {
         info!("macOS FSEvents real-time monitoring stub for {:?}", root);
         Ok(())
@@ -332,15 +351,15 @@ mod macos_fsevents {
 
 #[cfg(target_os = "linux")]
 mod linux_fanotify {
-    use std::path::{Path, PathBuf};
     use crate::error::Result;
+    use std::path::{Path, PathBuf};
     use tracing::info;
 
     pub fn scan_volume(root: &Path) -> Result<()> {
         info!("Linux io_uring / parallel scan stub for {:?}", root);
         Ok(())
     }
-    
+
     pub fn watch_volume(root: &Path) -> Result<()> {
         info!("Linux fanotify real-time monitoring stub for {:?}", root);
         Ok(())
@@ -349,12 +368,12 @@ mod linux_fanotify {
 
 use crate::error::Result;
 use crate::scanner::{ProgressEvent, ProgressType};
+use ignore::WalkBuilder;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{info, warn};
-use ignore::WalkBuilder;
 
 pub trait DriveScanner: Send + Sync {
     fn scan(
@@ -368,9 +387,9 @@ pub trait DriveScanner: Send + Sync {
 
     // Real-time hook for whole drives
     fn watch(
-        &self, 
-        root: PathBuf, 
-        tx: tokio::sync::mpsc::Sender<(PathBuf, crate::watcher::WatcherAction)>
+        &self,
+        _root: std::path::PathBuf,
+        _tx: tokio::sync::mpsc::Sender<(std::path::PathBuf, crate::watcher::WatcherAction)>,
     ) -> Result<()> {
         // Default no-op
         Ok(())
@@ -406,7 +425,7 @@ impl DriveScanner for DefaultDriveScanner {
 
         info!("Starting DefaultDriveScanner for {}", root.display());
         let walker = builder.build_parallel();
-        
+
         walker.run(|| {
             let path_tx = path_tx.clone();
             let progress_tx = progress_tx.clone();
@@ -472,33 +491,44 @@ impl DriveScanner for WindowsDriveScanner {
         let root_str = root.to_string_lossy();
         let is_unc = root_str.starts_with("\\\\");
         let is_root = root.parent().is_none() || root_str.len() <= 3;
-        
+
         let mut is_local_drive = true;
         if is_root && !is_unc {
             unsafe {
                 let drive_root = format!("{}\\", &root_str[..2]);
                 let mut wide_root: Vec<u16> = drive_root.encode_utf16().collect();
                 wide_root.push(0);
-                
+
                 let drive_type = windows::Win32::Storage::FileSystem::GetDriveTypeW(
-                    windows::core::PCWSTR(wide_root.as_ptr())
+                    windows::core::PCWSTR(wide_root.as_ptr()),
                 );
-                
-                if drive_type == windows::Win32::Storage::FileSystem::DRIVE_REMOTE {
+
+                if drive_type == 3 { // DRIVE_REMOTE
                     is_local_drive = false;
                 }
             }
         }
-        
+
         if is_root && !is_unc && is_local_drive && root.exists() {
-            info!("Whole local drive detected, attempting MFT scan for {:?}", root);
-            if let Err(e) = windows_usn::scan_volume(&root, path_tx.clone(), progress_tx.clone(), total_count.clone()) {
+            info!(
+                "Whole local drive detected, attempting MFT scan for {:?}",
+                root
+            );
+            if let Err(e) = windows_usn::scan_volume(
+                &root,
+                path_tx.clone(),
+                progress_tx.clone(),
+                total_count.clone(),
+            ) {
                 warn!("MFT scan failed, falling back to parallel walk: {}", e);
             } else {
                 return Ok(());
             }
         } else if is_unc || !is_local_drive {
-            info!("Network/Remote drive detected, using parallel fallback scanner for {:?}", root);
+            info!(
+                "Network/Remote drive detected, using parallel fallback scanner for {:?}",
+                root
+            );
         }
 
         let fallback = DefaultDriveScanner;
@@ -506,26 +536,26 @@ impl DriveScanner for WindowsDriveScanner {
     }
 
     fn watch(
-        &self, 
-        root: PathBuf, 
-        tx: tokio::sync::mpsc::Sender<(PathBuf, crate::watcher::WatcherAction)>
+        &self,
+        root: PathBuf,
+        tx: tokio::sync::mpsc::Sender<(PathBuf, crate::watcher::WatcherAction)>,
     ) -> Result<()> {
         let root_str = root.to_string_lossy();
         let is_unc = root_str.starts_with("\\\\");
         let is_root = root.parent().is_none() || root_str.len() <= 3;
-        
+
         let mut is_local_drive = true;
         if is_root && !is_unc {
             unsafe {
                 let drive_root = format!("{}\\", &root_str[..2]);
                 let mut wide_root: Vec<u16> = drive_root.encode_utf16().collect();
                 wide_root.push(0);
-                
+
                 let drive_type = windows::Win32::Storage::FileSystem::GetDriveTypeW(
-                    windows::core::PCWSTR(wide_root.as_ptr())
+                    windows::core::PCWSTR(wide_root.as_ptr()),
                 );
-                
-                if drive_type == windows::Win32::Storage::FileSystem::DRIVE_REMOTE {
+
+                if drive_type == 3 { // DRIVE_REMOTE
                     is_local_drive = false;
                 }
             }
@@ -577,4 +607,3 @@ impl DriveScanner for LinuxDriveScanner {
         fallback.scan(root, exclude_patterns, path_tx, progress_tx, total_count)
     }
 }
-

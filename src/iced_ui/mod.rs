@@ -287,13 +287,14 @@ impl App {
 
         let num: u64 = match num_str
             .trim_end_matches(|c: char| c.is_alphabetic())
-            .parse() {
-                Ok(n) => n,
-                Err(_) => {
-                    // If we can't parse the number, we treat it as no filter.
-                    return (None, None);
-                }
-            };
+            .parse()
+        {
+            Ok(n) => n,
+            Err(_) => {
+                // If we can't parse the number, we treat it as no filter.
+                return (None, None);
+            }
+        };
         let bytes = num * multiplier;
 
         match op {
@@ -312,9 +313,13 @@ impl App {
         };
 
         let mut query = self.search_query.clone();
-        
+
         // Wrap in quotes if whole_word is enabled and not already wrapped
-        if self.settings.whole_word && !query.starts_with('"') && !query.ends_with('"') && !query.contains(':') {
+        if self.settings.whole_word
+            && !query.starts_with('"')
+            && !query.ends_with('"')
+            && !query.contains(':')
+        {
             query = format!("\"{}\"", query);
         }
 
@@ -324,7 +329,13 @@ impl App {
             None
         } else {
             // Split by comma for multiple extensions
-            Some(self.filter_extension.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+            Some(
+                self.filter_extension
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect(),
+            )
         };
         let (min_size, max_size) = Self::parse_size_filter(&self.filter_size);
 
@@ -334,31 +345,31 @@ impl App {
 
         Task::future(async move {
             let result = match mode {
-                 SearchMode::Filename => {
-                     match search_filenames_internal(query.clone(), max_results, &state).await {
-                         Ok(results) => Message::SearchResultsReceived(
-                             results.into_iter().map(FileItem::from).collect(),
-                         ),
-                         Err(e) => Message::SearchError(FlashError::search(&query, e)),
-                     }
-                 }
-                 SearchMode::FullText => {
-                     match search_query_internal(
-                         query.clone(),
-                         max_results,
-                         &state,
-                         min_size,
-                         max_size,
-                         extension,
-                     )
-                     .await
-                     {
-                         Ok(results) => Message::SearchResultsReceived(
-                             results.into_iter().map(FileItem::from).collect(),
-                         ),
-                         Err(e) => Message::SearchError(FlashError::search(&query, e)),
-                     }
-                 }
+                SearchMode::Filename => {
+                    match search_filenames_internal(query.clone(), max_results, &state).await {
+                        Ok(results) => Message::SearchResultsReceived(
+                            results.into_iter().map(FileItem::from).collect(),
+                        ),
+                        Err(e) => Message::SearchError(FlashError::search(&query, e)),
+                    }
+                }
+                SearchMode::FullText => {
+                    match search_query_internal(
+                        query.clone(),
+                        max_results,
+                        &state,
+                        min_size,
+                        max_size,
+                        extension,
+                    )
+                    .await
+                    {
+                        Ok(results) => Message::SearchResultsReceived(
+                            results.into_iter().map(FileItem::from).collect(),
+                        ),
+                        Err(e) => Message::SearchError(FlashError::search(&query, e)),
+                    }
+                }
             };
             result
         })
@@ -385,10 +396,7 @@ impl App {
         };
 
         Task::future(async move {
-            let preview = match get_file_preview_highlighted_internal(path, query, &state).await {
-                Ok(result) => Some(result),
-                Err(_) => None,
-            };
+            let preview = get_file_preview_highlighted_internal(path, query, &state).await.ok();
             Message::PreviewLoaded(preview)
         })
     }
@@ -453,9 +461,12 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                 let p = PathBuf::from(&path);
                 if p.is_absolute() && p.exists() {
                     // Offload the file opening to a background thread to avoid blocking the UI
-                    Task::perform(async move {
-                        let _ = opener::open(p);
-                    }, |_| Message::NoOp)
+                    Task::perform(
+                        async move {
+                            let _ = opener::open(p);
+                        },
+                        |_| Message::NoOp,
+                    )
                 } else {
                     tracing::warn!("Blocked attempt to open invalid or relative path: {}", path);
                     Task::none()
@@ -489,9 +500,12 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                     if let Some(parent) = p.parent() {
                         let parent_buf = parent.to_path_buf();
                         if parent_buf.exists() {
-                            return Task::perform(async move {
-                                let _ = opener::open(parent_buf);
-                            }, |_| Message::NoOp);
+                            return Task::perform(
+                                async move {
+                                    let _ = opener::open(parent_buf);
+                                },
+                                |_| Message::NoOp,
+                            );
                         }
                     }
                 }
@@ -628,14 +642,14 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                     ]);
                 }
                 Task::none()
-            },
+            }
             Message::FolderPicked(None) => Task::none(),
             Message::RemoveFolder(i) => {
                 if i < app.settings.index_dirs.len() {
                     app.settings.index_dirs.remove(i);
                 }
                 Task::none()
-            },
+            }
             Message::SaveSettings => {
                 app.save_settings();
                 Task::none()
@@ -742,8 +756,8 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                 }
                 Task::none()
             }
-             Message::DismissError => Task::none(),
-             Message::Quit => {
+            Message::DismissError => Task::none(),
+            Message::Quit => {
                 // Set shutdown flag to initiate graceful shutdown
                 crate::SHUTDOWN_FLAG.store(true, std::sync::atomic::Ordering::SeqCst);
                 Task::none()

@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,9 +43,11 @@ impl WatcherManager {
             loop {
                 // Use select to handle both periodic flushes and incoming external events
                 tokio::select! {
-                    Some((path, action)) = external_rx.recv() => {
-                        if let Ok(mut guard) = buffer_for_task.lock() {
-                            guard.insert(path, action);
+                    res = external_rx.recv() => {
+                        if let Some((path, action)) = res {
+                            if let Ok(mut guard) = buffer_for_task.lock() {
+                                guard.insert(path, action);
+                            }
                         }
                     }
                     _ = tokio::time::sleep(Duration::from_millis(1000)) => {

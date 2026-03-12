@@ -5,7 +5,7 @@ use crate::indexer::IndexManager;
 use crate::metadata::MetadataDb;
 use crate::parsers::{parse_file, ParsedDocument};
 use blake3;
-use drive_scanner::{DefaultDriveScanner, DriveScanner};
+use drive_scanner::DriveScanner;
 use rayon::prelude::*;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicUsize;
@@ -88,7 +88,11 @@ impl Scanner {
     }
 
     #[instrument(skip(self, tx))]
-    pub fn watch_drive(&self, root: PathBuf, tx: mpsc::Sender<(PathBuf, crate::watcher::WatcherAction)>) -> Result<()> {
+    pub fn watch_drive(
+        &self,
+        root: PathBuf,
+        tx: mpsc::Sender<(PathBuf, crate::watcher::WatcherAction)>,
+    ) -> Result<()> {
         let scanner = self.get_scanner();
         scanner.watch(root, tx)
     }
@@ -101,7 +105,7 @@ impl Scanner {
             std::sync::mpsc::Sender<PathBuf>,
             std::sync::mpsc::Receiver<PathBuf>,
         ) = std::sync::mpsc::channel();
-        
+
         let root_clone = root.clone();
         let tx_clone = self.progress_tx.clone();
         let scanner = self.get_scanner();
@@ -109,7 +113,13 @@ impl Scanner {
         let total_for_scan = total.clone();
 
         let walker_handle = tokio::task::spawn_blocking(move || {
-            scanner.scan(root_clone, exclude_patterns, path_tx, tx_clone, total_for_scan)
+            scanner.scan(
+                root_clone,
+                exclude_patterns,
+                path_tx,
+                tx_clone,
+                total_for_scan,
+            )
         });
 
         // --- Stage 2: Content Indexing (Batched) ---
@@ -129,7 +139,12 @@ impl Scanner {
             .num_threads(threads)
             .stack_size(8 * 1024 * 1024) // Increase stack size to 8MB to prevent overflow during parsing
             .build()
-            .unwrap_or_else(|_| rayon::ThreadPoolBuilder::new().stack_size(8*1024*1024).build().unwrap());
+            .unwrap_or_else(|_| {
+                rayon::ThreadPoolBuilder::new()
+                    .stack_size(8 * 1024 * 1024)
+                    .build()
+                    .unwrap()
+            });
         let file_size_limit_mb = self.settings.index_file_size_limit_mb;
 
         // --- Stage 2a: Parallel parsing (Rayon) → sends IndexTask into channel ---
@@ -263,7 +278,7 @@ impl Scanner {
         });
 
         // Wait for all stages to complete
-        walker_handle
+        let _ = walker_handle
             .await
             .map_err(|e| crate::error::FlashError::index(format!("Walk task failed: {}", e)))?;
         parser_handle
