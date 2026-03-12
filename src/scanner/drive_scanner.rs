@@ -469,15 +469,36 @@ impl DriveScanner for WindowsDriveScanner {
         progress_tx: Option<mpsc::Sender<ProgressEvent>>,
         total_count: Arc<AtomicUsize>,
     ) -> Result<()> {
-        let is_root = root.parent().is_none() || root.to_string_lossy().len() <= 3;
+        let root_str = root.to_string_lossy();
+        let is_unc = root_str.starts_with("\\\\");
+        let is_root = root.parent().is_none() || root_str.len() <= 3;
         
-        if is_root && root.exists() {
-            info!("Whole drive detected, attempting MFT scan for {:?}", root);
+        let mut is_local_drive = true;
+        if is_root && !is_unc {
+            unsafe {
+                let drive_root = format!("{}\\", &root_str[..2]);
+                let mut wide_root: Vec<u16> = drive_root.encode_utf16().collect();
+                wide_root.push(0);
+                
+                let drive_type = windows::Win32::Storage::FileSystem::GetDriveTypeW(
+                    windows::core::PCWSTR(wide_root.as_ptr())
+                );
+                
+                if drive_type == windows::Win32::Storage::FileSystem::DRIVE_REMOTE {
+                    is_local_drive = false;
+                }
+            }
+        }
+        
+        if is_root && !is_unc && is_local_drive && root.exists() {
+            info!("Whole local drive detected, attempting MFT scan for {:?}", root);
             if let Err(e) = windows_usn::scan_volume(&root, path_tx.clone(), progress_tx.clone(), total_count.clone()) {
                 warn!("MFT scan failed, falling back to parallel walk: {}", e);
             } else {
                 return Ok(());
             }
+        } else if is_unc || !is_local_drive {
+            info!("Network/Remote drive detected, using parallel fallback scanner for {:?}", root);
         }
 
         let fallback = DefaultDriveScanner;
@@ -489,7 +510,33 @@ impl DriveScanner for WindowsDriveScanner {
         root: PathBuf, 
         tx: tokio::sync::mpsc::Sender<(PathBuf, crate::watcher::WatcherAction)>
     ) -> Result<()> {
-        windows_usn::watch_volume(&root, tx)
+        let root_str = root.to_string_lossy();
+        let is_unc = root_str.starts_with("\\\\");
+        let is_root = root.parent().is_none() || root_str.len() <= 3;
+        
+        let mut is_local_drive = true;
+        if is_root && !is_unc {
+            unsafe {
+                let drive_root = format!("{}\\", &root_str[..2]);
+                let mut wide_root: Vec<u16> = drive_root.encode_utf16().collect();
+                wide_root.push(0);
+                
+                let drive_type = windows::Win32::Storage::FileSystem::GetDriveTypeW(
+                    windows::core::PCWSTR(wide_root.as_ptr())
+                );
+                
+                if drive_type == windows::Win32::Storage::FileSystem::DRIVE_REMOTE {
+                    is_local_drive = false;
+                }
+            }
+        }
+
+        if is_root && !is_unc && is_local_drive && root.exists() {
+            windows_usn::watch_volume(&root, tx)
+        } else {
+            // For network drives and subdirectories, watcher.rs handles standard notify events
+            Ok(())
+        }
     }
 }
 

@@ -167,6 +167,7 @@ Benchmarks on AMD Ryzen 7 5800X with NVMe SSD:
 - [x] Real-time file indexing and system tray integration
 - [x] Fast filename-only search mode for instant navigation
 - [x] Optimized result preview and metadata retrieval
+- [x] **Network Discovery**: Support for enterprise SMB/CIFS and NAS drives
 
 ### Phase 3: Advanced Intelligence (In Progress 🚧)
 - [x] **Universal Text Extraction**: 75+ formats supported via **Kreuzberg**
@@ -177,7 +178,6 @@ Benchmarks on AMD Ryzen 7 5800X with NVMe SSD:
 
 ### Phase 4: Expansion & Connectivity (Future 🔮)
 - [ ] **Plugin System**: Community-built parsers and search extensions
-- [ ] **Network Discovery**: Support for SMB/CIFS and NAS drives
 - [ ] **Cloud Indexing**: Optional encrypted metadata sync across devices
 - [ ] **Developer API**: Headless search service for other applications
 
