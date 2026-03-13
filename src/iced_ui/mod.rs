@@ -8,6 +8,7 @@ use crate::models::FilenameSearchResult;
 use crate::scanner::ProgressEvent;
 use crate::settings::AppSettings;
 use iced::{Element, Subscription, Task};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -117,6 +118,11 @@ pub enum Message {
     ToggleCaseSensitive(bool),
     ToggleWholeWord(bool),
     FilterExtensionChanged(String),
+    ToggleFilterExtension(String),
+    ClearFilters,
+    MinSizeChanged(String),
+    MaxSizeChanged(String),
+    SizeUnitChanged(String),
     FilterSizeChanged(String),
     PreviewRequested(usize),
     PreviewLoaded(Option<crate::models::PreviewResult>),
@@ -158,6 +164,10 @@ pub struct App {
     is_dark: bool,
     search_mode: SearchMode,
     filter_extension: String,
+    filter_extensions: HashSet<String>,
+    min_size: String,
+    max_size: String,
+    size_unit: String,
     filter_size: String,
     preview_result: Option<crate::models::PreviewResult>,
     is_loading_preview: bool,
@@ -194,6 +204,10 @@ impl App {
                     is_dark,
                     search_mode: SearchMode::FullText,
                     filter_extension: String::new(),
+                    filter_extensions: HashSet::new(),
+                    min_size: String::new(),
+                    max_size: String::new(),
+                    size_unit: "MB".to_string(),
                     filter_size: String::new(),
                     preview_result: None,
                     is_loading_preview: false,
@@ -243,6 +257,10 @@ impl App {
                 is_dark: true, // Default to dark theme
                 search_mode: SearchMode::FullText,
                 filter_extension: String::new(),
+                filter_extensions: HashSet::new(),
+                min_size: String::new(),
+                max_size: String::new(),
+                size_unit: "MB".to_string(),
                 filter_size: String::new(),
                 preview_result: None,
                 is_loading_preview: false,
@@ -326,19 +344,51 @@ impl App {
 
         let max_results = self.settings.max_results;
         let mode = self.search_mode.clone();
-        let extension = if self.filter_extension.is_empty() {
+
+        // Combine manual extension filter and checkbox filters
+        let mut extensions: HashSet<String> = self
+            .filter_extension
+            .split(',')
+            .map(|s| s.trim().to_lowercase())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        for ext in &self.filter_extensions {
+            extensions.insert(ext.to_lowercase());
+        }
+
+        let extension = if extensions.is_empty() {
             None
         } else {
-            // Split by comma for multiple extensions
-            Some(
-                self.filter_extension
-                    .split(',')
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty())
-                    .collect(),
-            )
+            Some(extensions.into_iter().collect())
         };
-        let (min_size, max_size) = Self::parse_size_filter(&self.filter_size);
+
+        // Calculate size filters
+        let multiplier: u64 = match self.size_unit.as_str() {
+            "KB" => 1024,
+            "GB" => 1024 * 1024 * 1024,
+            _ => 1024 * 1024, // Default to MB
+        };
+
+        let min_size = self
+            .min_size
+            .trim()
+            .parse::<u64>()
+            .ok()
+            .map(|n| n * multiplier);
+        let max_size = self
+            .max_size
+            .trim()
+            .parse::<u64>()
+            .ok()
+            .map(|n| n * multiplier);
+
+        // Fallback to the old filter_size string if min/max are empty
+        let (min_size, max_size) = if min_size.is_none() && max_size.is_none() {
+            Self::parse_size_filter(&self.filter_size)
+        } else {
+            (min_size, max_size)
+        };
 
         self.is_searching = true;
         self.results.clear();
@@ -745,6 +795,34 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             }
             Message::FilterExtensionChanged(ext) => {
                 app.filter_extension = ext;
+                Task::none()
+            }
+            Message::ToggleFilterExtension(ext) => {
+                if app.filter_extensions.contains(&ext) {
+                    app.filter_extensions.remove(&ext);
+                } else {
+                    app.filter_extensions.insert(ext);
+                }
+                Task::none()
+            }
+            Message::ClearFilters => {
+                app.filter_extensions.clear();
+                app.min_size.clear();
+                app.max_size.clear();
+                app.filter_extension.clear();
+                app.filter_size.clear();
+                Task::none()
+            }
+            Message::MinSizeChanged(val) => {
+                app.min_size = val;
+                Task::none()
+            }
+            Message::MaxSizeChanged(val) => {
+                app.max_size = val;
+                Task::none()
+            }
+            Message::SizeUnitChanged(val) => {
+                app.size_unit = val;
                 Task::none()
             }
             Message::FilterSizeChanged(size) => {

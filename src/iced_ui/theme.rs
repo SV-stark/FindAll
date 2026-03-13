@@ -127,6 +127,22 @@ pub fn top_bar_container(theme: &Theme) -> container::Style {
     }
 }
 
+pub fn header_container(theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(if is_dark_theme(theme) {
+            Color::from_rgba(1.0, 1.0, 1.0, 0.03)
+        } else {
+            Color::from_rgba(0.0, 0.0, 0.0, 0.03)
+        })),
+        border: Border {
+            color: border_color(theme),
+            width: 1.0,
+            radius: Radius::from(0.0),
+        },
+        ..Default::default()
+    }
+}
+
 pub fn input_container(theme: &Theme) -> container::Style {
     container::Style {
         background: Some(Background::Color(surface_color(theme))),
@@ -202,6 +218,22 @@ pub fn hits_container(theme: &Theme) -> container::Style {
     }
 }
 
+pub fn hit_highlight_container(theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(if is_dark_theme(theme) {
+            Color::from_rgba(0.23, 0.51, 0.96, 0.05)
+        } else {
+            Color::from_rgba(0.23, 0.51, 0.96, 0.08)
+        })),
+        border: Border {
+            color: Color::from_rgba(0.23, 0.51, 0.96, 0.3),
+            width: 1.0,
+            radius: Radius::from(6.0),
+        },
+        ..Default::default()
+    }
+}
+
 // --- Button Styles ---
 
 pub fn primary_button() -> impl Fn(&Theme, button::Status) -> button::Style {
@@ -231,6 +263,15 @@ pub fn primary_button() -> impl Fn(&Theme, button::Status) -> button::Style {
     }
 }
 
+pub fn search_button() -> impl Fn(&Theme, button::Status) -> button::Style {
+    move |theme: &Theme, status: button::Status| {
+        let mut style = primary_button()(theme, status);
+        style.background = Some(Background::Color(Color::from_rgb(0.18, 0.55, 0.72))); // A bit more teal/blue like in image
+        style.border.radius = Radius::from(4.0);
+        style
+    }
+}
+
 pub fn secondary_button() -> impl Fn(&Theme, button::Status) -> button::Style {
     move |theme: &Theme, status: button::Status| {
         let bg_hover = if is_dark_theme(theme) {
@@ -257,6 +298,19 @@ pub fn secondary_button() -> impl Fn(&Theme, button::Status) -> button::Style {
             },
             _ => base,
         }
+    }
+}
+
+pub fn clear_filter_button() -> impl Fn(&Theme, button::Status) -> button::Style {
+    move |theme: &Theme, status: button::Status| {
+        let mut style = secondary_button()(theme, status);
+        style.background = Some(Background::Color(if is_dark_theme(theme) {
+            Color::from_rgb(0.25, 0.25, 0.27)
+        } else {
+            Color::from_rgb(0.85, 0.85, 0.87)
+        }));
+        style.border.radius = Radius::from(4.0);
+        style
     }
 }
 

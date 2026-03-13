@@ -21,9 +21,12 @@ pub fn search_view(app: &App) -> Element<'_, Message> {
 }
 
 fn top_navigation(_app: &App) -> Element<'_, Message> {
-    let logo = row![text("Flash Search").size(16),]
-        .spacing(8)
-        .align_y(Alignment::Center);
+    let logo = row![text("Flash Search").size(16).font(Font {
+        weight: font::Weight::Bold,
+        ..Font::default()
+    }),]
+    .spacing(8)
+    .align_y(Alignment::Center);
 
     let menu_items = row![
         button(row![load_icon("folder"), text("Open")].spacing(4))
@@ -38,7 +41,7 @@ fn top_navigation(_app: &App) -> Element<'_, Message> {
         button(row![load_icon("settings"), text("Settings")].spacing(4))
             .on_press(Message::TabChanged(Tab::Settings))
             .style(theme::top_menu_button()),
-        button(text("File Actions"))
+        button(row![load_icon("plus"), text("File Actions")].spacing(4))
             .on_press(Message::NotImplemented("File Actions".to_string()))
             .style(theme::top_menu_button()),
     ]
@@ -54,7 +57,7 @@ fn top_navigation(_app: &App) -> Element<'_, Message> {
             })
             .align_y(Alignment::Center),
     )
-    .style(theme::top_bar_container)
+    .style(theme::header_container)
     .width(Length::Fill)
     .into()
 }
@@ -67,7 +70,17 @@ fn search_input_bar(app: &App) -> Element<'_, Message> {
         .style(theme::search_input())
         .width(Length::Fill);
 
-    let mode_toggle = button(
+    let search_button = button(row![load_icon("search"), text("Search")].spacing(8))
+        .on_press(Message::SearchSubmitted)
+        .style(theme::search_button())
+        .padding(Padding {
+            top: 10.0,
+            bottom: 10.0,
+            left: 20.0,
+            right: 20.0,
+        });
+
+    let _mode_toggle = button(
         text(if app.search_mode == SearchMode::FullText {
             "Full Text"
         } else {
@@ -80,17 +93,17 @@ fn search_input_bar(app: &App) -> Element<'_, Message> {
     .padding(Padding::new(8.0));
 
     container(
-        row![input, mode_toggle]
-            .spacing(8)
+        row![input, search_button]
+            .spacing(12)
             .padding(Padding {
-                top: 8.0,
-                bottom: 8.0,
+                top: 12.0,
+                bottom: 12.0,
                 left: 16.0,
                 right: 16.0,
             })
             .align_y(Alignment::Center),
     )
-    .style(theme::top_bar_container)
+    .style(theme::header_container)
     .width(Length::Fill)
     .into()
 }
@@ -103,39 +116,106 @@ fn main_layout(app: &App) -> Element<'_, Message> {
 }
 
 fn left_sidebar(app: &App) -> Element<'_, Message> {
-    let filter_panel = column![
-        text("Search Filters").size(14).font(Font {
-            weight: font::Weight::Bold,
-            ..Font::default()
-        }),
-        Space::new().height(Length::Fixed(8.0)),
+    let filter_header = text("Search Filters").size(14).font(Font {
+        weight: font::Weight::Bold,
+        ..Font::default()
+    });
+
+    let extension_section = column![
         text("File Extension")
             .size(12)
             .style(theme::dim_text_style()),
-        TextInput::new("e.g. pdf, txt", &app.filter_extension)
-            .on_input(Message::FilterExtensionChanged)
-            .padding(Padding::new(6.0))
-            .size(12),
-        Space::new().height(Length::Fixed(8.0)),
-        text("File Size").size(12).style(theme::dim_text_style()),
-        TextInput::new("e.g. >5MB, <10KB", &app.filter_size)
-            .on_input(Message::FilterSizeChanged)
-            .padding(Padding::new(6.0))
-            .size(12),
-        Space::new().height(Length::Fixed(12.0)),
+        container(column![
+            row![
+                extension_checkbox("pdf", app),
+                extension_checkbox("md", app),
+                extension_checkbox("txt", app),
+                extension_checkbox("py", app),
+            ]
+            .spacing(12),
+            row![
+                extension_checkbox("json", app),
+                extension_checkbox("txe", app),
+                // "etc..." etc
+                text("etc...").size(11).style(theme::dim_text_style()),
+            ]
+            .spacing(12),
+            Space::new().height(Length::Fixed(4.0)),
+            row![
+                checkbox(app.filter_extensions.len() == 5 && app.filter_extension.is_empty()) // Simplified "All" check
+                    .label("All")
+                    .on_toggle(|_| Message::NotImplemented("Select All Extensions".to_string()))
+                    .size(14)
+                    .text_size(11),
+                checkbox(false)
+                    .label("Word")
+                    .on_toggle(|_| Message::NoOp)
+                    .size(14)
+                    .text_size(11),
+            ]
+            .spacing(12),
+        ])
+    ]
+    .spacing(8);
+
+    let size_section = column![
+        text("Size Range").size(12).style(theme::dim_text_style()),
+        row![
+            TextInput::new("min", &app.min_size)
+                .on_input(Message::MinSizeChanged)
+                .padding(Padding::new(6.0))
+                .size(12)
+                .width(Length::Fixed(60.0)),
+            text("-").size(12),
+            TextInput::new("max", &app.max_size)
+                .on_input(Message::MaxSizeChanged)
+                .padding(Padding::new(6.0))
+                .size(12)
+                .width(Length::Fixed(60.0)),
+            row![
+                size_unit_button("KB", app),
+                size_unit_button("MB", app),
+                size_unit_button("GB", app),
+            ]
+            .spacing(2)
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center),
+    ]
+    .spacing(8);
+
+    let match_options = column![
+        text("Match Options").size(12).style(theme::dim_text_style()),
         checkbox(app.settings.case_sensitive)
             .label("Match Case")
             .on_toggle(Message::ToggleCaseSensitive)
             .size(14)
-            .text_size(12),
-        Space::new().height(Length::Fixed(4.0)),
+            .text_size(11),
         checkbox(app.settings.whole_word)
             .label("Whole Word")
             .on_toggle(Message::ToggleWholeWord)
             .size(14)
-            .text_size(12),
+            .text_size(11),
     ]
-    .spacing(4)
+    .spacing(6);
+
+    let clear_button = button(text("Clear Filters").size(12))
+        .on_press(Message::ClearFilters)
+        .style(theme::clear_filter_button())
+        .width(Length::Fill)
+        .padding(Padding::new(8.0));
+
+    let filter_panel = column![
+        filter_header,
+        Space::new().height(Length::Fixed(4.0)),
+        row![
+            extension_section.width(Length::FillPortion(1)),
+            column![size_section, match_options].width(Length::FillPortion(1)).spacing(12),
+        ].spacing(16),
+        Space::new().height(Length::Fixed(8.0)),
+        clear_button,
+    ]
+    .spacing(12)
     .padding(Padding::new(12.0));
 
     let table_header = container(
@@ -440,10 +520,16 @@ fn hits_panel(app: &App) -> Element<'_, Message> {
             .into()
     };
 
+    let header_text = if let Some(res) = result {
+        format!("Context Highlights for '{}' in {}", app.search_query, res.title)
+    } else {
+        "Search Hits".to_string()
+    };
+
     container(column![
         container(
             row![
-                text("Search Hits").size(14).font(Font {
+                text(header_text).size(13).font(Font {
                     weight: font::Weight::Bold,
                     ..Font::default()
                 }),
@@ -452,31 +538,40 @@ fn hits_panel(app: &App) -> Element<'_, Message> {
                     "{} total",
                     result.map(|r| r.snippets.len()).unwrap_or(0)
                 ))
-                .size(12)
+                .size(11)
                 .style(theme::muted_text_style()),
             ]
             .align_y(Alignment::Center)
-            .padding(Padding::new(4.0))
+            .padding(Padding::new(8.0))
         )
-        .style(theme::table_header_container)
+        .style(theme::header_container)
         .width(Length::Fill),
         hits_content,
     ])
     .style(theme::sidebar_container)
     .width(Length::Fill)
-    .height(Length::Fixed(200.0))
+    .height(Length::Fixed(220.0))
     .into()
 }
 
 fn hit_row(_idx: usize, content: &str) -> Element<'_, Message> {
-    row![
-        text(_idx.to_string())
-            .size(11)
-            .style(theme::dim_text_style()),
-        container(parse_snippet(content)).padding(Padding::new(4.0)),
-    ]
-    .spacing(12)
-    .align_y(Alignment::Start)
+    container(
+        row![
+            text(format!("{}.", _idx))
+                .size(12)
+                .font(Font {
+                    weight: font::Weight::Bold,
+                    ..Font::default()
+                })
+                .style(theme::dim_text_style()),
+            container(parse_snippet(content)).width(Length::Fill),
+        ]
+        .spacing(12)
+        .align_y(Alignment::Start),
+    )
+    .padding(Padding::new(8.0))
+    .style(theme::hit_highlight_container)
+    .width(Length::Fill)
     .into()
 }
 
@@ -507,4 +602,26 @@ fn status_bar(app: &App) -> Element<'_, Message> {
     .style(theme::top_bar_container)
     .width(Length::Fill)
     .into()
+}
+
+fn extension_checkbox<'a>(ext: &str, app: &App) -> Element<'a, Message> {
+    checkbox(app.filter_extensions.contains(ext))
+        .label(ext)
+        .on_toggle(move |_| Message::ToggleFilterExtension(ext.to_string()))
+        .size(14)
+        .text_size(11)
+        .into()
+}
+
+fn size_unit_button<'a>(unit: &str, app: &App) -> Element<'a, Message> {
+    let is_active = app.size_unit == unit;
+    button(text(unit).size(10))
+        .on_press(Message::SizeUnitChanged(unit.to_string()))
+        .style(if is_active {
+            theme::primary_button()
+        } else {
+            theme::secondary_button()
+        })
+        .padding(Padding::new(4.0))
+        .into()
 }
