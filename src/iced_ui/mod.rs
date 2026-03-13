@@ -139,6 +139,7 @@ pub enum Message {
     NotImplemented(String),
     MaxResultsChanged(String),
     ExcludePatternsChanged(String),
+    CustomExtensionsChanged(String),
     NoOp,
 }
 
@@ -675,6 +676,10 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             Message::ExcludePatternsChanged(val) => {
                 app.settings.exclude_patterns =
                     val.split(',').map(|s| s.trim().to_string()).collect();
+                Task::none()
+            }
+            Message::CustomExtensionsChanged(val) => {
+                app.settings.custom_extensions = val;
                 Task::none()
             }
             Message::ToggleTheme => {

@@ -146,6 +146,8 @@ impl Scanner {
                     .unwrap()
             });
         let file_size_limit_mb = self.settings.index_file_size_limit_mb;
+        let allowed_extensions = Arc::new(self.settings.get_allowed_extensions());
+        let allowed_extensions_clone = allowed_extensions.clone();
 
         // --- Stage 2a: Parallel parsing (Rayon) → sends IndexTask into channel ---
         let parser_handle = tokio::task::spawn_blocking(move || {
@@ -160,6 +162,7 @@ impl Scanner {
                             &chunk,
                             &metadata_db_for_parser,
                             file_size_limit_mb,
+                            &allowed_extensions_clone,
                             &task_tx,
                         );
                         chunk.clear();
@@ -170,6 +173,7 @@ impl Scanner {
                         &chunk,
                         &metadata_db_for_parser,
                         file_size_limit_mb,
+                        &allowed_extensions_clone,
                         &task_tx,
                     );
                 }
@@ -300,6 +304,7 @@ impl Scanner {
         chunk: &[PathBuf],
         metadata_db: &Arc<MetadataDb>,
         file_size_limit_mb: u32,
+        allowed_extensions: &std::collections::HashSet<String>,
         task_tx: &std::sync::mpsc::SyncSender<IndexTask>,
     ) {
         let limit_bytes = (file_size_limit_mb as u64) * 1024 * 1024;
@@ -307,6 +312,16 @@ impl Scanner {
         let mut valid_paths = Vec::with_capacity(chunk.len());
 
         for path in chunk {
+            // Check file extension
+            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                if !allowed_extensions.contains(&ext.to_lowercase()) {
+                    continue;
+                }
+            } else {
+                // If the file doesn't have an extension, we skip it by default
+                continue;
+            }
+
             let metadata = match std::fs::metadata(path) {
                 Ok(m) => m,
                 Err(_) => continue,

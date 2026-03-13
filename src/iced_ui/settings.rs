@@ -40,6 +40,16 @@ pub fn settings_view(app: &App) -> Element<'_, Message> {
         .on_input(Message::ExcludePatternsChanged)
         .style(theme::search_input());
 
+    let custom_ext_label = text("Custom Extensions").size(14);
+    let custom_ext_val = &app.settings.custom_extensions;
+    let custom_ext_placeholder = "e.g. mp4, exe, custom";
+    let custom_ext_input = TextInput::new(custom_ext_placeholder, custom_ext_val)
+        .padding(Padding::new(10.0))
+        .size(14)
+        .width(Length::Fill)
+        .on_input(Message::CustomExtensionsChanged)
+        .style(theme::search_input());
+
     let hotkey_label = text("Global Hotkey").size(14);
     let hotkey_input = TextInput::new("Alt+Space / Control+Shift+F", &app.settings.global_hotkey)
         .padding(Padding::new(10.0))
@@ -132,6 +142,10 @@ pub fn settings_view(app: &App) -> Element<'_, Message> {
         exclude_label,
         Space::new().height(Length::Fixed(6.0)),
         exclude_input,
+        Space::new().height(Length::Fixed(16.0)),
+        custom_ext_label,
+        Space::new().height(Length::Fixed(6.0)),
+        custom_ext_input,
         Space::new().height(Length::Fixed(16.0)),
         row![hotkey_label, hotkey_input]
             .spacing(12)

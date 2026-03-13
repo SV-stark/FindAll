@@ -10,6 +10,16 @@ pub struct SearchHistoryItem {
     pub last_used: u64,
 }
 
+pub const COMMON_EXTENSIONS: &[&str] = &[
+    "pdf", "docx", "doc", "xlsx", "xls", "pptx", "ppt", "odt", "rtf",
+    "jpeg", "jpg", "png", "tiff", "heic", "heif",
+    "zip", "7z", "rar", "tar", "gz",
+    "eml", "msg", "pst",
+    "epub", "mobi", "azw3",
+    "md", "json", "xml", "txt", "csv", "tsv",
+    "rs", "py", "js", "ts", "go", "java", "c", "cpp", "h", "hpp", "cs", "html", "css",
+];
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
     #[serde(default = "default_settings_version")]
@@ -21,6 +31,8 @@ pub struct AppSettings {
     pub exclude_folders: Vec<String>, // Explicit folder paths to exclude
     pub auto_index_on_startup: bool,
     pub index_file_size_limit_mb: u32,
+    #[serde(default)]
+    pub custom_extensions: String,
 
     // Search
     pub max_results: usize,
@@ -149,6 +161,7 @@ impl Default for AppSettings {
             ],
             auto_index_on_startup: true,
             index_file_size_limit_mb: 100,
+            custom_extensions: String::new(),
 
             // Search
             max_results: 50,
@@ -187,6 +200,22 @@ impl Default for AppSettings {
 
 pub struct SettingsManager {
     path: PathBuf,
+}
+
+impl AppSettings {
+    pub fn get_allowed_extensions(&self) -> std::collections::HashSet<String> {
+        let mut exts = std::collections::HashSet::new();
+        for ext in COMMON_EXTENSIONS {
+            exts.insert(ext.to_string());
+        }
+        for custom in self.custom_extensions.split(',') {
+            let trimmed = custom.trim().trim_start_matches('.').to_lowercase();
+            if !trimmed.is_empty() {
+                exts.insert(trimmed);
+            }
+        }
+        exts
+    }
 }
 
 impl SettingsManager {

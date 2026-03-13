@@ -29,7 +29,7 @@ pub struct WatcherManager {
 }
 
 impl WatcherManager {
-    pub fn new(indexer: Arc<IndexManager>, metadata_db: Arc<MetadataDb>) -> Self {
+    pub fn new(indexer: Arc<IndexManager>, metadata_db: Arc<MetadataDb>, allowed_extensions: std::collections::HashSet<String>) -> Self {
         let buffer: Arc<Mutex<HashMap<PathBuf, WatcherAction>>> =
             Arc::new(Mutex::new(HashMap::new()));
         let buffer_for_task = buffer.clone();
@@ -101,6 +101,14 @@ impl WatcherManager {
                         let mut meta_to_update = Vec::new();
 
                         for path in index_paths {
+                            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                                if !allowed_extensions.contains(&ext.to_lowercase()) {
+                                    continue;
+                                }
+                            } else {
+                                continue;
+                            }
+
                             match Self::reindex_single_file(&path, &metadata_db_for_task).await {
                                 Ok(Some((doc, modified, size, hash))) => {
                                     meta_to_update.push((doc.path.clone(), modified, size, hash));
@@ -271,7 +279,7 @@ mod tests {
         let indexer = Arc::new(IndexManager::open(temp.path(), 256).unwrap());
         let metadata = Arc::new(MetadataDb::open(&temp.path().join("metadata.db")).unwrap());
 
-        let mut watcher = WatcherManager::new(indexer, metadata);
+        let mut watcher = WatcherManager::new(indexer, metadata, std::collections::HashSet::new());
 
         // Add a directory to watch
         let watch_dir = temp.path().join("watch_me");

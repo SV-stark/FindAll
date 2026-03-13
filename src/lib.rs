@@ -81,7 +81,7 @@ pub fn setup_app() -> std::result::Result<
         };
 
     // Initialize watcher
-    let watcher = watcher::WatcherManager::new(indexer_shared.clone(), metadata_db_shared.clone());
+    let watcher = watcher::WatcherManager::new(indexer_shared.clone(), metadata_db_shared.clone(), settings.get_allowed_extensions());
 
     let (progress_tx, progress_rx) = tokio::sync::mpsc::channel(100);
 
