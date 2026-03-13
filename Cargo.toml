@@ -27,14 +27,14 @@ tantivy = "0.25"
 redb = "2.1"
 
 # Concurrency & Parallelism
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
 rayon = "1.8"
 
 # File System
-walkdir = "2"
 notify = "8.2"
 ignore = "0.4"
 memmap2 = "0.9"
+fd-lock = "4.0"
 
 # Document Parsing
 # Simplified with Kreuzberg
@@ -51,7 +51,6 @@ anyhow = "1.0"
 thiserror = "2.0"
 blake3 = "1.5"
 chrono = { version = "0.4", features = ["serde"] }
-bincode = { version = "2.0.0-rc.3", features = ["serde"] }
 dirs = "6.0"
 arboard = "3.4"
 regex = "1"
@@ -62,7 +61,6 @@ tray-icon = "0.21"
 auto-launch = "0.6"
 image = { version = "0.25", default-features = false, features = ["png"] }
 global-hotkey = "0.5.0"
-fs2 = "0.4"
 self_update = { version = "0.41", features = ["rustls"] }
 
 # Performance & Observability

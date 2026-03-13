@@ -96,19 +96,21 @@ fn main() {
         .write(true)
         .create(true)
         .truncate(true)
-        .open(&lock_path);
+        .open(&lock_path)
+        .expect("Could not open lock file");
 
-    if let Ok(file) = lock_file {
-        use fs2::FileExt;
-        if file.try_lock_exclusive().is_err() {
+    let mut lock = fd_lock::RwLock::new(lock_file);
+    let lock_guard = match lock.try_write() {
+        Ok(guard) => guard,
+        Err(_) => {
             eprintln!("Flash Search is already running.");
             std::process::exit(1);
         }
-        // Store the lock file in a static to hold it for the lifetime of the process
-        // Using a static with an Option allows us to initialize it after startup
-        static mut LOCK_FILE: Option<std::fs::File> = None;
-        unsafe { LOCK_FILE = Some(file) };
-    }
+    };
+
+    // Keep the lock guard alive for the duration of the program
+    // We can leak it to ensure it stays locked until the process exits
+    std::mem::forget(lock_guard);
 
     let _guard = init_logging();
 

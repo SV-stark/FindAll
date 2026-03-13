@@ -198,9 +198,18 @@ impl IndexManager {
 
 fn copy_dir(src: &Path, dst: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dst)?;
-    for entry in walkdir::WalkDir::new(src).min_depth(1) {
-        let entry = entry?;
-        let ty = entry.file_type();
+    for entry in ignore::WalkBuilder::new(src)
+        .hidden(false)
+        .git_ignore(false)
+        .ignore(false)
+        .parents(false)
+        .build()
+        .skip(1)
+    {
+        let entry = entry.map_err(std::io::Error::other)?;
+        let ty = entry.file_type().ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::NotFound, "Could not get file type")
+        })?;
         let path = entry.path();
         let relative = path.strip_prefix(src).map_err(std::io::Error::other)?;
         let target = dst.join(relative);

@@ -6,7 +6,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::RwLock;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct FilenameEntry {
     pub path: String,
     pub name: String,
@@ -40,25 +40,34 @@ impl FilenameIndex {
         let data_path = data_path.to_path_buf();
 
         let entries = if data_path.exists() {
-            // Try bincode first, then fall back to legacy JSON
+            // Try rkyv first, then fall back to legacy JSON
             let bin_path = data_path.join(INDEX_FILENAME);
             let json_path = data_path.join(LEGACY_INDEX_FILENAME);
 
             if bin_path.exists() {
                 match std::fs::read(&bin_path) {
                     Ok(bytes) => {
-                        match bincode::serde::decode_from_slice(&bytes, bincode::config::standard())
-                        {
-                            Ok((entries, _)) => {
-                                let entries: Vec<FilenameEntry> = entries;
+                        // Ensure byte alignment for rkyv
+                        let mut aligned_bytes = rkyv::util::AlignedVec::<16>::new();
+                        aligned_bytes.extend_from_slice(&bytes);
+
+                        match rkyv::access::<rkyv::Archived<Vec<FilenameEntry>>, rkyv::rancor::Error>(
+                            &aligned_bytes,
+                        ) {
+                            Ok(archived) => {
+                                let entries: Vec<FilenameEntry> =
+                                    rkyv::deserialize::<Vec<FilenameEntry>, rkyv::rancor::Error>(
+                                        archived,
+                                    )
+                                    .unwrap_or_default();
                                 tracing::info!(
-                                    "Loaded {} filenames from bincode index",
+                                    "Loaded {} filenames from rkyv index",
                                     entries.len()
                                 );
                                 entries
                             }
                             Err(e) => {
-                                tracing::warn!("Failed to parse bincode filename index: {}", e);
+                                tracing::warn!("Failed to parse rkyv filename index: {}", e);
                                 Vec::new()
                             }
                         }
@@ -74,7 +83,7 @@ impl FilenameIndex {
                                 "Migrated {} filenames from legacy JSON index",
                                 entries.len()
                             );
-                            // Save as bincode immediately and remove JSON
+                            // Save as rkyv immediately and remove JSON
                             Self::save_to_disk_sync(&entries, &data_path);
                             let _ = std::fs::remove_file(&json_path);
                             entries
@@ -165,11 +174,11 @@ impl FilenameIndex {
         build.into_inner().unwrap_or_default()
     }
 
-    /// Save entries to disk using bincode (P3: replaces JSON for ~10x smaller + faster)
-    fn save_to_disk_sync(entries: &[FilenameEntry], data_path: &std::path::Path) {
-        match bincode::serde::encode_to_vec(entries, bincode::config::standard()) {
+    /// Save entries to disk using rkyv (consolidated from bincode)
+    fn save_to_disk_sync(entries: &Vec<FilenameEntry>, data_path: &std::path::Path) {
+        match rkyv::to_bytes::<rkyv::rancor::Error>(entries) {
             Ok(bytes) => {
-                let _ = std::fs::write(data_path.join(INDEX_FILENAME), bytes);
+                let _ = std::fs::write(data_path.join(INDEX_FILENAME), bytes.as_slice());
             }
             Err(e) => {
                 tracing::warn!("Failed to serialize filename index: {}", e);
