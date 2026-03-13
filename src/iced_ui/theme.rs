@@ -15,6 +15,15 @@ pub const TEXT_BRIGHT: Color = Color::from_rgb(0.98, 0.98, 0.98);
 pub const TEXT_MUTED: Color = Color::from_rgb(0.63, 0.64, 0.66);
 pub const TEXT_DIM: Color = Color::from_rgb(0.40, 0.41, 0.43);
 
+// --- Color Palette (Light) ---
+pub const SURFACE_LIGHT: Color = Color::from_rgb(0.98, 0.98, 0.99); // #fafafa
+pub const PANEL_LIGHT: Color = Color::from_rgb(0.94, 0.94, 0.96); // #f4f4f5
+pub const BORDER_LIGHT: Color = Color::from_rgb(0.89, 0.90, 0.91); // #e4e4e7
+
+pub const TEXT_BRIGHT_LIGHT: Color = Color::from_rgb(0.09, 0.09, 0.11); // #18181b
+pub const TEXT_MUTED_LIGHT: Color = Color::from_rgb(0.45, 0.45, 0.50); // #71717a
+pub const TEXT_DIM_LIGHT: Color = Color::from_rgb(0.63, 0.63, 0.67); // #a1a1aa
+
 pub fn accent_color() -> Color {
     ACCENT_BLUE
 }
@@ -25,26 +34,49 @@ pub fn accent_color_light() -> Color {
     c
 }
 
-#[allow(dead_code)]
 fn is_dark_theme(theme: &Theme) -> bool {
     matches!(theme, Theme::Dark)
 }
 
+fn surface_color(theme: &Theme) -> Color {
+    if is_dark_theme(theme) { SURFACE_DARK } else { SURFACE_LIGHT }
+}
+
+fn panel_color(theme: &Theme) -> Color {
+    if is_dark_theme(theme) { PANEL_DARK } else { PANEL_LIGHT }
+}
+
+fn border_color(theme: &Theme) -> Color {
+    if is_dark_theme(theme) { BORDER_DARK } else { BORDER_LIGHT }
+}
+
+fn text_bright_color(theme: &Theme) -> Color {
+    if is_dark_theme(theme) { TEXT_BRIGHT } else { TEXT_BRIGHT_LIGHT }
+}
+
+fn text_muted_color(theme: &Theme) -> Color {
+    if is_dark_theme(theme) { TEXT_MUTED } else { TEXT_MUTED_LIGHT }
+}
+
+fn text_dim_color(theme: &Theme) -> Color {
+    if is_dark_theme(theme) { TEXT_DIM } else { TEXT_DIM_LIGHT }
+}
+
 // --- Container Styles ---
 
-pub fn main_content_container(_theme: &Theme) -> container::Style {
+pub fn main_content_container(theme: &Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(SURFACE_DARK)),
-        text_color: Some(TEXT_BRIGHT),
+        background: Some(Background::Color(surface_color(theme))),
+        text_color: Some(text_bright_color(theme)),
         ..Default::default()
     }
 }
 
-pub fn sidebar_container(_theme: &Theme) -> container::Style {
+pub fn sidebar_container(theme: &Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(PANEL_DARK)),
+        background: Some(Background::Color(panel_color(theme))),
         border: Border {
-            color: BORDER_DARK,
+            color: border_color(theme),
             width: 1.0,
             radius: Radius::from(0.0),
         },
@@ -59,11 +91,11 @@ pub fn side_nav_container(_theme: &Theme) -> container::Style {
     }
 }
 
-pub fn top_bar_container(_theme: &Theme) -> container::Style {
+pub fn top_bar_container(theme: &Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(PANEL_DARK)),
+        background: Some(Background::Color(panel_color(theme))),
         border: Border {
-            color: BORDER_DARK,
+            color: border_color(theme),
             width: 0.0,
             radius: Radius::from(0.0),
         },
@@ -71,11 +103,11 @@ pub fn top_bar_container(_theme: &Theme) -> container::Style {
     }
 }
 
-pub fn input_container(_theme: &Theme) -> container::Style {
+pub fn input_container(theme: &Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(SURFACE_DARK)),
+        background: Some(Background::Color(surface_color(theme))),
         border: Border {
-            color: BORDER_DARK,
+            color: border_color(theme),
             width: 1.0,
             radius: Radius::from(6.0),
         },
@@ -95,9 +127,16 @@ pub fn result_card_normal(_theme: &Theme) -> container::Style {
     }
 }
 
-pub fn result_card_hover(_theme: &Theme) -> container::Style {
+pub fn result_card_hover(theme: &Theme) -> container::Style {
+    let alpha = if is_dark_theme(theme) { 0.05 } else { 0.1 };
+    let bg_color = if is_dark_theme(theme) { 
+        Color::from_rgba(1.0, 1.0, 1.0, alpha) 
+    } else { 
+        Color::from_rgba(0.0, 0.0, 0.0, alpha) 
+    };
+
     container::Style {
-        background: Some(Background::Color(Color::from_rgba(1.0, 1.0, 1.0, 0.05))),
+        background: Some(Background::Color(bg_color)),
         ..Default::default()
     }
 }
@@ -114,24 +153,24 @@ pub fn result_card_selected(_theme: &Theme) -> container::Style {
     }
 }
 
-pub fn table_header_container(_theme: &Theme) -> container::Style {
+pub fn table_header_container(theme: &Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(PANEL_DARK)),
+        background: Some(Background::Color(panel_color(theme))),
         border: Border {
-            color: BORDER_DARK,
+            color: border_color(theme),
             width: 1.0,
             radius: Radius::from(0.0),
         },
-        text_color: Some(TEXT_MUTED),
+        text_color: Some(text_muted_color(theme)),
         ..Default::default()
     }
 }
 
-pub fn hits_container(_theme: &Theme) -> container::Style {
+pub fn hits_container(theme: &Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(PANEL_DARK)),
+        background: Some(Background::Color(panel_color(theme))),
         border: Border {
-            color: BORDER_DARK,
+            color: border_color(theme),
             width: 1.0,
             radius: Radius::from(0.0),
         },
@@ -143,7 +182,6 @@ pub fn hits_container(_theme: &Theme) -> container::Style {
 
 pub fn primary_button() -> impl Fn(&Theme, button::Status) -> button::Style {
     move |_theme: &Theme, status: button::Status| {
-        // let _is_dark = is_dark_theme(_theme);
         let base = button::Style {
             background: Some(Background::Color(ACCENT_BLUE)),
             text_color: Color::WHITE,
@@ -170,12 +208,18 @@ pub fn primary_button() -> impl Fn(&Theme, button::Status) -> button::Style {
 }
 
 pub fn secondary_button() -> impl Fn(&Theme, button::Status) -> button::Style {
-    move |_theme: &Theme, status: button::Status| {
+    move |theme: &Theme, status: button::Status| {
+        let bg_hover = if is_dark_theme(theme) {
+            Color::from_rgb(0.2, 0.22, 0.25)
+        } else {
+            Color::from_rgb(0.9, 0.9, 0.92)
+        };
+        
         let base = button::Style {
-            background: Some(Background::Color(BORDER_DARK)),
-            text_color: TEXT_BRIGHT,
+            background: Some(Background::Color(border_color(theme))),
+            text_color: text_bright_color(theme),
             border: Border {
-                color: BORDER_DARK,
+                color: border_color(theme),
                 width: 1.0,
                 radius: Radius::from(6.0),
             },
@@ -184,7 +228,7 @@ pub fn secondary_button() -> impl Fn(&Theme, button::Status) -> button::Style {
 
         match status {
             button::Status::Hovered => button::Style {
-                background: Some(Background::Color(Color::from_rgb(0.2, 0.22, 0.25))),
+                background: Some(Background::Color(bg_hover)),
                 ..base
             },
             _ => base,
@@ -193,18 +237,24 @@ pub fn secondary_button() -> impl Fn(&Theme, button::Status) -> button::Style {
 }
 
 pub fn ghost_button() -> impl Fn(&Theme, button::Status) -> button::Style {
-    move |_theme: &Theme, status: button::Status| {
+    move |theme: &Theme, status: button::Status| {
+        let hover_bg = if is_dark_theme(theme) {
+            Color::from_rgba(1.0, 1.0, 1.0, 0.05)
+        } else {
+            Color::from_rgba(0.0, 0.0, 0.0, 0.05)
+        };
+
         let base = button::Style {
             background: Some(Background::Color(Color::TRANSPARENT)),
-            text_color: TEXT_MUTED,
+            text_color: text_muted_color(theme),
             border: Border::default(),
             ..Default::default()
         };
 
         match status {
             button::Status::Hovered => button::Style {
-                text_color: TEXT_BRIGHT,
-                background: Some(Background::Color(Color::from_rgba(1.0, 1.0, 1.0, 0.05))),
+                text_color: text_bright_color(theme),
+                background: Some(Background::Color(hover_bg)),
                 ..base
             },
             _ => base,
@@ -234,7 +284,7 @@ pub fn nav_button(is_active: bool) -> impl Fn(&Theme, button::Status) -> button:
 pub fn top_menu_button() -> impl Fn(&Theme, button::Status) -> button::Style {
     move |theme: &Theme, status: button::Status| {
         let mut style = ghost_button()(theme, status);
-        style.text_color = TEXT_BRIGHT;
+        style.text_color = text_bright_color(theme);
         style
     }
 }
@@ -246,16 +296,16 @@ pub fn icon_button() -> impl Fn(&Theme, button::Status) -> button::Style {
 // --- Input Styles ---
 
 pub fn search_input() -> impl Fn(&Theme, text_input::Status) -> text_input::Style {
-    move |_theme: &Theme, _status: text_input::Status| text_input::Style {
-        background: Background::Color(SURFACE_DARK),
+    move |theme: &Theme, _status: text_input::Status| text_input::Style {
+        background: Background::Color(surface_color(theme)),
         border: Border {
-            color: BORDER_DARK,
+            color: border_color(theme),
             width: 1.0,
             radius: Radius::from(4.0),
         },
-        icon: TEXT_DIM,
-        placeholder: TEXT_DIM,
-        value: TEXT_BRIGHT,
+        icon: text_dim_color(theme),
+        placeholder: text_dim_color(theme),
+        value: text_bright_color(theme),
         selection: accent_color_light(),
     }
 }
@@ -267,14 +317,14 @@ pub fn small_input() -> impl Fn(&Theme, text_input::Status) -> text_input::Style
 // --- Text Styles ---
 
 pub fn dim_text_style() -> impl Fn(&Theme) -> text::Style {
-    |_| text::Style {
-        color: Some(TEXT_DIM),
+    |theme| text::Style {
+        color: Some(text_dim_color(theme)),
     }
 }
 
 pub fn muted_text_style() -> impl Fn(&Theme) -> text::Style {
-    |_| text::Style {
-        color: Some(TEXT_MUTED),
+    |theme| text::Style {
+        color: Some(text_muted_color(theme)),
     }
 }
 
@@ -319,11 +369,11 @@ pub fn tab_button(is_active: bool) -> impl Fn(&Theme, button::Status) -> button:
     nav_button(is_active)
 }
 
-pub fn padded_card_container(_theme: &Theme) -> container::Style {
+pub fn padded_card_container(theme: &Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(PANEL_DARK)),
+        background: Some(Background::Color(panel_color(theme))),
         border: Border {
-            color: BORDER_DARK,
+            color: border_color(theme),
             width: 1.0,
             radius: Radius::from(6.0),
         },

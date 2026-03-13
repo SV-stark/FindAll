@@ -561,7 +561,19 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                     0.0
                 };
                 app.rebuild_progress = Some(p);
-                app.rebuild_status = Some(event.status.clone());
+
+                let percent = p * 100.0;
+                let status_msg = if event.eta_seconds > 0 {
+                    let mins = event.eta_seconds / 60;
+                    let secs = event.eta_seconds % 60;
+                    format!("{} ({:.1}%) - ETA: {:02}:{:02}", event.status, percent, mins, secs)
+                } else if event.total > 0 {
+                    format!("{} ({:.1}%)", event.status, percent)
+                } else {
+                    event.status.clone()
+                };
+                
+                app.rebuild_status = Some(status_msg);
                 app.files_indexed = event.processed as i32;
 
                 let rx = app.progress_rx.clone();

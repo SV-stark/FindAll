@@ -101,6 +101,13 @@ pub fn settings_view(app: &App) -> Element<'_, Message> {
 
     let sys_toggles = column![tray_toggle, autostart_toggle, context_toggle].spacing(12);
 
+    let appearance_section = column![text("Appearance").size(18)].spacing(12);
+    let theme_toggle = row![
+        checkbox(app.is_dark).on_toggle(|_| Message::ToggleTheme),
+        text("Dark Mode").size(14),
+    ]
+    .spacing(8);
+
     let rebuild_btn = button(text("Force Rebuild Index").size(14))
         .on_press(Message::RebuildIndex)
         .padding(Padding::new(12.0))
@@ -138,6 +145,10 @@ pub fn settings_view(app: &App) -> Element<'_, Message> {
         sys_int_section,
         Space::new().height(Length::Fixed(8.0)),
         sys_toggles,
+        Space::new().height(Length::Fixed(32.0)),
+        appearance_section,
+        Space::new().height(Length::Fixed(8.0)),
+        theme_toggle,
         Space::new().height(Length::Fixed(32.0)),
         data_mgmt_section,
         Space::new().height(Length::Fixed(40.0)),

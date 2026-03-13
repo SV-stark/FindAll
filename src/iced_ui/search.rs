@@ -486,19 +486,27 @@ fn hit_row(_idx: usize, content: &str) -> Element<'_, Message> {
 }
 
 fn status_bar(app: &App) -> Element<'_, Message> {
+    let mut status_row = row![
+        text(format!("{} files indexed", app.files_indexed)).size(11),
+        Space::new().width(Length::Fixed(16.0)),
+        text(&app.index_size).size(11),
+        Space::new().width(Length::Fill),
+    ];
+
+    if let Some(p) = app.rebuild_progress {
+        status_row = status_row.push(
+            container(iced::widget::progress_bar(0.0..=1.0, p))
+                .width(Length::Fixed(100.0))
+        );
+        status_row = status_row.push(Space::new().width(Length::Fixed(8.0)));
+    }
+
+    if let Some(status) = &app.rebuild_status {
+        status_row = status_row.push(text(status).size(11));
+    }
+
     container(
-        row![
-            text(format!("{} files indexed", app.files_indexed)).size(11),
-            Space::new().width(Length::Fixed(16.0)),
-            text(&app.index_size).size(11),
-            Space::new().width(Length::Fill),
-            if let Some(status) = &app.rebuild_status {
-                Element::from(text(status).size(11))
-            } else {
-                Element::from(Space::new().width(Length::Fixed(0.0)))
-            },
-        ]
-        .padding(Padding {
+        status_row.padding(Padding {
             top: 4.0,
             bottom: 4.0,
             left: 16.0,
