@@ -23,9 +23,6 @@ pub fn search_view(app: &App) -> Element<'_, Message> {
 fn top_navigation(_app: &App) -> Element<'_, Message> {
     let logo = row![
         text("Flash Search").size(16),
-        text(" - Anytxt Inspired")
-            .size(12)
-            .style(theme::dim_text_style()),
     ]
     .spacing(8)
     .align_y(Alignment::Center);
