@@ -6,7 +6,9 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::RwLock;
 
-#[derive(Serialize, Deserialize, Debug, Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+#[derive(
+    Serialize, Deserialize, Debug, Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub struct FilenameEntry {
     pub path: String,
     pub name: String,
