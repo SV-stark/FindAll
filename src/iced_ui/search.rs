@@ -1,4 +1,4 @@
-use super::{theme, App, Message, SearchMode, Tab};
+use super::{theme, App, Message, Tab};
 use iced::widget::{
     button, checkbox, column, container, mouse_area, rich_text, row, scrollable, span, text, Space,
     TextInput,
@@ -79,18 +79,6 @@ fn search_input_bar(app: &App) -> Element<'_, Message> {
             left: 20.0,
             right: 20.0,
         });
-
-    let _mode_toggle = button(
-        text(if app.search_mode == SearchMode::FullText {
-            "Full Text"
-        } else {
-            "Filename"
-        })
-        .size(12),
-    )
-    .on_press(Message::ToggleSearchMode)
-    .style(theme::secondary_button())
-    .padding(Padding::new(8.0));
 
     container(
         row![input, search_button]
@@ -185,7 +173,9 @@ fn left_sidebar(app: &App) -> Element<'_, Message> {
     .spacing(8);
 
     let match_options = column![
-        text("Match Options").size(12).style(theme::dim_text_style()),
+        text("Match Options")
+            .size(12)
+            .style(theme::dim_text_style()),
         checkbox(app.settings.case_sensitive)
             .label("Match Case")
             .on_toggle(Message::ToggleCaseSensitive)
@@ -210,8 +200,11 @@ fn left_sidebar(app: &App) -> Element<'_, Message> {
         Space::new().height(Length::Fixed(4.0)),
         row![
             extension_section.width(Length::FillPortion(1)),
-            column![size_section, match_options].width(Length::FillPortion(1)).spacing(12),
-        ].spacing(16),
+            column![size_section, match_options]
+                .width(Length::FillPortion(1))
+                .spacing(12),
+        ]
+        .spacing(16),
         Space::new().height(Length::Fixed(8.0)),
         clear_button,
     ]
@@ -521,7 +514,10 @@ fn hits_panel(app: &App) -> Element<'_, Message> {
     };
 
     let header_text = if let Some(res) = result {
-        format!("Context Highlights for '{}' in {}", app.search_query, res.title)
+        format!(
+            "Context Highlights for '{}' in {}",
+            app.search_query, res.title
+        )
     } else {
         "Search Hits".to_string()
     };
@@ -604,7 +600,7 @@ fn status_bar(app: &App) -> Element<'_, Message> {
     .into()
 }
 
-fn extension_checkbox<'a>(ext: &str, app: &App) -> Element<'a, Message> {
+fn extension_checkbox<'a>(ext: &'a str, app: &App) -> Element<'a, Message> {
     checkbox(app.filter_extensions.contains(ext))
         .label(ext)
         .on_toggle(move |_| Message::ToggleFilterExtension(ext.to_string()))
@@ -613,14 +609,16 @@ fn extension_checkbox<'a>(ext: &str, app: &App) -> Element<'a, Message> {
         .into()
 }
 
-fn size_unit_button<'a>(unit: &str, app: &App) -> Element<'a, Message> {
+fn size_unit_button<'a>(unit: &'a str, app: &App) -> Element<'a, Message> {
     let is_active = app.size_unit == unit;
     button(text(unit).size(10))
         .on_press(Message::SizeUnitChanged(unit.to_string()))
-        .style(if is_active {
-            theme::primary_button()
-        } else {
-            theme::secondary_button()
+        .style(move |t: &iced::Theme, s| {
+            if is_active {
+                theme::primary_button()(t, s)
+            } else {
+                theme::secondary_button()(t, s)
+            }
         })
         .padding(Padding::new(4.0))
         .into()
