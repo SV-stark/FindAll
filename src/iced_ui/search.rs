@@ -21,11 +21,9 @@ pub fn search_view(app: &App) -> Element<'_, Message> {
 }
 
 fn top_navigation(_app: &App) -> Element<'_, Message> {
-    let logo = row![
-        text("Flash Search").size(16),
-    ]
-    .spacing(8)
-    .align_y(Alignment::Center);
+    let logo = row![text("Flash Search").size(16),]
+        .spacing(8)
+        .align_y(Alignment::Center);
 
     let menu_items = row![
         button(row![load_icon("folder"), text("Open")].spacing(4))
@@ -491,10 +489,8 @@ fn status_bar(app: &App) -> Element<'_, Message> {
     ];
 
     if let Some(p) = app.rebuild_progress {
-        status_row = status_row.push(
-            container(iced::widget::progress_bar(0.0..=1.0, p))
-                .width(Length::Fixed(100.0))
-        );
+        status_row = status_row
+            .push(container(iced::widget::progress_bar(0.0..=1.0, p)).width(Length::Fixed(100.0)));
         status_row = status_row.push(Space::new().width(Length::Fixed(8.0)));
     }
 
@@ -502,14 +498,12 @@ fn status_bar(app: &App) -> Element<'_, Message> {
         status_row = status_row.push(text(status).size(11));
     }
 
-    container(
-        status_row.padding(Padding {
-            top: 4.0,
-            bottom: 4.0,
-            left: 16.0,
-            right: 16.0,
-        }),
-    )
+    container(status_row.padding(Padding {
+        top: 4.0,
+        bottom: 4.0,
+        left: 16.0,
+        right: 16.0,
+    }))
     .style(theme::top_bar_container)
     .width(Length::Fill)
     .into()

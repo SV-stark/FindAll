@@ -11,13 +11,10 @@ pub struct SearchHistoryItem {
 }
 
 pub const COMMON_EXTENSIONS: &[&str] = &[
-    "pdf", "docx", "doc", "xlsx", "xls", "pptx", "ppt", "odt", "rtf",
-    "jpeg", "jpg", "png", "tiff", "heic", "heif",
-    "zip", "7z", "rar", "tar", "gz",
-    "eml", "msg", "pst",
-    "epub", "mobi", "azw3",
-    "md", "json", "xml", "txt", "csv", "tsv",
-    "rs", "py", "js", "ts", "go", "java", "c", "cpp", "h", "hpp", "cs", "html", "css",
+    "pdf", "docx", "doc", "xlsx", "xls", "pptx", "ppt", "odt", "rtf", "jpeg", "jpg", "png", "tiff",
+    "heic", "heif", "zip", "7z", "rar", "tar", "gz", "eml", "msg", "pst", "epub", "mobi", "azw3",
+    "md", "json", "xml", "txt", "csv", "tsv", "rs", "py", "js", "ts", "go", "java", "c", "cpp",
+    "h", "hpp", "cs", "html", "css",
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

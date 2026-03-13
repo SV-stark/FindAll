@@ -397,7 +397,9 @@ impl App {
         };
 
         Task::future(async move {
-            let preview = get_file_preview_highlighted_internal(path, query, &state).await.ok();
+            let preview = get_file_preview_highlighted_internal(path, query, &state)
+                .await
+                .ok();
             Message::PreviewLoaded(preview)
         })
     }
@@ -567,13 +569,16 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                 let status_msg = if event.eta_seconds > 0 {
                     let mins = event.eta_seconds / 60;
                     let secs = event.eta_seconds % 60;
-                    format!("{} ({:.1}%) - ETA: {:02}:{:02}", event.status, percent, mins, secs)
+                    format!(
+                        "{} ({:.1}%) - ETA: {:02}:{:02}",
+                        event.status, percent, mins, secs
+                    )
                 } else if event.total > 0 {
                     format!("{} ({:.1}%)", event.status, percent)
                 } else {
                     event.status.clone()
                 };
-                
+
                 app.rebuild_status = Some(status_msg);
                 app.files_indexed = event.processed as i32;
 

@@ -503,7 +503,8 @@ impl DriveScanner for WindowsDriveScanner {
                     windows::core::PCWSTR(wide_root.as_ptr()),
                 );
 
-                if drive_type == 3 { // DRIVE_REMOTE
+                if drive_type == 3 {
+                    // DRIVE_REMOTE
                     is_local_drive = false;
                 }
             }
@@ -555,7 +556,8 @@ impl DriveScanner for WindowsDriveScanner {
                     windows::core::PCWSTR(wide_root.as_ptr()),
                 );
 
-                if drive_type == 3 { // DRIVE_REMOTE
+                if drive_type == 3 {
+                    // DRIVE_REMOTE
                     is_local_drive = false;
                 }
             }

@@ -39,27 +39,51 @@ fn is_dark_theme(theme: &Theme) -> bool {
 }
 
 fn surface_color(theme: &Theme) -> Color {
-    if is_dark_theme(theme) { SURFACE_DARK } else { SURFACE_LIGHT }
+    if is_dark_theme(theme) {
+        SURFACE_DARK
+    } else {
+        SURFACE_LIGHT
+    }
 }
 
 fn panel_color(theme: &Theme) -> Color {
-    if is_dark_theme(theme) { PANEL_DARK } else { PANEL_LIGHT }
+    if is_dark_theme(theme) {
+        PANEL_DARK
+    } else {
+        PANEL_LIGHT
+    }
 }
 
 fn border_color(theme: &Theme) -> Color {
-    if is_dark_theme(theme) { BORDER_DARK } else { BORDER_LIGHT }
+    if is_dark_theme(theme) {
+        BORDER_DARK
+    } else {
+        BORDER_LIGHT
+    }
 }
 
 fn text_bright_color(theme: &Theme) -> Color {
-    if is_dark_theme(theme) { TEXT_BRIGHT } else { TEXT_BRIGHT_LIGHT }
+    if is_dark_theme(theme) {
+        TEXT_BRIGHT
+    } else {
+        TEXT_BRIGHT_LIGHT
+    }
 }
 
 fn text_muted_color(theme: &Theme) -> Color {
-    if is_dark_theme(theme) { TEXT_MUTED } else { TEXT_MUTED_LIGHT }
+    if is_dark_theme(theme) {
+        TEXT_MUTED
+    } else {
+        TEXT_MUTED_LIGHT
+    }
 }
 
 fn text_dim_color(theme: &Theme) -> Color {
-    if is_dark_theme(theme) { TEXT_DIM } else { TEXT_DIM_LIGHT }
+    if is_dark_theme(theme) {
+        TEXT_DIM
+    } else {
+        TEXT_DIM_LIGHT
+    }
 }
 
 // --- Container Styles ---
@@ -129,10 +153,10 @@ pub fn result_card_normal(_theme: &Theme) -> container::Style {
 
 pub fn result_card_hover(theme: &Theme) -> container::Style {
     let alpha = if is_dark_theme(theme) { 0.05 } else { 0.1 };
-    let bg_color = if is_dark_theme(theme) { 
-        Color::from_rgba(1.0, 1.0, 1.0, alpha) 
-    } else { 
-        Color::from_rgba(0.0, 0.0, 0.0, alpha) 
+    let bg_color = if is_dark_theme(theme) {
+        Color::from_rgba(1.0, 1.0, 1.0, alpha)
+    } else {
+        Color::from_rgba(0.0, 0.0, 0.0, alpha)
     };
 
     container::Style {
@@ -214,7 +238,7 @@ pub fn secondary_button() -> impl Fn(&Theme, button::Status) -> button::Style {
         } else {
             Color::from_rgb(0.9, 0.9, 0.92)
         };
-        
+
         let base = button::Style {
             background: Some(Background::Color(border_color(theme))),
             text_color: text_bright_color(theme),

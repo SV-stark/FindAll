@@ -202,9 +202,7 @@ fn copy_dir(src: &Path, dst: &Path) -> std::io::Result<()> {
         let entry = entry?;
         let ty = entry.file_type();
         let path = entry.path();
-        let relative = path
-            .strip_prefix(src)
-            .map_err(std::io::Error::other)?;
+        let relative = path.strip_prefix(src).map_err(std::io::Error::other)?;
         let target = dst.join(relative);
         if ty.is_dir() {
             std::fs::create_dir_all(target)?;

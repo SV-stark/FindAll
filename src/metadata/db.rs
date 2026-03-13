@@ -159,10 +159,13 @@ impl MetadataDb {
                 self.metrics
                     .bytes_read
                     .fetch_add(bytes.len() as u64, Ordering::Relaxed);
-                // Zero-copy read and validate
-                if let Ok(meta) =
-                    rkyv::access::<rkyv::Archived<FileMetadata>, rkyv::rancor::Error>(bytes)
-                {
+                // Zero-copy read and validate with byte alignment
+                let mut aligned_bytes = rkyv::util::AlignedVec::<16>::new();
+                aligned_bytes.extend_from_slice(bytes);
+
+                if let Ok(meta) = rkyv::access::<rkyv::Archived<FileMetadata>, rkyv::rancor::Error>(
+                    &aligned_bytes,
+                ) {
                     meta.modified != modified || meta.size != size
                 } else {
                     true // Reindex if validation fails

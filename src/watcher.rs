@@ -29,7 +29,11 @@ pub struct WatcherManager {
 }
 
 impl WatcherManager {
-    pub fn new(indexer: Arc<IndexManager>, metadata_db: Arc<MetadataDb>, allowed_extensions: std::collections::HashSet<String>) -> Self {
+    pub fn new(
+        indexer: Arc<IndexManager>,
+        metadata_db: Arc<MetadataDb>,
+        allowed_extensions: std::collections::HashSet<String>,
+    ) -> Self {
         let buffer: Arc<Mutex<HashMap<PathBuf, WatcherAction>>> =
             Arc::new(Mutex::new(HashMap::new()));
         let buffer_for_task = buffer.clone();
