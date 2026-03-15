@@ -1,6 +1,0 @@
-cargo::rustc-check-cfg=cfg(coverage)
-cargo:rustc-env=KREUZBERG_PDFIUM_BUNDLED_PATH=E:\findall\target_local\debug\build\kreuzberg-a33eebc75613a468\out\pdfium.dll
-cargo:rustc-link-lib=dylib=gdi32
-cargo:rustc-link-lib=dylib=user32
-cargo:rustc-link-lib=dylib=advapi32
-cargo:rerun-if-changed=build.rs

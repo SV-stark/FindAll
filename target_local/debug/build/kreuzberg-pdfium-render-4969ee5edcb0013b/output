@@ -1,2 +1,0 @@
-cargo:rerun-if-env-changed=PDFIUM_STATIC_LIB_PATH
-cargo:rerun-if-env-changed=PDFIUM_DYNAMIC_LIB_PATH
