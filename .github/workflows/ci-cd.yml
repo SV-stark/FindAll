@@ -85,10 +85,16 @@ jobs:
       - name: Build Release Binary
         run: cargo build --release
         
+      - name: Build NSIS Installer
+        run: |
+          makensis windows/installer.nsi
+        
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          files: target/release/flash-search.exe
+          files: |
+            target/release/flash-search.exe
+            FlashSearchSetup.exe
           draft: false
           prerelease: false
           generate_release_notes: true
