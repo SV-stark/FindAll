@@ -85,6 +85,9 @@ jobs:
       - name: Build Release Binary
         run: cargo build --release
         
+      - name: Setup NSIS
+        uses: steven-hy/setup-nsis@v1
+        
       - name: Build NSIS Installer
         run: |
           makensis windows/installer.nsi
