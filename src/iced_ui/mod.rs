@@ -406,12 +406,16 @@ impl App {
                 SearchMode::Filename => {
                     match search_filenames_internal(query.clone(), max_results, &state).await {
                         Ok(results) => {
-                            let mut items: Vec<FileItem> = results.into_iter().map(FileItem::from).collect();
+                            let mut items: Vec<FileItem> =
+                                results.into_iter().map(FileItem::from).collect();
                             if case_sensitive {
-                                items.retain(|item| item.title.contains(&original_query) || item.path.contains(&original_query));
+                                items.retain(|item| {
+                                    item.title.contains(&original_query)
+                                        || item.path.contains(&original_query)
+                                });
                             }
                             Message::SearchResultsReceived(current_search_id, items)
-                        },
+                        }
                         Err(e) => Message::SearchError(FlashError::search(&query, e)),
                     }
                 }
@@ -427,14 +431,17 @@ impl App {
                     .await
                     {
                         Ok(results) => {
-                            let mut items: Vec<FileItem> = results.into_iter().map(FileItem::from).collect();
+                            let mut items: Vec<FileItem> =
+                                results.into_iter().map(FileItem::from).collect();
                             if case_sensitive {
                                 items.retain(|item| {
-                                    item.title.contains(&original_query) || item.path.contains(&original_query) || item.snippets.iter().any(|s| s.contains(&original_query))
+                                    item.title.contains(&original_query)
+                                        || item.path.contains(&original_query)
+                                        || item.snippets.iter().any(|s| s.contains(&original_query))
                                 });
                             }
                             Message::SearchResultsReceived(current_search_id, items)
-                        },
+                        }
                         Err(e) => Message::SearchError(FlashError::search(&query, e)),
                     }
                 }
@@ -605,7 +612,10 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                     Task::future(async move {
                         if let Err(e) = state.indexer.clear() {
                             tracing::error!("Failed to clear indexer: {}", e);
-                            return Message::SearchError(FlashError::config("rebuild", e.to_string()));
+                            return Message::SearchError(FlashError::config(
+                                "rebuild",
+                                e.to_string(),
+                            ));
                         }
                         let _ = state.indexer.commit();
                         let _ = state.metadata_db.clear();
@@ -906,7 +916,8 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             Message::PollHotkey => {
                 if let Ok(event) = global_hotkey::GlobalHotKeyEvent::receiver().try_recv() {
                     tracing::info!("Global hotkey pressed: {:?}", event);
-                    return iced::window::gain_focus(iced::window::Id::unique()).map(|_: ()| Message::NoOp);
+                    return iced::window::gain_focus(iced::window::Id::unique())
+                        .map(|_: ()| Message::NoOp);
                 }
                 Task::none()
             }
@@ -915,7 +926,8 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                     if event.id.0 == "quit" {
                         crate::SHUTDOWN_FLAG.store(true, std::sync::atomic::Ordering::SeqCst);
                     } else if event.id.0 == "show" {
-                        return iced::window::gain_focus(iced::window::Id::unique()).map(|_: ()| Message::NoOp);
+                        return iced::window::gain_focus(iced::window::Id::unique())
+                            .map(|_: ()| Message::NoOp);
                     }
                 }
                 Task::none()

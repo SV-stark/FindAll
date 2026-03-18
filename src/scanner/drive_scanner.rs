@@ -20,10 +20,9 @@ mod windows_usn {
     use windows::Win32::System::IO::DeviceIoControl;
 
     #[derive(Debug)]
-    struct FileInfo {
+    struct DirInfo {
         name: String,
         parent_frn: u64,
-        is_dir: bool,
     }
 
     pub fn scan_volume(
@@ -89,7 +88,8 @@ mod windows_usn {
             HighUsn: journal_data.NextUsn,
         };
 
-        let mut fs_map: HashMap<u64, FileInfo> = HashMap::with_capacity(500_000);
+        let mut dir_map: HashMap<u64, DirInfo> = HashMap::with_capacity(100_000);
+        let mut files: Vec<(String, u64)> = Vec::with_capacity(500_000);
         let mut buffer = [0u8; 65536];
 
         info!("Enumerating MFT records...");
@@ -130,14 +130,11 @@ mod windows_usn {
                     let parent_frn = record.ParentFileReferenceNumber;
                     let is_dir = (record.FileAttributes & 0x00000010) != 0; // FILE_ATTRIBUTE_DIRECTORY
 
-                    fs_map.insert(
-                        frn,
-                        FileInfo {
-                            name,
-                            parent_frn,
-                            is_dir,
-                        },
-                    );
+                    if is_dir {
+                        dir_map.insert(frn, DirInfo { name, parent_frn });
+                    } else {
+                        files.push((name, parent_frn));
+                    }
                 }
 
                 offset += record.RecordLength as usize;
@@ -145,63 +142,60 @@ mod windows_usn {
         }
 
         info!(
-            "MFT Enumeration finished. Reconstructing paths for {} items...",
-            fs_map.len()
+            "MFT Enumeration finished. Reconstructing paths for {} files...",
+            files.len()
         );
 
         let mut count = 0;
 
-        for (&_frn, info) in &fs_map {
-            if !info.is_dir {
-                let mut path_parts = Vec::with_capacity(8);
-                path_parts.push(info.name.as_str());
+        for (name, mut current_parent) in files {
+            let mut path_parts = Vec::with_capacity(8);
+            path_parts.push(name.as_str());
 
-                let mut current_parent = info.parent_frn;
-                let mut depth = 0;
-                let mut valid_path = true;
+            let mut depth = 0;
+            let mut valid_path = true;
 
-                // Trace back to root. In NTFS, root's parent is itself. FRN 5 is typically root.
-                while depth < 50 {
-                    if let Some(parent_info) = fs_map.get(&current_parent) {
-                        path_parts.push(parent_info.name.as_str());
-                        if current_parent == parent_info.parent_frn {
-                            break; // Reached root
-                        }
-                        current_parent = parent_info.parent_frn;
-                        depth += 1;
-                    } else {
-                        // Parent not found, orphaned or root not in map
-                        valid_path = false;
-                        break;
+            // Trace back to root. In NTFS, root's parent is itself. FRN 5 is typically root.
+            while depth < 50 {
+                if let Some(parent_info) = dir_map.get(&current_parent) {
+                    path_parts.push(parent_info.name.as_str());
+                    if current_parent == parent_info.parent_frn {
+                        break; // Reached root
+                    }
+                    current_parent = parent_info.parent_frn;
+                    depth += 1;
+                } else {
+                    // Parent not found, orphaned or root not in map
+                    valid_path = false;
+                    break;
+                }
+            }
+
+            if valid_path {
+                let mut full_path = PathBuf::from(drive_root);
+                for part in path_parts.iter().rev() {
+                    // Skip if it's the drive root name itself being reported
+                    if !part.is_empty() && !part.contains(':') {
+                        full_path.push(part);
                     }
                 }
 
-                if valid_path {
-                    let mut full_path = PathBuf::from(drive_root);
-                    for part in path_parts.iter().rev() {
-                        // Skip if it's the drive root name itself being reported
-                        if !part.is_empty() && !part.contains(':') {
-                            full_path.push(part);
-                        }
-                    }
+                let _ = path_tx.send(full_path.clone());
+                count += 1;
 
-                    let _ = path_tx.send(full_path.clone());
-                    count += 1;
-
-                    if count % 2000 == 0 {
-                        total_count.store(count, Ordering::Relaxed);
-                        if let Some(tx) = &progress_tx {
-                            let _ = tx.try_send(ProgressEvent {
-                                ptype: ProgressType::Filename,
-                                current_file: info.name.clone(),
-                                current_folder: "".to_string(),
-                                processed: count,
-                                total: 0,
-                                status: format!("Reconstructing MFT: {} files", count),
-                                eta_seconds: 0,
-                                files_per_second: 0.0,
-                            });
-                        }
+                if count % 2000 == 0 {
+                    total_count.store(count, Ordering::Relaxed);
+                    if let Some(tx) = &progress_tx {
+                        let _ = tx.try_send(ProgressEvent {
+                            ptype: ProgressType::Filename,
+                            current_file: name.clone(),
+                            current_folder: "".to_string(),
+                            processed: count,
+                            total: 0,
+                            status: format!("Reconstructing MFT: {} files", count),
+                            eta_seconds: 0,
+                            files_per_second: 0.0,
+                        });
                     }
                 }
             }

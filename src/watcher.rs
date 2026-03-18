@@ -165,7 +165,8 @@ impl WatcherManager {
     /// Update the list of watched directories
     pub fn update_watch_list(&mut self, dirs: Vec<String>) -> Result<()> {
         let current_dirs: std::collections::HashSet<String> = dirs.iter().cloned().collect();
-        let existing_dirs: std::collections::HashSet<String> = self.watchers.keys().cloned().collect();
+        let existing_dirs: std::collections::HashSet<String> =
+            self.watchers.keys().cloned().collect();
 
         // Remove watchers for directories no longer in the list
         for dir in existing_dirs.difference(&current_dirs) {

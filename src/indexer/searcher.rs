@@ -150,7 +150,8 @@ impl IndexSearcher {
             .filter_map(|field_name| schema.get_field(field_name).ok())
             .collect();
 
-        let query_parser = QueryParser::for_index(index, default_fields);
+        let mut query_parser = QueryParser::for_index(index, default_fields);
+        query_parser.set_conjunction_by_default();
 
         Ok(Self {
             reader,
@@ -222,55 +223,94 @@ impl IndexSearcher {
 
         let searcher = self.reader.searcher();
 
-        // Build the main query - use fuzzy search for better typo tolerance
-        let text_query = self.build_fuzzy_query(&parsed.text_query)?;
+        // Helper to run query with all filters
+        let run_query = |text_query: Box<dyn tantivy::query::Query>| -> Result<(
+            Box<dyn tantivy::query::Query>,
+            Vec<(f32, tantivy::DocAddress)>,
+        )> {
+            let mut combine: Vec<(Occur, Box<dyn tantivy::query::Query>)> =
+                vec![(Occur::Must, text_query)];
 
-        // Build query with optional filters
-        let mut combine: Vec<(Occur, Box<dyn tantivy::query::Query>)> =
-            vec![(Occur::Must, text_query)];
+            if min_size.is_some() || max_size.is_some() {
+                let lower = Term::from_field_u64(self.size_field, min_size.unwrap_or(0));
+                let upper = Term::from_field_u64(self.size_field, max_size.unwrap_or(u64::MAX));
+                let range = RangeQuery::new(Bound::Included(lower), Bound::Included(upper));
+                combine.push((Occur::Must, Box::new(range)));
+            }
 
-        // Add size filters
-        if min_size.is_some() || max_size.is_some() {
-            let lower = Term::from_field_u64(self.size_field, min_size.unwrap_or(0));
-            let upper = Term::from_field_u64(self.size_field, max_size.unwrap_or(u64::MAX));
-            let range = RangeQuery::new(Bound::Included(lower), Bound::Included(upper));
-            combine.push((Occur::Must, Box::new(range)));
-        }
+            if let Some(extensions) = file_extensions {
+                if !extensions.is_empty() {
+                    let extension_queries: Vec<_> = extensions
+                        .iter()
+                        .map(|ext| {
+                            let ext_lower = ext.to_lowercase();
+                            let term =
+                                tantivy::Term::from_field_text(self.extension_field, &ext_lower);
+                            tantivy::query::TermQuery::new(term, IndexRecordOption::Basic)
+                        })
+                        .collect();
 
-        // Build file extension filter as a boolean query clause
-        if let Some(extensions) = file_extensions {
-            if !extensions.is_empty() {
-                let extension_queries: Vec<_> = extensions
-                    .iter()
-                    .map(|ext| {
-                        let ext_lower = ext.to_lowercase();
-                        // Use TermQuery for fast extension matching (much faster than RegexQuery)
-                        let term = tantivy::Term::from_field_text(self.extension_field, &ext_lower);
-                        tantivy::query::TermQuery::new(term, IndexRecordOption::Basic)
-                    })
-                    .collect();
-
-                if !extension_queries.is_empty() {
-                    let extension_bool_query = tantivy::query::BooleanQuery::new(
-                        extension_queries
-                            .into_iter()
-                            .map(|q| (Occur::Should, Box::new(q) as Box<dyn tantivy::query::Query>))
-                            .collect(),
-                    );
-                    combine.push((Occur::Must, Box::new(extension_bool_query)));
+                    if !extension_queries.is_empty() {
+                        let extension_bool_query = tantivy::query::BooleanQuery::new(
+                            extension_queries
+                                .into_iter()
+                                .map(|q| {
+                                    (Occur::Should, Box::new(q) as Box<dyn tantivy::query::Query>)
+                                })
+                                .collect(),
+                        );
+                        combine.push((Occur::Must, Box::new(extension_bool_query)));
+                    }
                 }
             }
-        }
 
-        let final_query: Box<dyn tantivy::query::Query> = if combine.len() == 1 {
-            combine.remove(0).1
-        } else {
-            Box::new(BooleanQuery::new(combine))
+            let final_query: Box<dyn tantivy::query::Query> = if combine.len() == 1 {
+                combine.remove(0).1
+            } else {
+                Box::new(BooleanQuery::new(combine))
+            };
+
+            let top_docs = searcher
+                .search(&*final_query, &TopDocs::with_limit(limit))
+                .map_err(|e| FlashError::search(query, e.to_string()))?;
+
+            Ok((final_query, top_docs))
         };
 
-        let top_docs = searcher
-            .search(&*final_query, &TopDocs::with_limit(limit))
-            .map_err(|e| FlashError::search(query, e.to_string()))?;
+        // TIER 1: Exact search
+        let exact_query = self
+            .query_parser
+            .parse_query(&parsed.text_query)
+            .unwrap_or_else(|_| Box::new(tantivy::query::AllQuery));
+        let (mut final_query, mut top_docs) = run_query(exact_query)?;
+
+        // TIER 2: Fuzzy Fallback
+        static PHRASE_REGEX: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+        let phrase_regex = PHRASE_REGEX.get_or_init(|| regex::Regex::new(r#""([^"]+)""#).unwrap());
+
+        if top_docs.len() < limit
+            && !phrase_regex.is_match(&parsed.text_query)
+            && !parsed.text_query.trim().is_empty()
+        {
+            let fuzzy_query = self.build_fuzzy_query(&parsed.text_query)?;
+            let (fuzzy_final_query, fuzzy_docs) = run_query(fuzzy_query)?;
+
+            // Prefer highlighting based on the more permissive fuzzy query
+            final_query = fuzzy_final_query;
+
+            let mut seen: std::collections::HashSet<tantivy::DocAddress> =
+                top_docs.iter().map(|(_, addr)| *addr).collect();
+            for (score, doc_addr) in fuzzy_docs {
+                if !seen.contains(&doc_addr) {
+                    top_docs.push((score, doc_addr));
+                    seen.insert(doc_addr);
+                    if top_docs.len() >= limit {
+                        break;
+                    }
+                }
+            }
+            top_docs.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+        }
 
         let mut results = Vec::with_capacity(top_docs.len().min(limit));
 
@@ -317,7 +357,8 @@ impl IndexSearcher {
                     date.into_timestamp_secs() as u64
                 });
 
-            // Generate snippets
+            // Generates snippets and replaces HTML tags.
+            // NOTE: Offloading full rendering to UI.
             let snippet = snippet_generator.snippet_from_doc(&retrieved_doc);
             let snippet_text = snippet
                 .to_html()
@@ -327,7 +368,11 @@ impl IndexSearcher {
                 .replace("&gt;", ">")
                 .replace("&amp;", "&");
 
-            let snippets = vec![snippet_text];
+            let snippets = if snippet_text.is_empty() {
+                vec![]
+            } else {
+                vec![snippet_text]
+            };
 
             results.push(SearchResult {
                 file_path,
@@ -378,10 +423,13 @@ impl IndexSearcher {
             // Single term - try exact first, then fuzzy across all relevant fields
             let term_text = terms[0];
             let mut subqueries: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::new();
-            
+
             for field in [self.content_field, self.title_field, self.path_field] {
                 let term = Term::from_field_text(field, term_text);
-                let exact = tantivy::query::TermQuery::new(term.clone(), tantivy::schema::IndexRecordOption::Basic);
+                let exact = tantivy::query::TermQuery::new(
+                    term.clone(),
+                    tantivy::schema::IndexRecordOption::Basic,
+                );
                 let fuzzy = FuzzyTermQuery::new(term, 2, true);
                 subqueries.push((Occur::Should, Box::new(exact)));
                 subqueries.push((Occur::Should, Box::new(fuzzy)));
@@ -396,7 +444,10 @@ impl IndexSearcher {
                 let mut term_subqueries: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::new();
                 for field in [self.content_field, self.title_field, self.path_field] {
                     let term = Term::from_field_text(field, term_text);
-                    let exact = tantivy::query::TermQuery::new(term.clone(), tantivy::schema::IndexRecordOption::Basic);
+                    let exact = tantivy::query::TermQuery::new(
+                        term.clone(),
+                        tantivy::schema::IndexRecordOption::Basic,
+                    );
                     let fuzzy = FuzzyTermQuery::new(term, 2, true);
                     term_subqueries.push((Occur::Should, Box::new(exact)));
                     term_subqueries.push((Occur::Should, Box::new(fuzzy)));

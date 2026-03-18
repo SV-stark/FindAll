@@ -33,7 +33,7 @@ pub struct ProgressEvent {
     pub current_folder: String,
 }
 
-const BATCH_SIZE: usize = 50;
+const BATCH_SIZE: usize = 1000;
 
 #[derive(Debug)]
 struct IndexTask {
