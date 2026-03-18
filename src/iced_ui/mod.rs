@@ -100,7 +100,7 @@ pub enum SearchMode {
 pub enum Message {
     SearchQueryChanged(String),
     SearchSubmitted,
-    SearchResultsReceived(Vec<FileItem>),
+    SearchResultsReceived(u64, Vec<FileItem>),
     SearchError(FlashError),
     ResultSelected(usize),
     OpenFile(String),
@@ -178,6 +178,7 @@ pub struct App {
     hotkey_manager: Option<global_hotkey::GlobalHotKeyManager>,
     search_deadline: Option<std::time::Instant>,
     pub context_menu_index: Option<usize>,
+    search_id: u64,
 }
 
 impl App {
@@ -218,6 +219,7 @@ impl App {
                     hotkey_manager: None,
                     search_deadline: None,
                     context_menu_index: None,
+                    search_id: 0,
                 };
 
                 if let Ok(manager) = global_hotkey::GlobalHotKeyManager::new() {
@@ -271,6 +273,7 @@ impl App {
                 hotkey_manager: None,
                 search_deadline: None,
                 context_menu_index: None,
+                search_id: 0,
             },
         }
     }
@@ -393,14 +396,22 @@ impl App {
         self.is_searching = true;
         self.results.clear();
         self.preview_result = None;
+        self.search_id += 1;
+        let current_search_id = self.search_id;
+        let case_sensitive = self.settings.case_sensitive;
+        let original_query = self.search_query.clone();
 
         Task::future(async move {
             let result = match mode {
                 SearchMode::Filename => {
                     match search_filenames_internal(query.clone(), max_results, &state).await {
-                        Ok(results) => Message::SearchResultsReceived(
-                            results.into_iter().map(FileItem::from).collect(),
-                        ),
+                        Ok(results) => {
+                            let mut items: Vec<FileItem> = results.into_iter().map(FileItem::from).collect();
+                            if case_sensitive {
+                                items.retain(|item| item.title.contains(&original_query) || item.path.contains(&original_query));
+                            }
+                            Message::SearchResultsReceived(current_search_id, items)
+                        },
                         Err(e) => Message::SearchError(FlashError::search(&query, e)),
                     }
                 }
@@ -415,9 +426,15 @@ impl App {
                     )
                     .await
                     {
-                        Ok(results) => Message::SearchResultsReceived(
-                            results.into_iter().map(FileItem::from).collect(),
-                        ),
+                        Ok(results) => {
+                            let mut items: Vec<FileItem> = results.into_iter().map(FileItem::from).collect();
+                            if case_sensitive {
+                                items.retain(|item| {
+                                    item.title.contains(&original_query) || item.path.contains(&original_query) || item.snippets.iter().any(|s| s.contains(&original_query))
+                                });
+                            }
+                            Message::SearchResultsReceived(current_search_id, items)
+                        },
                         Err(e) => Message::SearchError(FlashError::search(&query, e)),
                     }
                 }
@@ -457,6 +474,9 @@ impl App {
     fn save_settings(&self) {
         if let Some(state) = &self.state {
             let _ = state.settings_manager.save(&self.settings);
+            if let Ok(mut watcher) = state.watcher.lock() {
+                let _ = watcher.update_watch_list(self.settings.index_dirs.clone());
+            }
         }
     }
 }
@@ -489,7 +509,10 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                 }
             }
             Message::SearchSubmitted => app.perform_search(),
-            Message::SearchResultsReceived(results) => {
+            Message::SearchResultsReceived(id, results) => {
+                if id != app.search_id {
+                    return Task::none();
+                }
                 app.results = results;
                 app.is_searching = false;
                 app.search_error = None;
@@ -580,7 +603,10 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                 let rx = app.progress_rx.clone();
                 Task::batch(vec![
                     Task::future(async move {
-                        let _ = state.indexer.clear();
+                        if let Err(e) = state.indexer.clear() {
+                            tracing::error!("Failed to clear indexer: {}", e);
+                            return Message::SearchError(FlashError::config("rebuild", e.to_string()));
+                        }
                         let _ = state.indexer.commit();
                         let _ = state.metadata_db.clear();
                         for dir in settings.index_dirs {
@@ -715,6 +741,7 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             Message::RemoveFolder(i) => {
                 if i < app.settings.index_dirs.len() {
                     app.settings.index_dirs.remove(i);
+                    app.save_settings();
                 }
                 Task::none()
             }
@@ -878,20 +905,17 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             }
             Message::PollHotkey => {
                 if let Ok(event) = global_hotkey::GlobalHotKeyEvent::receiver().try_recv() {
-                    // Hotkey pressed, we just log it or toggle search window focus
                     tracing::info!("Global hotkey pressed: {:?}", event);
-                    // To truly bring Iced to front, we'd need to use Iced window commands,
-                    // but since iced 0.13 removed some easy window visibility toggles without IDs,
-                    // we'll just focus the search query for now, or just let OS handle if hooked.
+                    return iced::window::gain_focus(iced::window::Id::unique()).map(|_: ()| Message::NoOp);
                 }
                 Task::none()
             }
             Message::PollTray => {
                 if let Ok(event) = tray_icon::menu::MenuEvent::receiver().try_recv() {
                     if event.id.0 == "quit" {
-                        std::process::exit(0);
+                        crate::SHUTDOWN_FLAG.store(true, std::sync::atomic::Ordering::SeqCst);
                     } else if event.id.0 == "show" {
-                        // TODO: Map to actual window focus task if needed
+                        return iced::window::gain_focus(iced::window::Id::unique()).map(|_: ()| Message::NoOp);
                     }
                 }
                 Task::none()
@@ -908,13 +932,18 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
     }
 }
 
-pub fn subscription(_app: &App) -> Subscription<Message> {
-    let subs = vec![
-        iced::time::every(std::time::Duration::from_millis(100)).map(|_| Message::PollHotkey),
-        iced::time::every(std::time::Duration::from_millis(100)).map(|_| Message::PollTray),
-        iced::time::every(std::time::Duration::from_millis(50))
-            .map(|_| Message::PollSearchDeadline),
+pub fn subscription(app: &App) -> Subscription<Message> {
+    let mut subs = vec![
+        iced::time::every(std::time::Duration::from_millis(200)).map(|_| Message::PollHotkey),
+        iced::time::every(std::time::Duration::from_millis(500)).map(|_| Message::PollTray),
     ];
+
+    if app.search_deadline.is_some() {
+        subs.push(
+            iced::time::every(std::time::Duration::from_millis(50))
+                .map(|_| Message::PollSearchDeadline),
+        );
+    }
 
     Subscription::batch(subs)
 }
@@ -989,7 +1018,7 @@ pub fn run_ui(
         move || {
             let mut app = App::new(state.clone());
             app.progress_rx = Some(progress_mutex.clone());
-            (app, Task::none())
+            (app, Task::done(Message::StartPollingProgress))
         },
         update,
         view,

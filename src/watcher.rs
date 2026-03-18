@@ -19,12 +19,10 @@ pub enum WatcherAction {
 
 /// Manages active file system watching with debouncing
 pub struct WatcherManager {
-    watcher: Option<RecommendedWatcher>,
+    watchers: HashMap<String, RecommendedWatcher>,
     _indexer: Arc<IndexManager>,
     _metadata_db: Arc<MetadataDb>,
     _runtime_handle: tokio::runtime::Handle,
-    // Buffer for pending events: Map<Path, Action>
-    event_buffer: Arc<Mutex<HashMap<PathBuf, WatcherAction>>>,
     external_tx: mpsc::Sender<(PathBuf, WatcherAction)>,
 }
 
@@ -151,11 +149,10 @@ impl WatcherManager {
         });
 
         Self {
-            watcher: None,
+            watchers: HashMap::new(),
             _indexer: indexer,
             _metadata_db: metadata_db,
             _runtime_handle: runtime_handle,
-            event_buffer: buffer,
             external_tx,
         }
     }
@@ -167,54 +164,44 @@ impl WatcherManager {
 
     /// Update the list of watched directories
     pub fn update_watch_list(&mut self, dirs: Vec<String>) -> Result<()> {
-        self.watcher = None;
+        let current_dirs: std::collections::HashSet<String> = dirs.iter().cloned().collect();
+        let existing_dirs: std::collections::HashSet<String> = self.watchers.keys().cloned().collect();
 
-        if dirs.is_empty() {
-            return Ok(());
+        // Remove watchers for directories no longer in the list
+        for dir in existing_dirs.difference(&current_dirs) {
+            self.watchers.remove(dir);
         }
 
-        let buffer_clone = self.event_buffer.clone();
-
-        let mut watcher = notify::recommended_watcher(move |res: notify::Result<Event>| {
-            if let Ok(event) = res {
-                let mut guard = match buffer_clone.lock() {
-                    Ok(g) => g,
-                    Err(e) => {
-                        error!("Watcher lock poisoned: {}", e);
-                        return;
-                    }
-                };
-
-                match event.kind {
-                    EventKind::Modify(_) | EventKind::Create(_) | EventKind::Remove(_) => {
-                        for path in &event.paths {
-                            match event.kind {
-                                EventKind::Remove(_) => {
-                                    guard.insert(path.clone(), WatcherAction::Remove);
-                                }
-                                _ => {
-                                    // Don't check if file exists here - let reindex_single_file handle missing files
-                                    guard.insert(path.clone(), WatcherAction::Index);
-                                }
+        // Add watchers for new directories
+        for dir in current_dirs.difference(&existing_dirs) {
+            let tx = self.external_tx.clone();
+            let mut watcher = notify::recommended_watcher(move |res: notify::Result<Event>| {
+                if let Ok(event) = res {
+                    match event.kind {
+                        EventKind::Modify(_) | EventKind::Create(_) | EventKind::Remove(_) => {
+                            for path in &event.paths {
+                                let action = match event.kind {
+                                    EventKind::Remove(_) => WatcherAction::Remove,
+                                    _ => WatcherAction::Index,
+                                };
+                                let _ = tx.try_send((path.clone(), action));
                             }
                         }
+                        _ => {}
                     }
-                    _ => {}
                 }
-            }
-        })
-        .map_err(|e| FlashError::Io(std::io::Error::other(e)))?;
+            })
+            .map_err(|e| FlashError::Io(std::io::Error::other(e)))?;
 
-        for dir in dirs {
-            let path = Path::new(&dir);
+            let path = Path::new(dir);
             if path.exists() {
                 watcher
                     .watch(path, RecursiveMode::Recursive)
                     .map_err(|e| FlashError::Io(std::io::Error::other(e)))?;
+                self.watchers.insert(dir.clone(), watcher);
             }
         }
 
-        self.watcher = Some(watcher);
         Ok(())
     }
 
@@ -292,11 +279,11 @@ mod tests {
         assert!(watcher
             .update_watch_list(vec![watch_dir.to_string_lossy().to_string()])
             .is_ok());
-        assert!(watcher.watcher.is_some());
+        assert!(!watcher.watchers.is_empty());
 
         // Empty list should remove watcher
         assert!(watcher.update_watch_list(vec![]).is_ok());
-        assert!(watcher.watcher.is_none());
+        assert!(watcher.watchers.is_empty());
     }
 
     #[tokio::test]

@@ -109,8 +109,8 @@ fn main() {
     };
 
     // Keep the lock guard alive for the duration of the program
-    // We can leak it to ensure it stays locked until the process exits
-    std::mem::forget(lock_guard);
+    // We bind it to a variable to ensure it stays locked until the process exits
+    let _lock = lock_guard;
 
     let _guard = init_logging();
 

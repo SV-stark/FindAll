@@ -241,7 +241,9 @@ impl SettingsManager {
         let content = serde_json::to_string_pretty(settings)
             .map_err(|e| FlashError::config("serialize_settings", e.to_string()))?;
 
-        fs::write(&self.path, content).map_err(FlashError::Io)
+        let tmp_path = self.path.with_extension("tmp");
+        fs::write(&tmp_path, content).map_err(FlashError::Io)?;
+        fs::rename(&tmp_path, &self.path).map_err(FlashError::Io)
     }
 }
 

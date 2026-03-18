@@ -231,19 +231,10 @@ impl IndexSearcher {
 
         // Add size filters
         if min_size.is_some() || max_size.is_some() {
-            if let Some(min_val) = min_size {
-                let lower = Term::from_field_u64(self.size_field, min_val);
-                let upper = Term::from_field_u64(self.size_field, u64::MAX);
-                let range = RangeQuery::new(Bound::Included(lower), Bound::Included(upper));
-                combine.push((Occur::Must, Box::new(range)));
-            }
-
-            if let Some(max_val) = max_size {
-                let lower = Term::from_field_u64(self.size_field, 0);
-                let upper = Term::from_field_u64(self.size_field, max_val);
-                let range = RangeQuery::new(Bound::Included(lower), Bound::Included(upper));
-                combine.push((Occur::Must, Box::new(range)));
-            }
+            let lower = Term::from_field_u64(self.size_field, min_size.unwrap_or(0));
+            let upper = Term::from_field_u64(self.size_field, max_size.unwrap_or(u64::MAX));
+            let range = RangeQuery::new(Bound::Included(lower), Bound::Included(upper));
+            combine.push((Occur::Must, Box::new(range)));
         }
 
         // Build file extension filter as a boolean query clause
@@ -384,51 +375,36 @@ impl IndexSearcher {
         }
 
         if terms.len() == 1 {
-            // Single term - try exact first, then fuzzy
+            // Single term - try exact first, then fuzzy across all relevant fields
             let term_text = terms[0];
-            let term = Term::from_field_text(self.content_field, term_text);
-
-            // Try exact match first (higher priority)
-            let exact =
-                tantivy::query::TermQuery::new(term, tantivy::schema::IndexRecordOption::Basic);
-
-            // Add fuzzy variant with edit distance of 2
-            let fuzzy_term = Term::from_field_text(self.content_field, term_text);
-            let fuzzy = FuzzyTermQuery::new(fuzzy_term, 2, true);
-
-            // Combine with OR (exact first)
-            let combined = BooleanQuery::new(vec![
-                (Occur::Should, Box::new(exact)),
-                (Occur::Should, Box::new(fuzzy)),
-            ]);
-
-            Ok(Box::new(combined))
-        } else {
-            // Multiple terms - build fuzzy query for each with AND logic
             let mut subqueries: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::new();
-
-            for term_text in terms {
-                let term = Term::from_field_text(self.content_field, term_text);
-
-                // Exact term query
-                let exact = tantivy::query::TermQuery::new(
-                    term.clone(),
-                    tantivy::schema::IndexRecordOption::Basic,
-                );
-
-                // Fuzzy variant
+            
+            for field in [self.content_field, self.title_field, self.path_field] {
+                let term = Term::from_field_text(field, term_text);
+                let exact = tantivy::query::TermQuery::new(term.clone(), tantivy::schema::IndexRecordOption::Basic);
                 let fuzzy = FuzzyTermQuery::new(term, 2, true);
-
-                // Combine exact and fuzzy for this term
-                let term_query = BooleanQuery::new(vec![
-                    (Occur::Should, Box::new(exact)),
-                    (Occur::Should, Box::new(fuzzy)),
-                ]);
-
-                subqueries.push((Occur::Must, Box::new(term_query)));
+                subqueries.push((Occur::Should, Box::new(exact)));
+                subqueries.push((Occur::Should, Box::new(fuzzy)));
             }
 
             Ok(Box::new(BooleanQuery::new(subqueries)))
+        } else {
+            // Multiple terms - build fuzzy query for each with AND logic
+            let mut and_subqueries: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::new();
+
+            for term_text in terms {
+                let mut term_subqueries: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::new();
+                for field in [self.content_field, self.title_field, self.path_field] {
+                    let term = Term::from_field_text(field, term_text);
+                    let exact = tantivy::query::TermQuery::new(term.clone(), tantivy::schema::IndexRecordOption::Basic);
+                    let fuzzy = FuzzyTermQuery::new(term, 2, true);
+                    term_subqueries.push((Occur::Should, Box::new(exact)));
+                    term_subqueries.push((Occur::Should, Box::new(fuzzy)));
+                }
+                and_subqueries.push((Occur::Must, Box::new(BooleanQuery::new(term_subqueries))));
+            }
+
+            Ok(Box::new(BooleanQuery::new(and_subqueries)))
         }
     }
 

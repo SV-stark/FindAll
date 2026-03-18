@@ -30,7 +30,7 @@ impl IndexWriterManager {
             .unwrap_or_else(|| {
                 // Default calculation: use 5% of system memory, capped at 256MB
                 // This is a heuristic - in production, use sysinfo to get actual memory
-                let mut sys = sysinfo::System::new_all();
+                let mut sys = sysinfo::System::new_with_specifics(sysinfo::RefreshKind::nothing().with_memory(sysinfo::MemoryRefreshKind::everything()));
                 sys.refresh_memory();
                 let system_memory = sys.total_memory() as usize;
 

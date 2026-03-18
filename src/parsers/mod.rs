@@ -40,6 +40,7 @@ pub fn parse_file(path: &Path) -> Result<ParsedDocument> {
     })
 }
 
+
 #[cfg(test)]
 mod tests {
     use super::*;
