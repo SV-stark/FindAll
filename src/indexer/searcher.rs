@@ -224,6 +224,7 @@ impl IndexSearcher {
         let searcher = self.reader.searcher();
 
         // Helper to run query with all filters
+        #[allow(clippy::type_complexity)]
         let run_query = |text_query: Box<dyn tantivy::query::Query>| -> Result<(
             Box<dyn tantivy::query::Query>,
             Vec<(f32, tantivy::DocAddress)>,
