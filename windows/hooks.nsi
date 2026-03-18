@@ -1,50 +1,6 @@
-!macro customInstall
-  # Add the installation directory to the user's PATH environment variable
-  # This allows running 'flash-search' from any terminal
-  
-  DetailPrint "Adding $INSTDIR to User PATH..."
-  
-  # Read current PATH
-  ReadRegStr $0 HKCU "Environment" "Path"
-  
-  # Check if $INSTDIR is already in PATH to avoid duplicates
-  # We use a simple string search
-  Push $0
-  Push "$INSTDIR"
-  Call StrContains
-  Pop $1
-  
-  StrCmp $1 "" 0 +3
-    WriteRegExpandStr HKCU "Environment" "Path" "$0;$INSTDIR"
-    SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
-!macroend
-
-!macro customUninstall
-  # Remove the installation directory from the user's PATH
-  DetailPrint "Removing $INSTDIR from User PATH..."
-  
-  ReadRegStr $0 HKCU "Environment" "Path"
-  
-  # Remove $INSTDIR from PATH - handle both with and without trailing backslash
-  Push $0
-  Push "$INSTDIR;"
-  Call StrReplace
-  Pop $0
-  
-  Push $0
-  Push "$INSTDIR"
-  Call StrReplace
-  Pop $0
-  
-  WriteRegExpandStr HKCU "Environment" "Path" "$0"
-  SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
-
-  DetailPrint "Removing auto-launch registry entry..."
-  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "com.flashsearch"
-!macroend
-
-# Simple StrContains function for NSIS
-Function StrContains
+# Macro to define the functions for either installer or uninstaller
+!macro DEFINE_STR_FUNCTIONS UN
+Function ${UN}StrContains
   Exch $R0 ; string to search for
   Exch
   Exch $R1 ; string to search in
@@ -79,8 +35,7 @@ Function StrContains
     Exch $R1 ; result
 FunctionEnd
 
-# StrReplace function for NSIS - replaces all occurrences of a substring
-Function StrReplace
+Function ${UN}StrReplace
   Exch $R0 ; string to replace
   Exch
   Exch $R1 ; string to search in
@@ -104,11 +59,14 @@ Function StrReplace
     goto replace_loop
     
   found_loop:
-    StrCpy $R5 "$R5"
+    # Append what we've built so far to the result string if we were doing actual replacement
+    # In this specific usage (removing from PATH), we just skip the found part
+    # StrCpy $R5 "$R5" # This is a no-op, just showing logic
     IntOp $R4 $R4 + $R2
     IntCmp $R4 $R3 done_loop replace_loop replace_loop
     
   done_loop:
+    StrCpy $R1 $R5
     Pop $R5
     Pop $R4
     Pop $R3
@@ -116,3 +74,53 @@ Function StrReplace
     Pop $R0
     Exch $R1 ; result in $1
 FunctionEnd
+!macroend
+
+# Define both versions
+!insertmacro DEFINE_STR_FUNCTIONS ""
+!insertmacro DEFINE_STR_FUNCTIONS "un."
+
+!macro customInstall
+  # Add the installation directory to the user's PATH environment variable
+  # This allows running 'flash-search' from any terminal
+  
+  DetailPrint "Adding $INSTDIR to User PATH..."
+  
+  # Read current PATH
+  ReadRegStr $0 HKCU "Environment" "Path"
+  
+  # Check if $INSTDIR is already in PATH to avoid duplicates
+  # We use a simple string search
+  Push $0
+  Push "$INSTDIR"
+  Call StrContains
+  Pop $1
+  
+  StrCmp $1 "" 0 +3
+    WriteRegExpandStr HKCU "Environment" "Path" "$0;$INSTDIR"
+    SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
+!macroend
+
+!macro customUninstall
+  # Remove the installation directory from the user's PATH
+  DetailPrint "Removing $INSTDIR from User PATH..."
+  
+  ReadRegStr $0 HKCU "Environment" "Path"
+  
+  # Remove $INSTDIR from PATH - handle both with and without trailing backslash
+  Push $0
+  Push "$INSTDIR;"
+  Call un.StrReplace
+  Pop $0
+  
+  Push $0
+  Push "$INSTDIR"
+  Call un.StrReplace
+  Pop $0
+  
+  WriteRegExpandStr HKCU "Environment" "Path" "$0"
+  SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
+
+  DetailPrint "Removing auto-launch registry entry..."
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "com.flashsearch"
+!macroend
