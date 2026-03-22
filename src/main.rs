@@ -31,6 +31,8 @@ fn init_logging() -> WorkerGuard {
         .with(fmt::layer().with_writer(std::io::stderr))
         .init();
 
+    log_panics::init();
+
     info!("Flash Search starting up");
 
     // Prune logs older than 30 days

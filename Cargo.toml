@@ -10,7 +10,6 @@ rust-version = "1.75"
 name = "flash_search"
 
 [build-dependencies]
-winres = "0.1"
 
 [dependencies]
 # UI Framework
@@ -27,8 +26,15 @@ tantivy = "0.25"
 redb = "2.1"
 
 # Concurrency & Parallelism
-tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
+tokio = { version = "1", features = [
+    "rt-multi-thread",
+    "sync",
+    "time",
+    "macros",
+] }
 rayon = "1.8"
+parking_lot = "0.12"
+tokio-util = { version = "0.7", features = ["sync"] }
 
 # File System
 notify = "8.2"
@@ -38,19 +44,23 @@ fd-lock = "4.0"
 
 # Document Parsing
 # Simplified with Kreuzberg
-kreuzberg = { version = "4.4.4", features = ["tokio-runtime", "pdf", "ocr"] }
+kreuzberg = { version = "4.5.2", features = ["tokio-runtime", "formats", "ocr", "quality", "language-detection"] }
+
 
 # Performance Libraries
 moka = { version = "0.12", features = ["sync"] }
 fst = "0.4"
 rkyv = { version = "0.8", features = ["bytecheck"] }
 sysinfo = "0.38"
+compact_str = "0.8"
+smallvec = "1.13"
 
 # Utilities
 anyhow = "1.0"
 thiserror = "2.0"
 blake3 = "1.5"
 chrono = { version = "0.4", features = ["serde"] }
+jiff = { version = "0.1", features = ["serde"] }
 dirs = "6.0"
 arboard = "3.4"
 regex = "1"
@@ -62,12 +72,16 @@ auto-launch = "0.6"
 image = { version = "0.25", default-features = false, features = ["png"] }
 global-hotkey = "0.5.0"
 self_update = { version = "0.41", features = ["rustls"] }
+itertools = "0.13"
+strum = { version = "0.26", features = ["derive"] }
+config = "0.14"
 
 # Performance & Observability
 mimalloc = { version = "0.1", default-features = false }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
+log-panics = "2.1"
 
 # calamine, sevenz-rust, and unrar are now redundant or handled by Kreuzberg
 
@@ -77,7 +91,7 @@ windows = { version = "0.58", features = [
     "Win32_Foundation",
     "Win32_Storage_FileSystem",
     "Win32_System_Ioctl",
-    "Win32_System_IO"
+    "Win32_System_IO",
 ] }
 
 [dev-dependencies]
