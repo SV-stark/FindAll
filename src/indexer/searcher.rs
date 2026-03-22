@@ -4,7 +4,6 @@ use itertools::Itertools;
 use moka::sync::Cache;
 use serde::{Deserialize, Serialize};
 use std::ops::Bound;
-use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 use tantivy::collector::TopDocs;
 use tantivy::query::{BooleanQuery, FuzzyTermQuery, Occur, QueryParser, RangeQuery};
@@ -17,6 +16,8 @@ use tantivy::{Index, IndexReader, ReloadPolicy, TantivyDocument};
 const MAX_CACHE_SIZE: usize = 100;
 /// Cache TTL in seconds
 const CACHE_TTL_SECS: u64 = 30;
+
+static PHRASE_REGEX: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
 
 #[derive(Serialize, Deserialize, Debug, Clone, bon::Builder)]
 pub struct SearchResult {
@@ -56,6 +57,7 @@ pub(crate) struct CacheKey {
     min_size: Option<u64>,
     max_size: Option<u64>,
     extensions: Option<Vec<String>>,
+    case_sensitive: bool,
 }
 
 /// LRU-style query result cache using moka + ahash
@@ -176,6 +178,7 @@ impl IndexSearcher {
         min_size: Option<u64>,
         max_size: Option<u64>,
         file_extensions: Option<&[String]>,
+        case_sensitive: bool,
     ) -> Result<Vec<SearchResult>> {
         let query_owned = query.to_string();
         let extensions_owned = file_extensions.map(|e| e.to_vec());
@@ -189,6 +192,7 @@ impl IndexSearcher {
                 min_size,
                 max_size,
                 extensions_owned.as_deref(),
+                case_sensitive,
             )
         })
         .await
@@ -203,6 +207,7 @@ impl IndexSearcher {
         min_size: Option<u64>,
         max_size: Option<u64>,
         file_extensions: Option<&[String]>,
+        case_sensitive: bool,
     ) -> Result<Vec<SearchResult>> {
         use super::query_parser::{extract_highlight_terms, ParsedQuery};
 
@@ -213,6 +218,7 @@ impl IndexSearcher {
             min_size,
             max_size,
             extensions: file_extensions.map(|e| e.to_vec()),
+            case_sensitive,
         };
 
         // Check cache first
@@ -220,8 +226,8 @@ impl IndexSearcher {
             return Ok(cached);
         }
 
-        let parsed = ParsedQuery::new(query);
-        let highlight_terms = extract_highlight_terms(query);
+        let parsed = ParsedQuery::new(query, case_sensitive);
+        let highlight_terms = extract_highlight_terms(query, case_sensitive);
 
         let searcher = self.reader.searcher();
 
@@ -288,7 +294,6 @@ impl IndexSearcher {
         let (mut final_query, mut top_docs) = run_query(exact_query)?;
 
         // TIER 2: Fuzzy Fallback
-        static PHRASE_REGEX: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
         let phrase_regex = PHRASE_REGEX.get_or_init(|| regex::Regex::new(r#""([^"]+)""#).unwrap());
 
         if top_docs.len() < limit
@@ -408,7 +413,6 @@ impl IndexSearcher {
     /// Build a fuzzy query for better typo tolerance
     fn build_fuzzy_query(&self, text_query: &str) -> Result<Box<dyn tantivy::query::Query>> {
         // Check if it's a phrase query (contains quoted strings)
-        static PHRASE_REGEX: OnceLock<regex::Regex> = OnceLock::new();
         let phrase_regex = PHRASE_REGEX.get_or_init(|| regex::Regex::new(r#""([^"]+)""#).unwrap());
 
         if phrase_regex.is_match(text_query) {
@@ -587,6 +591,7 @@ mod tests {
             min_size: None,
             max_size: None,
             extensions: None,
+            case_sensitive: false,
         };
         let key2 = CacheKey {
             query: "test".to_string(),
@@ -594,6 +599,7 @@ mod tests {
             min_size: None,
             max_size: None,
             extensions: None,
+            case_sensitive: false,
         };
         assert_eq!(key1, key2);
 
@@ -613,6 +619,7 @@ mod tests {
             min_size: None,
             max_size: None,
             extensions: None,
+            case_sensitive: false,
         };
         let results = vec![SearchResult::builder()
             .file_path("path".to_string())
@@ -635,6 +642,7 @@ mod tests {
             min_size: None,
             max_size: None,
             extensions: None,
+            case_sensitive: false,
         };
         cache.insert(key.clone(), vec![]);
         cache.invalidate();

@@ -49,6 +49,7 @@ pub struct Scanner {
     filename_index: Option<Arc<crate::indexer::filename_index::FilenameIndex>>,
     progress_tx: Option<mpsc::Sender<ProgressEvent>>,
     settings: crate::settings::AppSettings,
+    pool: Arc<rayon::ThreadPool>,
 }
 
 impl Scanner {
@@ -59,12 +60,25 @@ impl Scanner {
         progress_tx: Option<mpsc::Sender<ProgressEvent>>,
         settings: crate::settings::AppSettings,
     ) -> Self {
+        let threads = settings.indexing_threads as usize;
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(threads)
+            .stack_size(8 * 1024 * 1024)
+            .build()
+            .unwrap_or_else(|_| {
+                rayon::ThreadPoolBuilder::new()
+                    .stack_size(8 * 1024 * 1024)
+                    .build()
+                    .unwrap()
+            });
+
         Self {
             indexer,
             metadata_db,
             filename_index,
             progress_tx,
             settings,
+            pool: Arc::new(pool),
         }
     }
 
@@ -130,25 +144,20 @@ impl Scanner {
         let progress_tx_clone = self.progress_tx.clone();
         let total_files = total.clone();
 
-        // Configure Rayon thread pool based on settings limit
-        let threads = self.settings.indexing_threads as usize;
-        let pool = rayon::ThreadPoolBuilder::new()
-            .num_threads(threads)
-            .stack_size(8 * 1024 * 1024) // Increase stack size to 8MB to prevent overflow during parsing
-            .build()
-            .unwrap_or_else(|_| {
-                rayon::ThreadPoolBuilder::new()
-                    .stack_size(8 * 1024 * 1024)
-                    .build()
-                    .unwrap()
-            });
         let file_size_limit_mb = self.settings.index_file_size_limit_mb;
-        let allowed_extensions = Arc::new(self.settings.get_allowed_extensions());
+        let allowed_extensions: Arc<std::collections::HashSet<String>> = Arc::new(
+            self.settings
+                .get_allowed_extensions()
+                .into_iter()
+                .map(|e| e.to_lowercase())
+                .collect(),
+        );
         let allowed_extensions_clone = allowed_extensions.clone();
 
         // --- Stage 2a: Parallel parsing (Rayon) → sends IndexTask into channel ---
+        let pool = self.pool.clone();
         let parser_handle = tokio::task::spawn_blocking(move || {
-            info!("Stage 2a: Parallel Parsing ({} threads)", threads);
+            info!("Stage 2a: Parallel Parsing");
 
             pool.install(|| {
                 let mut chunk = Vec::with_capacity(200);
@@ -233,8 +242,8 @@ impl Scanner {
                     if let Some(tx) = &progress_tx_clone {
                         let _ = tx.try_send(ProgressEvent {
                             ptype: ProgressType::Content,
-                            current_file: "".to_string(),
-                            current_folder: "".to_string(),
+                            current_file: String::new(),
+                            current_folder: String::new(),
                             processed,
                             total: current_total,
                             status: "Indexing contents...".to_string(),
@@ -261,8 +270,8 @@ impl Scanner {
             if let Some(tx) = &progress_tx_clone {
                 let _ = tx.try_send(ProgressEvent {
                     ptype: ProgressType::Content,
-                    current_file: "".to_string(),
-                    current_folder: "".to_string(),
+                    current_file: String::new(),
+                    current_folder: String::new(),
                     processed,
                     total: processed,
                     status: "All files indexed".to_string(),
@@ -309,16 +318,15 @@ impl Scanner {
         let mut valid_paths = Vec::with_capacity(chunk.len());
 
         for path in chunk {
-            // Check file extension
             if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                if !allowed_extensions.contains(&ext.to_lowercase()) {
+                let ext_lower = ext.to_ascii_lowercase();
+                if !allowed_extensions.contains(&ext_lower) {
                     continue;
                 }
             } else {
                 // If the file doesn't have an extension, we skip it by default
                 continue;
             }
-
             let metadata = match std::fs::metadata(path) {
                 Ok(m) => m,
                 Err(_) => continue,

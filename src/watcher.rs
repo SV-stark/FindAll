@@ -192,13 +192,13 @@ impl WatcherManager {
                     }
                 }
             })
-            .map_err(|e| FlashError::Io(std::io::Error::other(e)))?;
+            .map_err(|e| FlashError::Io(std::sync::Arc::new(std::io::Error::other(e))))?;
 
             let path = Path::new(dir);
             if path.exists() {
                 watcher
                     .watch(path, RecursiveMode::Recursive)
-                    .map_err(|e| FlashError::Io(std::io::Error::other(e)))?;
+                    .map_err(|e| FlashError::Io(std::sync::Arc::new(std::io::Error::other(e))))?;
                 self.watchers.insert(dir.clone(), watcher);
             }
         }

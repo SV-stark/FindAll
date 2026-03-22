@@ -19,14 +19,15 @@ pub struct ParsedQuery {
     pub max_size: Option<u64>,
     /// Whether fuzzy matching is enabled
     pub fuzzy: bool,
+    pub case_sensitive: bool,
 }
 
 impl ParsedQuery {
-    pub fn new(query: &str) -> Self {
-        Self::parse(query)
+    pub fn new(query: &str, case_sensitive: bool) -> Self {
+        Self::parse(query, case_sensitive)
     }
 
-    fn parse(input: &str) -> Self {
+    fn parse(input: &str, case_sensitive: bool) -> Self {
         let mut extension = None;
         let mut path_filter = None;
         let mut title_filter = None;
@@ -65,13 +66,21 @@ impl ParsedQuery {
                     }
                 }
                 "path" => {
-                    path_filter = Some(value.to_lowercase());
+                    path_filter = Some(if case_sensitive {
+                        value
+                    } else {
+                        value.to_lowercase()
+                    });
                     if let Some(m) = cap.get(0) {
                         remaining = remaining.replace(m.as_str(), "");
                     }
                 }
                 "title" => {
-                    title_filter = Some(value.to_lowercase());
+                    title_filter = Some(if case_sensitive {
+                        value
+                    } else {
+                        value.to_lowercase()
+                    });
                     if let Some(m) = cap.get(0) {
                         remaining = remaining.replace(m.as_str(), "");
                     }
@@ -133,6 +142,7 @@ impl ParsedQuery {
             min_size,
             max_size,
             fuzzy,
+            case_sensitive,
         }
     }
 
@@ -149,7 +159,11 @@ impl ParsedQuery {
     /// Check if a path matches the path filter
     pub fn matches_path(&self, path: &str) -> bool {
         if let Some(ref filter) = self.path_filter {
-            path.to_lowercase().contains(filter)
+            if self.case_sensitive {
+                path.contains(filter)
+            } else {
+                path.to_lowercase().contains(filter)
+            }
         } else {
             true
         }
@@ -159,7 +173,11 @@ impl ParsedQuery {
     pub fn matches_title(&self, title: Option<&str>) -> bool {
         if let Some(ref filter) = self.title_filter {
             if let Some(t) = title {
-                t.to_lowercase().contains(filter)
+                if self.case_sensitive {
+                    t.contains(filter)
+                } else {
+                    t.to_lowercase().contains(filter)
+                }
             } else {
                 false
             }
@@ -170,14 +188,14 @@ impl ParsedQuery {
 }
 
 /// Extract search terms for highlighting from a query
-pub fn extract_highlight_terms(query: &str) -> Vec<String> {
-    let parsed = ParsedQuery::new(query);
+pub fn extract_highlight_terms(query: &str, case_sensitive: bool) -> Vec<String> {
+    let parsed = ParsedQuery::new(query, case_sensitive);
 
     let mut terms: Vec<String> = parsed
         .text_query
         .split_whitespace()
         .filter(|t| *t != "*")
-        .map(|t| t.to_lowercase())
+        .map(|t| if case_sensitive { t.to_string() } else { t.to_lowercase() })
         .collect();
 
     if terms.is_empty() && parsed.text_query == "*" {
@@ -199,7 +217,7 @@ mod tests {
     #[test]
     fn test_parse_ext_operator() {
         let query = "ext:pdf report";
-        let parsed = ParsedQuery::new(query);
+        let parsed = ParsedQuery::new(query, false);
         assert_eq!(parsed.extension, Some("pdf".to_string()));
         assert_eq!(parsed.text_query, "report");
     }
@@ -207,7 +225,7 @@ mod tests {
     #[test]
     fn test_parse_path_operator() {
         let query = "path:documents important";
-        let parsed = ParsedQuery::new(query);
+        let parsed = ParsedQuery::new(query, false);
         assert_eq!(parsed.path_filter, Some("documents".to_string()));
         assert_eq!(parsed.text_query, "important");
     }
@@ -215,7 +233,7 @@ mod tests {
     #[test]
     fn test_parse_size_operators() {
         let query = "size:>1MB document";
-        let parsed = ParsedQuery::new(query);
+        let parsed = ParsedQuery::new(query, false);
         assert_eq!(parsed.min_size, Some(1048576));
         assert_eq!(parsed.text_query, "document");
     }
@@ -223,7 +241,7 @@ mod tests {
     #[test]
     fn test_multiple_operators() {
         let query = "ext:pdf path:reports annual size:<10MB";
-        let parsed = ParsedQuery::new(query);
+        let parsed = ParsedQuery::new(query, false);
         assert_eq!(parsed.extension, Some("pdf".to_string()));
         assert_eq!(parsed.path_filter, Some("reports".to_string()));
         assert_eq!(parsed.max_size, Some(10485760));
@@ -232,7 +250,7 @@ mod tests {
 
     #[test]
     fn test_matches_extension() {
-        let parsed = ParsedQuery::new("ext:pdf");
+        let parsed = ParsedQuery::new("ext:pdf", false);
         assert!(parsed.matches_extension("file.pdf"));
         assert!(parsed.matches_extension("FILE.PDF"));
         assert!(!parsed.matches_extension("file.txt"));
@@ -240,14 +258,14 @@ mod tests {
 
     #[test]
     fn test_matches_path() {
-        let parsed = ParsedQuery::new("path:reports");
+        let parsed = ParsedQuery::new("path:reports", false);
         assert!(parsed.matches_path("/home/user/reports/annual.pdf"));
         assert!(!parsed.matches_path("/home/user/documents/annual.pdf"));
     }
 
     #[test]
     fn test_matches_title() {
-        let parsed = ParsedQuery::new("title:annual");
+        let parsed = ParsedQuery::new("title:annual", false);
         assert!(parsed.matches_title(Some("Annual Report")));
         assert!(!parsed.matches_title(Some("Monthly Report")));
         assert!(!parsed.matches_title(None));
@@ -255,7 +273,7 @@ mod tests {
 
     #[test]
     fn test_extract_highlight_terms() {
-        let terms = extract_highlight_terms("ext:pdf report title:annual");
+        let terms = extract_highlight_terms("ext:pdf report title:annual", false);
         assert!(terms.contains(&"report".to_string()));
         assert!(terms.contains(&"annual".to_string()));
     }

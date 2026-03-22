@@ -42,8 +42,10 @@ pub struct AppSettings {
     #[serde(default)]
     pub whole_word: bool,
     pub default_filters: DefaultFilters,
-    pub recent_searches: Option<Vec<String>>,
-    pub search_history: Option<Vec<SearchHistoryItem>>,
+    #[serde(default)]
+    pub recent_searches: Vec<String>,
+    #[serde(default)]
+    pub search_history: Vec<SearchHistoryItem>,
     pub filename_index_enabled: bool,
 
     // Appearance
@@ -150,8 +152,8 @@ impl Default for AppSettings {
             case_sensitive: false,
             whole_word: false,
             default_filters: DefaultFilters::default(),
-            recent_searches: Some(vec![]),
-            search_history: Some(vec![]),
+            recent_searches: vec![],
+            search_history: vec![],
             filename_index_enabled: true,
 
             // Appearance
@@ -230,8 +232,8 @@ impl SettingsManager {
             .map_err(|e| FlashError::config("serialize_settings", e.to_string()))?;
 
         let tmp_path = self.path.with_extension("tmp");
-        fs::write(&tmp_path, content).map_err(FlashError::Io)?;
-        fs::rename(&tmp_path, &self.path).map_err(FlashError::Io)
+        fs::write(&tmp_path, content).map_err(|e| FlashError::Io(std::sync::Arc::new(e)))?;
+        fs::rename(&tmp_path, &self.path).map_err(|e| FlashError::Io(std::sync::Arc::new(e)))
     }
 }
 

@@ -33,7 +33,7 @@ pub fn get_icon_char(name: &str) -> char {
         "database" => '\u{e0ad}',
         "star" => '\u{e176}',
         _ => {
-            eprintln!("icon '{}' not found", name);
+            tracing::warn!("icon '{}' not found", name);
             '\u{003f}' // Question mark as fallback
         }
     }

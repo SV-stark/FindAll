@@ -1,12 +1,13 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 use thiserror::Error;
 
 pub use anyhow::Context;
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum FlashError {
     #[error("IO error: {0}")]
-    Io(std::io::Error),
+    Io(Arc<std::io::Error>),
 
     #[error("Parse error in {path}: {cause}")]
     Parse { path: PathBuf, cause: String },
@@ -55,73 +56,9 @@ pub enum FlashError {
     },
 }
 
-impl Clone for FlashError {
-    fn clone(&self) -> Self {
-        match self {
-            Self::Io(e) => Self::Io(std::io::Error::new(e.kind(), e.to_string())),
-            Self::Parse { path, cause } => Self::Parse {
-                path: path.clone(),
-                cause: cause.clone(),
-            },
-            Self::Index { msg, field } => Self::Index {
-                msg: msg.clone(),
-                field: field.clone(),
-            },
-            Self::Database {
-                operation,
-                key,
-                cause,
-            } => Self::Database {
-                operation: operation.clone(),
-                key: key.clone(),
-                cause: cause.clone(),
-            },
-            Self::UnsupportedFormat { format, extension } => Self::UnsupportedFormat {
-                format: format.clone(),
-                extension: extension.clone(),
-            },
-            Self::CorruptedFile { path, operation } => Self::CorruptedFile {
-                path: path.clone(),
-                operation: operation.clone(),
-            },
-            Self::Search { query, cause } => Self::Search {
-                query: query.clone(),
-                cause: cause.clone(),
-            },
-            Self::Config { key, cause } => Self::Config {
-                key: key.clone(),
-                cause: cause.clone(),
-            },
-            Self::Archive {
-                archive_type,
-                operation,
-                cause,
-            } => Self::Archive {
-                archive_type: archive_type.clone(),
-                operation: operation.clone(),
-                cause: cause.clone(),
-            },
-            Self::PoisonedLock { lock_name } => Self::PoisonedLock {
-                lock_name: lock_name.clone(),
-            },
-            Self::NotFound {
-                resource,
-                identifier,
-            } => Self::NotFound {
-                resource: resource.clone(),
-                identifier: identifier.clone(),
-            },
-            Self::WithContext { context, source } => Self::WithContext {
-                context: context.clone(),
-                source: source.clone(),
-            },
-        }
-    }
-}
-
 impl From<std::io::Error> for FlashError {
     fn from(e: std::io::Error) -> Self {
-        FlashError::Io(e)
+        FlashError::Io(Arc::new(e))
     }
 }
 

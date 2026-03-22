@@ -42,6 +42,7 @@ pub struct AppState {
     pub filename_index: Option<Arc<FilenameIndex>>,
     pub progress_tx: mpsc::Sender<crate::scanner::ProgressEvent>,
     pub scanner: Arc<crate::scanner::Scanner>,
+    pub indexing_handle: Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
 #[bon::bon]
@@ -68,14 +69,31 @@ impl AppState {
             filename_index,
             progress_tx,
             scanner,
+            indexing_handle: Mutex::new(None),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::indexer::searcher::SearchResult;
+    use tempfile::tempdir;
+
     #[test]
     fn test_export_csv() {
-        // Basic test placeholder
+        let temp_dir = tempdir().unwrap();
+        let csv_path = temp_dir.path().join("test.csv");
+        let results = vec![SearchResult::builder()
+            .file_path("test.txt".to_string())
+            .score(1.0)
+            .matched_terms(vec![])
+            .snippets(vec![])
+            .build()];
+
+        export_results_csv(&results, csv_path.to_str().unwrap()).unwrap();
+        let content = std::fs::read_to_string(csv_path).unwrap();
+        assert!(content.contains("Score,File Path,Title"));
+        assert!(content.contains("1,test.txt,"));
     }
 }

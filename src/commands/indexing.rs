@@ -1,44 +1,61 @@
 use crate::commands::AppState;
 use crate::indexer::searcher::IndexStatistics;
 use crate::models::{IndexStatus, RecentFile};
-use crate::scanner::Scanner;
-use std::path::PathBuf; // Added this line
+use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::error;
 
 pub async fn start_indexing_internal(path: String, state: Arc<AppState>) -> Result<(), String> {
-    let path = PathBuf::from(path); // Modified this line
-    let indexer = state.indexer.clone();
-    let metadata_db = state.metadata_db.clone();
-    let settings = state.settings_manager.load().unwrap_or_default();
-
-    let mut exclude_patterns = settings.exclude_patterns.clone();
-    for folder in &settings.exclude_folders {
-        exclude_patterns.push(folder.clone());
+    let path = PathBuf::from(path);
+    let mut handle_guard = state.indexing_handle.lock();
+    
+    // Abort previous indexing if still running
+    if let Some(handle) = handle_guard.take() {
+        handle.abort();
     }
 
-    let progress_tx = state.progress_tx.clone();
+    let state_clone = state.clone();
+    let handle = tokio::spawn(async move {
+        let mut exclude_patterns = state_clone.settings_cache.read().exclude_patterns.clone();
+        for folder in &state_clone.settings_cache.read().exclude_folders {
+            exclude_patterns.push(folder.clone());
+        }
 
-    tokio::spawn(async move {
-        let scanner = Scanner::new(
-            indexer,
-            metadata_db,
-            state.filename_index.clone(),
-            Some(progress_tx),
-            settings,
-        );
-        if let Err(e) = scanner.scan_directory(path, exclude_patterns).await {
+        if let Err(e) = state_clone.scanner.scan_directory(path, exclude_patterns).await {
             error!("Indexing error: {}", e);
         }
     });
 
+    *handle_guard = Some(handle);
     Ok(())
 }
 
-pub async fn get_index_status_internal() -> Result<IndexStatus, String> {
+pub async fn get_index_status_internal(state: &Arc<AppState>) -> Result<IndexStatus, String> {
+    let is_running = {
+        let mut handle_guard = state.indexing_handle.lock();
+        if let Some(handle) = &*handle_guard {
+            if handle.is_finished() {
+                *handle_guard = None;
+                false
+            } else {
+                true
+            }
+        } else {
+            false
+        }
+    };
+
+    let status = if is_running {
+        "indexing".to_string()
+    } else {
+        "idle".to_string()
+    };
+
+    let stats = state.indexer.get_statistics().map_err(|e| e.to_string())?;
+
     Ok(IndexStatus {
-        status: "idle".to_string(),
-        files_indexed: 0,
+        status,
+        files_indexed: stats.total_documents,
     })
 }
 

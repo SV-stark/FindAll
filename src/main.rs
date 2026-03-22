@@ -7,23 +7,21 @@ use tracing::{error, info};
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
-use tracing_appender::non_blocking::WorkerGuard;
-use tracing_appender::rolling::{RollingFileAppender, Rotation};
+use tracing_appender::rolling;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
-fn init_logging() -> WorkerGuard {
-    let log_dir = dirs::data_local_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("com.flashsearch")
-        .join("logs");
-
+fn init_logging(app_data_dir: &std::path::Path) {
+    let log_dir = app_data_dir.join("logs");
     std::fs::create_dir_all(&log_dir).ok();
 
-    let file_appender = RollingFileAppender::new(Rotation::DAILY, &log_dir, "flash-search.log");
+    let file_appender = rolling::daily(&log_dir, "flash-search.log");
+    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
 
-    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+    // Keep the guard alive for the lifetime of the program
+    Box::leak(Box::new(_guard));
 
-    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let env_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("flash_search=info,kreuzberg=info"));
 
     tracing_subscriber::registry()
         .with(env_filter)
@@ -37,22 +35,17 @@ fn init_logging() -> WorkerGuard {
 
     // Prune logs older than 30 days
     prune_old_logs(&log_dir);
-
-    guard
 }
 
 fn prune_old_logs(log_dir: &std::path::Path) {
-    if let Ok(entries) = std::fs::read_dir(log_dir) {
-        let now = std::time::SystemTime::now();
-        let max_age = std::time::Duration::from_secs(30 * 24 * 60 * 60);
+    let thirty_days_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(30 * 24 * 3600);
 
+    if let Ok(entries) = std::fs::read_dir(log_dir) {
         for entry in entries.flatten() {
             if let Ok(metadata) = entry.metadata() {
                 if let Ok(modified) = metadata.modified() {
-                    if let Ok(age) = now.duration_since(modified) {
-                        if age > max_age {
-                            let _ = std::fs::remove_file(entry.path());
-                        }
+                    if modified < thirty_days_ago {
+                        let _ = std::fs::remove_file(entry.path());
                     }
                 }
             }
@@ -61,7 +54,7 @@ fn prune_old_logs(log_dir: &std::path::Path) {
 }
 
 fn spawn_update_checker() {
-    std::thread::spawn(|| {
+    tokio::task::spawn_blocking(|| {
         tracing::info!("Checking for updates...");
         // Placeholder repo config for self_update
         let result = self_update::backends::github::Update::configure()
@@ -77,8 +70,6 @@ fn spawn_update_checker() {
                 Ok(status) => {
                     if status.updated() {
                         tracing::info!("Updated to version: {}", status.version());
-                    } else {
-                        tracing::info!("Flash Search is up to date.");
                     }
                 }
                 Err(e) => tracing::warn!("Update check failed: {}", e),
@@ -99,64 +90,19 @@ fn main() {
         .create(true)
         .truncate(true)
         .open(&lock_path)
-        .expect("Could not open lock file");
+        .expect("Failed to open lock file");
 
     let mut lock = fd_lock::RwLock::new(lock_file);
-    let lock_guard = match lock.try_write() {
-        Ok(guard) => guard,
-        Err(_) => {
-            eprintln!("Flash Search is already running.");
-            std::process::exit(1);
-        }
-    };
+    if lock.try_write().is_err() {
+        // App is already running - just exit
+        // In a real app, we might want to signal the existing instance to show itself
+        std::process::exit(0);
+    }
 
-    // Keep the lock guard alive for the duration of the program
-    // We bind it to a variable to ensure it stays locked until the process exits
-    let _lock = lock_guard;
-
-    let _guard = init_logging();
-
+    init_logging(&app_dir);
     spawn_update_checker();
 
-    let args: Vec<String> = std::env::args().collect();
-
-    if args.iter().any(|arg| arg == "--version" || arg == "-V") {
-        println!("flash-search {}", env!("CARGO_PKG_VERSION"));
-        return;
-    }
-
-    // We must create a tokio runtime for background tasks (like Watcher), but we CANNOT
-    // use #[tokio::main] because Iced uses winit to hijack the main thread and blocks it.
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .unwrap();
-    let _rt_guard = rt.enter();
-
-    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
-        println!("Flash Search - Ultrafast local full-text search\n");
-        println!("Usage: flash-search [OPTIONS]");
-        println!("Options:");
-        println!("  -V, --version       Print version");
-        println!("  -h, --help          Print help");
-        println!("  -c, --cli <query>   Perform a search from the command line");
-        println!("  --json              Output CLI search results as JSON");
-        return;
-    }
-
-    if args.iter().any(|arg| arg == "--cli" || arg == "-c") {
-        let query_index = args.iter().position(|a| a == "--cli" || a == "-c").unwrap();
-        let query = args.get(query_index + 1).cloned();
-        let is_json = args.iter().any(|a| a == "--json");
-
-        rt.block_on(async {
-            if let Err(e) = flash_search::run_cli(query, is_json, None).await {
-                error!("CLI Error: {}", e);
-            }
-        });
-        return;
-    }
-
+    // Set up graceful shutdown
     ctrlc::set_handler(|| {
         info!("Shutdown signal received, committing index...");
         flash_search::SHUTDOWN_FLAG.store(true, Ordering::SeqCst);

@@ -28,7 +28,7 @@ fn read_schema_version(index_path: &Path) -> Option<String> {
 }
 
 fn write_schema_version(index_path: &Path, version: &str) -> Result<()> {
-    std::fs::write(get_schema_version_path(index_path), version).map_err(FlashError::Io)
+    std::fs::write(get_schema_version_path(index_path), version).map_err(|e| FlashError::Io(std::sync::Arc::new(e)))
 }
 
 /// Central manager for the Tantivy search index
@@ -46,7 +46,7 @@ impl IndexManager {
 
         // Ensure directory exists
         if !index_path.exists() {
-            std::fs::create_dir_all(index_path).map_err(FlashError::Io)?;
+            std::fs::create_dir_all(index_path).map_err(|e| FlashError::Io(std::sync::Arc::new(e)))?;
         }
 
         // Check schema version - if mismatch, rebuild index
@@ -61,8 +61,8 @@ impl IndexManager {
                 let backup_path = index_path.with_extension("backup");
                 let _ = std::fs::remove_dir_all(&backup_path); // Remove old backup if exists
                 let _ = copy_dir(index_path, &backup_path); // Try to backup
-                std::fs::remove_dir_all(index_path).map_err(FlashError::Io)?;
-                std::fs::create_dir_all(index_path).map_err(FlashError::Io)?;
+                std::fs::remove_dir_all(index_path).map_err(|e| FlashError::Io(std::sync::Arc::new(e)))?;
+                std::fs::create_dir_all(index_path).map_err(|e| FlashError::Io(std::sync::Arc::new(e)))?;
                 write_schema_version(index_path, SCHEMA_VERSION)?;
             }
         } else if index_path.join("meta.json").exists() {
@@ -72,8 +72,8 @@ impl IndexManager {
             let backup_path = index_path.with_extension("backup");
             let _ = std::fs::remove_dir_all(&backup_path); // Remove old backup if exists
             let _ = copy_dir(index_path, &backup_path); // Try to backup
-            std::fs::remove_dir_all(index_path).map_err(FlashError::Io)?;
-            std::fs::create_dir_all(index_path).map_err(FlashError::Io)?;
+            std::fs::remove_dir_all(index_path).map_err(|e| FlashError::Io(std::sync::Arc::new(e)))?;
+            std::fs::create_dir_all(index_path).map_err(|e| FlashError::Io(std::sync::Arc::new(e)))?;
             write_schema_version(index_path, SCHEMA_VERSION)?;
         } else {
             // New index - write version
@@ -101,8 +101,8 @@ impl IndexManager {
 
                     // Close the directory/files if needed? MmapDirectory handles it.
                     // Wipe and start over
-                    std::fs::remove_dir_all(index_path).map_err(FlashError::Io)?;
-                    std::fs::create_dir_all(index_path).map_err(FlashError::Io)?;
+                    std::fs::remove_dir_all(index_path).map_err(|e| FlashError::Io(std::sync::Arc::new(e)))?;
+                    std::fs::create_dir_all(index_path).map_err(|e| FlashError::Io(std::sync::Arc::new(e)))?;
                     write_schema_version(index_path, SCHEMA_VERSION)?;
 
                     let new_directory = MmapDirectory::open(index_path).map_err(|e| {
@@ -163,15 +163,16 @@ impl IndexManager {
 
     /// Search the index (async with caching)
     pub async fn search(
-        &self,
+        self: &Arc<Self>,
         query: &str,
         limit: usize,
         min_size: Option<u64>,
         max_size: Option<u64>,
         file_extensions: Option<&[String]>,
+        case_sensitive: bool,
     ) -> Result<Vec<SearchResult>> {
         self.searcher
-            .search(query, limit, min_size, max_size, file_extensions)
+            .search(query, limit, min_size, max_size, file_extensions, case_sensitive)
             .await
     }
 

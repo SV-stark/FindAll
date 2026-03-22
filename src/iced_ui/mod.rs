@@ -9,7 +9,6 @@ use crate::scanner::ProgressEvent;
 use crate::settings::AppSettings;
 use compact_str::CompactString;
 use iced::{Element, Subscription, Task};
-use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -89,11 +88,11 @@ pub fn format_size(bytes: u64) -> String {
 }
 
 pub fn format_date(timestamp: u64) -> String {
-    use chrono::{DateTime, Local};
-    let native = DateTime::from_timestamp(timestamp as i64, 0)
-        .unwrap_or_else(|| DateTime::from_timestamp(0, 0).unwrap());
-    let local: DateTime<Local> = DateTime::from(native);
-    local.format("%Y/%m/%d").to_string()
+    jiff::Timestamp::from_second(timestamp as i64)
+        .unwrap_or_else(|_| jiff::Timestamp::from_second(0).unwrap())
+        .to_zoned(jiff::tz::TimeZone::system())
+        .strftime("%Y/%m/%d")
+        .to_string()
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -107,6 +106,7 @@ pub enum Message {
     SearchQueryChanged(String),
     SearchSubmitted,
     SearchResultsReceived(u64, Vec<FileItem>),
+    DebouncedSearch(u64),
     SearchError(FlashError),
     ResultSelected(usize),
     ItemHovered(Option<usize>),
@@ -151,7 +151,7 @@ pub enum Message {
     ToggleAutoStart(bool),
     ToggleContextMenu(bool),
     PollHotkey,
-    PollSearchDeadline,
+    WindowIdCaptured(iced::window::Id),
     NotImplemented(String),
     MaxResultsChanged(String),
     ExcludePatternsChanged(String),
@@ -176,7 +176,7 @@ pub struct App {
     is_dark: bool,
     search_mode: SearchMode,
     filter_extension: String,
-    filter_extensions: HashSet<String>,
+    filter_extensions: ahash::AHashSet<String>,
     min_size: String,
     max_size: String,
     size_unit: String,
@@ -188,9 +188,47 @@ pub struct App {
     progress_rx: Option<Arc<tokio::sync::Mutex<mpsc::Receiver<ProgressEvent>>>>,
     tray_icon: Option<tray_icon::TrayIcon>,
     hotkey_manager: Option<global_hotkey::GlobalHotKeyManager>,
-    search_deadline: Option<std::time::Instant>,
     pub context_menu_index: Option<usize>,
     search_id: u64,
+    window_id: Option<iced::window::Id>,
+}
+
+impl Default for App {
+    fn default() -> Self {
+        Self {
+            state: None,
+            error: None,
+            search_error: None,
+            search_query: String::new(),
+            results: Vec::new(),
+            selected_index: None,
+            hovered_item_index: None,
+            is_searching: false,
+            sidebar_collapsed: false,
+            settings: AppSettings::default(),
+            active_tab: Tab::Search,
+            files_indexed: 0,
+            index_size: "0 MB".to_string(),
+            is_dark: true,
+            search_mode: SearchMode::FullText,
+            filter_extension: String::new(),
+            filter_extensions: ahash::AHashSet::default(),
+            min_size: String::new(),
+            max_size: String::new(),
+            size_unit: "MB".to_string(),
+            filter_size: String::new(),
+            preview_result: None,
+            is_loading_preview: false,
+            rebuild_progress: None,
+            rebuild_status: None,
+            progress_rx: None,
+            tray_icon: crate::system::tray::create_tray_icon().ok(),
+            hotkey_manager: None,
+            context_menu_index: None,
+            search_id: 0,
+            window_id: None,
+        }
+    }
 }
 
 use iced::widget::Id;
@@ -212,36 +250,11 @@ impl App {
 
                 let mut app = App {
                     state: Some(state),
-                    error: None,
-                    search_error: None,
-                    search_query: String::new(),
-                    results: Vec::new(),
-                    selected_index: None,
-                    hovered_item_index: None,
-                    is_searching: false,
-                    sidebar_collapsed: false,
                     settings: settings.clone(),
-                    active_tab: Tab::Search,
                     files_indexed: stats.total_documents as i32,
                     index_size,
                     is_dark,
-                    search_mode: SearchMode::FullText,
-                    filter_extension: String::new(),
-                    filter_extensions: HashSet::new(),
-                    min_size: String::new(),
-                    max_size: String::new(),
-                    size_unit: "MB".to_string(),
-                    filter_size: String::new(),
-                    preview_result: None,
-                    is_loading_preview: false,
-                    rebuild_progress: None,
-                    rebuild_status: None,
-                    progress_rx: None,
-                    tray_icon: crate::system::tray::create_tray_icon().ok(),
-                    hotkey_manager: None,
-                    search_deadline: None,
-                    context_menu_index: None,
-                    search_id: 0,
+                    ..Default::default()
                 };
 
                 if let Ok(manager) = global_hotkey::GlobalHotKeyManager::new() {
@@ -267,37 +280,8 @@ impl App {
                 app
             }
             Err(err_msg) => App {
-                state: None,
                 error: Some(err_msg),
-                search_error: None,
-                search_query: String::new(),
-                results: Vec::new(),
-                selected_index: None,
-                hovered_item_index: None,
-                is_searching: false,
-                sidebar_collapsed: false,
-                settings: AppSettings::default(),
-                active_tab: Tab::Search,
-                files_indexed: 0,
-                index_size: "0 MB".to_string(),
-                is_dark: true, // Default to dark theme
-                search_mode: SearchMode::FullText,
-                filter_extension: String::new(),
-                filter_extensions: HashSet::new(),
-                min_size: String::new(),
-                max_size: String::new(),
-                size_unit: "MB".to_string(),
-                filter_size: String::new(),
-                preview_result: None,
-                is_loading_preview: false,
-                rebuild_progress: None,
-                rebuild_status: None,
-                progress_rx: None,
-                tray_icon: crate::system::tray::create_tray_icon().ok(),
-                hotkey_manager: None,
-                search_deadline: None,
-                context_menu_index: None,
-                search_id: 0,
+                ..Default::default()
             },
         }
     }
@@ -373,7 +357,7 @@ impl App {
         let mode = self.search_mode.clone();
 
         // Combine manual extension filter and checkbox filters
-        let mut extensions: HashSet<String> = self
+        let mut extensions: ahash::AHashSet<String> = self
             .filter_extension
             .split(',')
             .map(|s| s.trim().to_lowercase())
@@ -381,7 +365,7 @@ impl App {
             .collect();
 
         for ext in &self.filter_extensions {
-            extensions.insert(ext.to_lowercase());
+            extensions.insert(ext.clone());
         }
 
         let extension = if extensions.is_empty() {
@@ -423,21 +407,14 @@ impl App {
         self.search_id += 1;
         let current_search_id = self.search_id;
         let case_sensitive = self.settings.case_sensitive;
-        let original_query = self.search_query.clone();
 
         Task::future(async move {
             let result = match mode {
                 SearchMode::Filename => {
                     match search_filenames_internal(query.clone(), max_results, &state).await {
                         Ok(results) => {
-                            let mut items: Vec<FileItem> =
+                            let items: Vec<FileItem> =
                                 results.into_iter().map(FileItem::from).collect();
-                            if case_sensitive {
-                                items.retain(|item| {
-                                    item.title.contains(&original_query)
-                                        || item.path.contains(&original_query)
-                                });
-                            }
                             Message::SearchResultsReceived(current_search_id, items)
                         }
                         Err(e) => Message::SearchError(FlashError::search(&query, e)),
@@ -451,19 +428,13 @@ impl App {
                         min_size,
                         max_size,
                         extension,
+                        case_sensitive,
                     )
                     .await
                     {
                         Ok(results) => {
-                            let mut items: Vec<FileItem> =
+                            let items: Vec<FileItem> =
                                 results.into_iter().map(FileItem::from).collect();
-                            if case_sensitive {
-                                items.retain(|item| {
-                                    item.title.contains(&original_query)
-                                        || item.path.contains(&original_query)
-                                        || item.snippets.iter().any(|s| s.contains(&original_query))
-                                });
-                            }
                             Message::SearchResultsReceived(current_search_id, items)
                         }
                         Err(e) => Message::SearchError(FlashError::search(&query, e)),
@@ -502,13 +473,20 @@ impl App {
         })
     }
 
-    fn save_settings(&self) {
+    fn save_settings(&self) -> Task<Message> {
         if let Some(state) = &self.state {
-            let _ = state.settings_manager.save(&self.settings);
-            let mut watcher = state.watcher.lock();
-            let _ = watcher.update_watch_list(self.settings.index_dirs.clone());
-
+            let settings = self.settings.clone();
+            let state = state.clone();
+            return Task::perform(
+                async move {
+                    let _ = state.settings_manager.save(&settings);
+                    let mut watcher = state.watcher.lock();
+                    let _ = watcher.update_watch_list(settings.index_dirs.clone());
+                },
+                |_| Message::NoOp,
+            );
         }
+        Task::none()
     }
 }
 
@@ -531,11 +509,22 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             Message::SearchQueryChanged(q) => {
                 app.search_query = q;
                 if !app.search_query.is_empty() {
-                    app.search_deadline =
-                        Some(std::time::Instant::now() + std::time::Duration::from_millis(150));
-                    Task::none()
+                    app.search_id += 1;
+                    let current_id = app.search_id;
+                    Task::perform(
+                        tokio::time::sleep(std::time::Duration::from_millis(150)),
+                        move |_| Message::DebouncedSearch(current_id),
+                    )
                 } else {
-                    app.search_deadline = None;
+                    app.search_id += 1;
+                    app.results.clear();
+                    Task::none()
+                }
+            }
+            Message::DebouncedSearch(id) => {
+                if id == app.search_id {
+                    app.perform_search()
+                } else {
                     Task::none()
                 }
             }
@@ -755,12 +744,12 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             Message::FolderPicked(Some(f)) => {
                 if !app.settings.index_dirs.iter().any(|d| d == &f) {
                     app.settings.index_dirs.push(f.clone());
-                    app.save_settings();
+                    let save_task = app.save_settings();
 
                     // Automatically start scanning the new folder
                     let state = match &app.state {
                         Some(s) => s.clone(),
-                        None => return Task::none(),
+                        None => return save_task,
                     };
 
                     app.rebuild_progress = Some(0.0);
@@ -770,6 +759,7 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                     let rx = app.progress_rx.clone();
 
                     return Task::batch(vec![
+                        save_task,
                         Task::future(async move {
                             let _ = state
                                 .scanner
@@ -796,14 +786,11 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             Message::RemoveFolder(i) => {
                 if i < app.settings.index_dirs.len() {
                     app.settings.index_dirs.remove(i);
-                    app.save_settings();
+                    return app.save_settings();
                 }
                 Task::none()
             }
-            Message::SaveSettings => {
-                app.save_settings();
-                Task::none()
-            }
+            Message::SaveSettings => app.save_settings(),
             Message::MaxResultsChanged(val) => {
                 if let Ok(num) = val.parse() {
                     app.settings.max_results = num;
@@ -826,25 +813,23 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                 } else {
                     crate::settings::Theme::Light
                 };
-                app.save_settings();
-                Task::none()
+                app.save_settings()
             }
             Message::ToggleMinimizeToTray(enabled) => {
                 app.settings.minimize_to_tray = enabled;
-                app.save_settings();
-                Task::none()
+                app.save_settings()
             }
             Message::ToggleAutoStart(enabled) => {
                 app.settings.auto_start_on_boot = enabled;
-                app.save_settings();
+                let save_task = app.save_settings();
                 let _ = crate::system::startup::set_auto_start(enabled);
-                Task::none()
+                save_task
             }
             Message::ToggleContextMenu(enabled) => {
                 app.settings.context_menu_enabled = enabled;
-                app.save_settings();
+                let save_task = app.save_settings();
                 let _ = crate::system::context_menu::register_context_menu(enabled);
-                Task::none()
+                save_task
             }
             Message::ToggleSearchMode => {
                 app.search_mode = match app.search_mode {
@@ -859,21 +844,19 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             }
             Message::ToggleCaseSensitive(val) => {
                 app.settings.case_sensitive = val;
-                app.save_settings();
+                let save_task = app.save_settings();
                 if !app.search_query.is_empty() {
-                    app.perform_search()
-                } else {
-                    Task::none()
+                    return Task::batch(vec![save_task, app.perform_search()]);
                 }
+                save_task
             }
             Message::ToggleWholeWord(val) => {
                 app.settings.whole_word = val;
-                app.save_settings();
+                let save_task = app.save_settings();
                 if !app.search_query.is_empty() {
-                    app.perform_search()
-                } else {
-                    Task::none()
+                    return Task::batch(vec![save_task, app.perform_search()]);
                 }
+                save_task
             }
             Message::FilterExtensionChanged(ext) => {
                 app.filter_extension = ext;
@@ -949,20 +932,18 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                 Task::none()
             }
             Message::StartPollingProgress => Task::none(),
-            Message::PollSearchDeadline => {
-                if let Some(deadline) = app.search_deadline {
-                    if std::time::Instant::now() >= deadline {
-                        app.search_deadline = None;
-                        return app.perform_search();
-                    }
+            Message::WindowIdCaptured(id) => {
+                if app.window_id.is_none() {
+                    app.window_id = Some(id);
                 }
                 Task::none()
             }
             Message::PollHotkey => {
                 if let Ok(event) = global_hotkey::GlobalHotKeyEvent::receiver().try_recv() {
                     tracing::info!("Global hotkey pressed: {:?}", event);
-                    return iced::window::gain_focus(iced::window::Id::unique())
-                        .map(|_: ()| Message::NoOp);
+                    if let Some(id) = app.window_id {
+                        return iced::window::gain_focus(id).map(|_: ()| Message::NoOp);
+                    }
                 }
                 Task::none()
             }
@@ -971,8 +952,9 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                     if event.id.0 == "quit" {
                         crate::SHUTDOWN_FLAG.store(true, std::sync::atomic::Ordering::SeqCst);
                     } else if event.id.0 == "show" {
-                        return iced::window::gain_focus(iced::window::Id::unique())
-                            .map(|_: ()| Message::NoOp);
+                        if let Some(id) = app.window_id {
+                            return iced::window::gain_focus(id).map(|_: ()| Message::NoOp);
+                        }
                     }
                 }
                 Task::none()
@@ -989,34 +971,27 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
     }
 }
 
-pub fn subscription(app: &App) -> Subscription<Message> {
+pub fn subscription(_app: &App) -> Subscription<Message> {
     use iced::keyboard;
     use iced::Event;
 
-    let mut subs = vec![
+    let subs = vec![
         iced::time::every(std::time::Duration::from_millis(200)).map(|_| Message::PollHotkey),
         iced::time::every(std::time::Duration::from_millis(500)).map(|_| Message::PollTray),
-        iced::event::listen_with(|event, _status, _window_id| {
+        iced::event::listen_with(|event, _status, window_id| {
             if let Event::Keyboard(keyboard::Event::KeyPressed { key, .. }) = event {
                 match key.as_ref() {
                     keyboard::Key::Named(keyboard::key::Named::ArrowUp) => Some(Message::MoveUp),
                     keyboard::Key::Named(keyboard::key::Named::ArrowDown) => Some(Message::MoveDown),
                     keyboard::Key::Character("/") => Some(Message::FocusSearch),
                     keyboard::Key::Named(keyboard::key::Named::Enter) => Some(Message::OpenSelected),
-                    _ => None,
+                    _ => Some(Message::WindowIdCaptured(window_id)),
                 }
             } else {
-                None
+                Some(Message::WindowIdCaptured(window_id))
             }
         }),
     ];
-
-    if app.search_deadline.is_some() {
-        subs.push(
-            iced::time::every(std::time::Duration::from_millis(50))
-                .map(|_| Message::PollSearchDeadline),
-        );
-    }
 
     Subscription::batch(subs)
 }
@@ -1059,8 +1034,8 @@ pub fn app_title(_app: &App) -> String {
     String::from("Flash Search")
 }
 
-pub fn app_theme(_app: &App) -> iced::Theme {
-    if _app.is_dark {
+pub fn app_theme(app: &App) -> iced::Theme {
+    if app.is_dark {
         iced::Theme::Dark
     } else {
         iced::Theme::Light

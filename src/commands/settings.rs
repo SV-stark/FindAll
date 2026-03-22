@@ -30,21 +30,18 @@ pub fn get_recent_searches_internal(state: &Arc<AppState>) -> Result<Vec<String>
         .settings_cache
         .read()
         .recent_searches
-
-        .clone()
-        .unwrap_or_default())
+        .clone())
 }
 
 pub fn add_recent_search_internal(query: String, state: &Arc<AppState>) -> Result<(), String> {
     let mut cache = state.settings_cache.write();
 
-
-    let mut recent = cache.recent_searches.clone().unwrap_or_default();
+    let mut recent = cache.recent_searches.clone();
     recent.retain(|q| q != &query);
     recent.insert(0, query);
     recent.truncate(10);
 
-    cache.recent_searches = Some(recent);
+    cache.recent_searches = recent;
     state
         .settings_manager
         .save(&cache)
@@ -56,7 +53,7 @@ pub fn add_recent_search_internal(query: String, state: &Arc<AppState>) -> Resul
 pub fn clear_recent_searches_internal(state: &Arc<AppState>) -> Result<(), String> {
     let mut cache = state.settings_cache.write();
 
-    cache.recent_searches = Some(vec![]);
+    cache.recent_searches = vec![];
     state
         .settings_manager
         .save(&cache)
@@ -67,7 +64,7 @@ pub fn clear_recent_searches_internal(state: &Arc<AppState>) -> Result<(), Strin
 pub fn add_search_history_internal(query: String, state: &Arc<AppState>) -> Result<(), String> {
     let mut cache = state.settings_cache.write();
 
-    let mut history = cache.search_history.clone().unwrap_or_default();
+    let mut history = cache.search_history.clone();
 
     let mut found = false;
     for item in &mut history {
@@ -75,7 +72,7 @@ pub fn add_search_history_internal(query: String, state: &Arc<AppState>) -> Resu
             item.frequency += 1;
             item.last_used = std::time::SystemTime::now()
                 .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                .unwrap()
+                .unwrap_or_default()
                 .as_secs();
             found = true;
             break;
@@ -90,7 +87,7 @@ pub fn add_search_history_internal(query: String, state: &Arc<AppState>) -> Resu
                 frequency: 1,
                 last_used: std::time::SystemTime::now()
                     .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                    .unwrap()
+                    .unwrap_or_default()
                     .as_secs(),
             },
         );
@@ -99,7 +96,7 @@ pub fn add_search_history_internal(query: String, state: &Arc<AppState>) -> Resu
     history.sort_by(|a, b| b.frequency.cmp(&a.frequency));
     history.truncate(50);
 
-    cache.search_history = Some(history);
+    cache.search_history = history;
     state
         .settings_manager
         .save(&cache)
@@ -116,9 +113,7 @@ pub fn get_search_history_internal(
         .settings_cache
         .read()
         .search_history
-
-        .clone()
-        .unwrap_or_default();
+        .clone();
     history.truncate(limit);
 
     Ok(history)

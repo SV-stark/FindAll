@@ -1,14 +1,23 @@
 use crate::indexer::searcher::SearchResult;
-use std::fs::File;
-use std::io::Write;
 
 pub fn export_results_csv(results: &[SearchResult], path: &str) -> Result<(), String> {
-    let mut file = File::create(path).map_err(|e| e.to_string())?;
-    writeln!(file, "Score,File Path,Title").map_err(|e| e.to_string())?;
+    let mut wtr = csv::Writer::from_path(path).map_err(|e| e.to_string())?;
+    
+    // Write header
+    wtr.write_record(["Score", "File Path", "Title"])
+        .map_err(|e| e.to_string())?;
+
     for r in results {
         let title = r.title.as_deref().unwrap_or("");
-        writeln!(file, "{},{},{}", r.score, r.file_path, title).map_err(|e| e.to_string())?;
+        wtr.write_record(&[
+            r.score.to_string(),
+            r.file_path.clone(),
+            title.to_string(),
+        ])
+        .map_err(|e| e.to_string())?;
     }
+
+    wtr.flush().map_err(|e| e.to_string())?;
     Ok(())
 }
 

@@ -3,7 +3,7 @@ use auto_launch::AutoLaunchBuilder;
 use std::env;
 
 pub fn set_auto_start(enable: bool) -> Result<()> {
-    let app_path = env::current_exe().map_err(FlashError::Io)?;
+    let app_path = env::current_exe().map_err(|e| FlashError::Io(std::sync::Arc::new(e)))?;
     let app_name = "com.flashsearch";
 
     let auto = AutoLaunchBuilder::new()

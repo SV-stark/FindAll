@@ -91,20 +91,8 @@ fn top_navigation(_app: &App) -> Element<'_, Message> {
     .align_y(Alignment::Center);
 
     let menu_items = row![
-        button(row![load_icon("folder"), text("Open")].spacing(4))
-            .on_press(Message::NotImplemented("Open File/Folder".to_string()))
-            .style(theme::top_menu_button()),
-        button(row![load_icon("text"), text("OCR")].spacing(4))
-            .on_press(Message::NotImplemented("OCR".to_string()))
-            .style(theme::top_menu_button()),
-        button(row![load_icon("search"), text("Advanced Search")].spacing(4))
-            .on_press(Message::NotImplemented("Advanced Search".to_string()))
-            .style(theme::top_menu_button()),
         button(row![load_icon("settings"), text("Settings")].spacing(4))
             .on_press(Message::TabChanged(Tab::Settings))
-            .style(theme::top_menu_button()),
-        button(row![load_icon("plus"), text("File Actions")].spacing(4))
-            .on_press(Message::NotImplemented("File Actions".to_string()))
             .style(theme::top_menu_button()),
     ]
     .spacing(16);
@@ -265,23 +253,9 @@ fn left_sidebar(app: &App) -> Element<'_, Message> {
             .spacing(12),
             row![
                 extension_checkbox("json", app),
-                extension_checkbox("txe", app),
+                extension_checkbox("txt", app),
                 // "etc..." etc
                 text("etc...").size(11).style(theme::dim_text_style()),
-            ]
-            .spacing(12),
-            Space::new().height(Length::Fixed(4.0)),
-            row![
-                checkbox(app.filter_extensions.len() == 5 && app.filter_extension.is_empty()) // Simplified "All" check
-                    .label("All")
-                    .on_toggle(|_| Message::NotImplemented("Select All Extensions".to_string()))
-                    .size(14)
-                    .text_size(11),
-                checkbox(false)
-                    .label("Word")
-                    .on_toggle(|_| Message::NoOp)
-                    .size(14)
-                    .text_size(11),
             ]
             .spacing(12),
         ])

@@ -11,8 +11,7 @@ pub fn open_folder_internal(path: String) -> Result<(), String> {
     {
         use std::process::Command;
         Command::new("explorer")
-            .arg("/select,")
-            .arg(path)
+            .arg(format!("/select,{}", path))
             .spawn()
             .map_err(|e| e.to_string())?;
         Ok(())

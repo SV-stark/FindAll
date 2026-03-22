@@ -52,13 +52,13 @@ async fn test_end_to_end_search() -> Result<()> {
     std::thread::sleep(std::time::Duration::from_millis(500));
 
     let results = indexer
-        .search("unique test string", 10, None, None, None)
+        .search("unique test string", 10, None, None, None, false)
         .await?;
     assert_eq!(results.len(), 1);
     assert!(results[0].file_path.contains("hello.txt"));
 
     let results = indexer
-        .search("flashsearchintegrationtest", 10, None, None, None)
+        .search("flashsearchintegrationtest", 10, None, None, None, false)
         .await?;
     assert_eq!(results.len(), 1);
     assert!(results[0].file_path.contains("notes.md"));
