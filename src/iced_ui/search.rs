@@ -159,23 +159,20 @@ fn search_input_bar(app: &App) -> Element<'_, Message> {
 }
 
 fn main_layout(app: &App) -> Element<'_, Message> {
-    if app.sidebar_collapsed {
-        row![
-            collapsed_sidebar(app),
-            column![filter_chips(app), right_panel(app)].width(Length::Fill),
-        ]
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
+    let sidebar = if app.sidebar_collapsed {
+        collapsed_sidebar(app)
     } else {
-        row![
-            left_sidebar(app),
-            column![filter_chips(app), right_panel(app)].width(Length::Fill),
-        ]
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
-    }
+        left_sidebar(app) // Now ONLY filters
+    };
+
+    row![
+        sidebar,
+        column![filter_chips(app), results_panel(app)].width(Length::Fill),
+        container(right_panel(app)).width(Length::FillPortion(2)),
+    ]
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .into()
 }
 
 fn filter_chips(app: &App) -> Element<'_, Message> {
@@ -254,7 +251,6 @@ fn left_sidebar(app: &App) -> Element<'_, Message> {
             row![
                 extension_checkbox("json", app),
                 extension_checkbox("txt", app),
-                // "etc..." etc
                 text("etc...").size(11).style(theme::dim_text_style()),
             ]
             .spacing(12),
@@ -327,17 +323,27 @@ fn left_sidebar(app: &App) -> Element<'_, Message> {
     .spacing(12)
     .padding(Padding::new(12.0));
 
-    let table_header = container(
-        row![
-            text("Name").width(Length::FillPortion(2)).size(12),
-            text("Modified").width(Length::FillPortion(1)).size(12),
-            text("Type").width(Length::FillPortion(1)).size(12),
-            text("Size").width(Length::FillPortion(1)).size(12),
-        ]
-        .padding(Padding::new(8.0)),
-    )
-    .style(theme::table_header_container)
-    .width(Length::Fill);
+    container(filter_panel)
+        .style(theme::sidebar_container)
+        .width(Length::Fixed(260.0))
+        .height(Length::Fill)
+        .into()
+}
+
+fn results_panel(app: &App) -> Element<'_, Message> {
+    if app.results.is_empty() {
+        return container(
+            text(if app.search_query.is_empty() {
+                "Enter search keywords to begin..."
+            } else {
+                "No files found matching criteria."
+            })
+            .style(theme::dim_text_style())
+        )
+        .center_x(Length::Fill)
+        .center_y(Length::Fill)
+        .into();
+    }
 
     let results = scrollable(column(
         app.results
@@ -347,82 +353,98 @@ fn left_sidebar(app: &App) -> Element<'_, Message> {
                 let is_selected = app.selected_index == Some(i);
                 let is_hovered = app.hovered_item_index == Some(i);
 
-                let mut row_content = row![
-                    row![load_icon("file"), text(&*res.title).size(13)]
-                        .spacing(8)
-                        .width(Length::FillPortion(2)),
-                    text(
-                        res.modified
-                            .map(crate::iced_ui::format_date)
-                            .unwrap_or_else(|| "Unknown".to_string())
-                    )
-                    .size(12)
-                    .style(theme::muted_text_style())
-                    .width(Length::FillPortion(1)),
-                    text(res.extension.as_deref().unwrap_or("File"))
-                        .size(12)
-                        .style(theme::muted_text_style())
-                        .width(Length::FillPortion(1)),
-                    text(
-                        res.size
-                            .map(crate::iced_ui::format_size)
-                            .unwrap_or_else(|| "Unknown".to_string())
-                    )
-                    .size(12)
-                    .style(theme::muted_text_style())
-                    .width(Length::FillPortion(1)),
-                ]
-                .align_y(Alignment::Center);
-
+                let mut actions_row = row![].spacing(6);
                 if is_hovered {
-                    row_content = row_content.push(
-                        row![
-                            button(load_icon_size("external-link", 14.0))
-                                .on_press(Message::OpenFile(res.path.clone()))
-                                .style(theme::ghost_button())
-                                .padding(Padding::new(4.0)),
-                            button(load_icon_size("folder-open", 14.0))
-                                .on_press(Message::OpenFolder(res.path.clone()))
-                                .style(theme::ghost_button())
-                                .padding(Padding::new(4.0)),
-                            button(load_icon_size("copy", 14.0))
-                                .on_press(Message::CopyPath(res.path.clone()))
-                                .style(theme::ghost_button())
-                                .padding(Padding::new(4.0)),
-                        ]
-                        .spacing(4)
-                    );
+                    actions_row = actions_row.push(row![
+                        button(load_icon_size("external-link", 14.0))
+                            .on_press(Message::OpenFile(res.path.clone()))
+                            .style(theme::ghost_button())
+                            .padding(Padding::new(4.0)),
+                        button(load_icon_size("folder-open", 14.0))
+                            .on_press(Message::OpenFolder(res.path.clone()))
+                            .style(theme::ghost_button())
+                            .padding(Padding::new(4.0)),
+                        button(load_icon_size("copy", 14.0))
+                            .on_press(Message::CopyPath(res.path.clone()))
+                            .style(theme::ghost_button())
+                            .padding(Padding::new(4.0)),
+                    ]);
                 }
 
-                let item_area = mouse_area(
-                    container(row_content)
-                        .padding(Padding {
-                            top: 6.0,
-                            bottom: 6.0,
-                            left: 8.0,
-                            right: 8.0,
-                        })
-                        .style(if is_selected {
-                            theme::result_card_selected
-                        } else {
-                            theme::result_card_normal
-                        })
-                        .width(Length::Fill),
-                )
-                .on_press(Message::ResultSelected(i))
-                .on_right_press(Message::ShowContextMenu(i))
-                .on_enter(Message::ItemHovered(Some(i)))
-                .on_exit(Message::ItemHovered(None));
+                let card_content = column![
+                    row![
+                        load_icon("file"),
+                        text(&*res.title).size(14).font(Font {
+                            weight: font::Weight::Bold,
+                            ..Font::default()
+                        }),
+                        Space::new().width(Length::Fill),
+                        actions_row,
+                    ]
+                    .spacing(8)
+                    .align_y(Alignment::Center),
+                    text(&res.path)
+                        .size(11)
+                        .style(theme::dim_text_style()),
+                    row![
+                        text(res.extension.as_deref().unwrap_or("File"))
+                            .size(11)
+                            .style(theme::muted_text_style()),
+                        text("|").size(11).style(theme::dim_text_style()),
+                        text(
+                            res.size
+                                .map(crate::iced_ui::format_size)
+                                .unwrap_or_else(|| "Unknown size".to_string())
+                        )
+                        .size(11)
+                        .style(theme::muted_text_style()),
+                        text("|").size(11).style(theme::dim_text_style()),
+                        text(
+                            res.modified
+                                .map(crate::iced_ui::format_date)
+                                .unwrap_or_else(|| "Unknown date".to_string())
+                        )
+                        .size(11)
+                        .style(theme::muted_text_style()),
+                    ]
+                    .spacing(8),
+                ]
+                .spacing(4);
 
-                column![item_area].width(Length::Fill).into()
+                let mut item_area = container(card_content)
+                    .padding(Padding::new(12.0))
+                    .style(if is_selected {
+                        theme::result_card_selected
+                    } else {
+                        theme::result_card_normal
+                    })
+                    .width(Length::Fill);
+
+                if is_hovered && !is_selected {
+                    item_area = item_area.style(theme::result_card_hover);
+                }
+
+                let mouse_wrapper = mouse_area(item_area)
+                    .on_press(Message::ResultSelected(i))
+                    .on_right_press(Message::ShowContextMenu(i))
+                    .on_enter(Message::ItemHovered(Some(i)))
+                    .on_exit(Message::ItemHovered(None));
+
+                container(mouse_wrapper)
+                    .padding(Padding {
+                        top: 4.0,
+                        bottom: 4.0,
+                        left: 8.0,
+                        right: 8.0,
+                    })
+                    .into()
             })
             .collect::<Vec<Element<Message>>>(),
     ))
     .height(Length::Fill);
 
-    container(column![filter_panel, table_header, results].width(Length::Fill))
-        .style(theme::sidebar_container)
-        .width(Length::FillPortion(2))
+    container(results)
+        .width(Length::Fill)
         .height(Length::Fill)
         .into()
 }

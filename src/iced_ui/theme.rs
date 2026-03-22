@@ -149,7 +149,7 @@ pub fn input_container(theme: &Theme) -> container::Style {
         border: Border {
             color: border_color(theme),
             width: 1.0,
-            radius: Radius::from(6.0),
+            radius: Radius::from(8.0),
         },
         ..Default::default()
     }
@@ -187,7 +187,7 @@ pub fn result_card_selected(_theme: &Theme) -> container::Style {
         border: Border {
             color: ACCENT_BLUE,
             width: 1.0,
-            radius: Radius::from(2.0),
+            radius: Radius::from(6.0),
         },
         ..Default::default()
     }
@@ -244,7 +244,7 @@ pub fn primary_button() -> impl Fn(&Theme, button::Status) -> button::Style {
             border: Border {
                 color: ACCENT_BLUE,
                 width: 0.0,
-                radius: Radius::from(6.0),
+                radius: Radius::from(8.0),
             },
             ..Default::default()
         };
@@ -286,7 +286,7 @@ pub fn secondary_button() -> impl Fn(&Theme, button::Status) -> button::Style {
             border: Border {
                 color: border_color(theme),
                 width: 1.0,
-                radius: Radius::from(6.0),
+                radius: Radius::from(8.0),
             },
             ..Default::default()
         };
@@ -374,17 +374,20 @@ pub fn icon_button() -> impl Fn(&Theme, button::Status) -> button::Style {
 // --- Input Styles ---
 
 pub fn search_input() -> impl Fn(&Theme, text_input::Status) -> text_input::Style {
-    move |theme: &Theme, _status: text_input::Status| text_input::Style {
-        background: Background::Color(surface_color(theme)),
-        border: Border {
-            color: border_color(theme),
-            width: 1.0,
-            radius: Radius::from(4.0),
-        },
-        icon: text_dim_color(theme),
-        placeholder: text_dim_color(theme),
-        value: text_bright_color(theme),
-        selection: accent_color_light(),
+    move |theme: &Theme, status: text_input::Status| {
+        let is_focused = matches!(status, text_input::Status::Focused { .. });
+        text_input::Style {
+            background: Background::Color(surface_color(theme)),
+            border: Border {
+                color: if is_focused { ACCENT_BLUE } else { border_color(theme) },
+                width: 1.0,
+                radius: Radius::from(8.0),
+            },
+            icon: text_dim_color(theme),
+            placeholder: text_dim_color(theme),
+            value: text_bright_color(theme),
+            selection: accent_color_light(),
+        }
     }
 }
 
@@ -453,7 +456,7 @@ pub fn padded_card_container(theme: &Theme) -> container::Style {
         border: Border {
             color: border_color(theme),
             width: 1.0,
-            radius: Radius::from(6.0),
+            radius: Radius::from(8.0),
         },
         ..Default::default()
     }
