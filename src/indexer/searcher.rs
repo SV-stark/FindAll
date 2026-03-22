@@ -1,4 +1,6 @@
 use crate::error::{FlashError, Result};
+use compact_str::CompactString;
+use itertools::Itertools;
 use moka::sync::Cache;
 use serde::{Deserialize, Serialize};
 use std::ops::Bound;
@@ -19,11 +21,11 @@ const CACHE_TTL_SECS: u64 = 30;
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SearchResult {
     pub file_path: String,
-    pub title: Option<String>,
+    pub title: Option<CompactString>,
     pub score: f32,
     pub modified: Option<u64>,
     pub size: Option<u64>,
-    pub extension: Option<String>,
+    pub extension: Option<CompactString>,
     /// Terms that matched for highlighting
     pub matched_terms: Vec<String>,
     /// Context snippets with highlighting
@@ -299,18 +301,20 @@ impl IndexSearcher {
             // Prefer highlighting based on the more permissive fuzzy query
             final_query = fuzzy_final_query;
 
-            let mut seen: std::collections::HashSet<tantivy::DocAddress> =
+            let seen: std::collections::HashSet<tantivy::DocAddress> =
                 top_docs.iter().map(|(_, addr)| *addr).collect();
-            for (score, doc_addr) in fuzzy_docs {
-                if !seen.contains(&doc_addr) {
-                    top_docs.push((score, doc_addr));
-                    seen.insert(doc_addr);
-                    if top_docs.len() >= limit {
-                        break;
-                    }
-                }
-            }
-            top_docs.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+
+            // Use itertools to chain and filter unique documents
+            top_docs = top_docs
+                .into_iter()
+                .chain(
+                    fuzzy_docs
+                        .into_iter()
+                        .filter(|(_, addr)| !seen.contains(addr)),
+                )
+                .take(limit)
+                .sorted_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal))
+                .collect();
         }
 
         let mut results = Vec::with_capacity(top_docs.len().min(limit));
@@ -333,12 +337,14 @@ impl IndexSearcher {
             let title = retrieved_doc
                 .get_first(self.title_field)
                 .and_then(|f| f.as_str())
-                .map(|s: &str| s.to_string());
+                .map(|s: &str| CompactString::from(s));
+
 
             let extension = retrieved_doc
                 .get_first(self.extension_field)
                 .and_then(|f| f.as_str())
-                .map(|s: &str| s.to_string());
+                .map(|s: &str| CompactString::from(s));
+
 
             // Get fast fields for size and modified
             let size = searcher
@@ -495,12 +501,14 @@ impl IndexSearcher {
             let title = retrieved_doc
                 .get_first(self.title_field)
                 .and_then(|f| f.as_str())
-                .map(|s: &str| s.to_string());
+                .map(|s: &str| CompactString::from(s));
+
 
             let extension = retrieved_doc
                 .get_first(self.extension_field)
                 .and_then(|f| f.as_str())
-                .map(|s: &str| s.to_string());
+                .map(|s: &str| CompactString::from(s));
+
 
             // Get fast fields for size and modified
             let size = searcher
@@ -558,7 +566,7 @@ impl IndexSearcher {
         Ok(IndexStatistics {
             total_documents: total_docs,
             total_size_bytes: total_size,
-            last_updated: Some(chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()),
+            last_updated: Some(jiff::Zoned::now().strftime("%Y-%m-%d %H:%M:%S").to_string()),
         })
     }
 }

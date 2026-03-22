@@ -233,7 +233,8 @@ fn left_sidebar(app: &App) -> Element<'_, Message> {
                 let item_area = mouse_area(
                     container(
                         row![
-                            row![load_icon("file"), text(&res.title).size(13)]
+                            row![load_icon("file"), text(&*res.title).size(13)]
+
                                 .spacing(8)
                                 .width(Length::FillPortion(2)),
                             text(

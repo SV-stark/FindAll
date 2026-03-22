@@ -7,6 +7,7 @@ use crate::indexer::searcher::SearchResult;
 use crate::models::FilenameSearchResult;
 use crate::scanner::ProgressEvent;
 use crate::settings::AppSettings;
+use compact_str::CompactString;
 use iced::{Element, Subscription, Task};
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -20,10 +21,10 @@ pub mod theme;
 
 #[derive(Clone, Debug)]
 pub struct FileItem {
-    pub title: String,
+    pub title: CompactString,
     pub path: String,
     pub score: f32,
-    pub extension: Option<String>,
+    pub extension: Option<CompactString>,
     pub modified: Option<u64>,
     pub size: Option<u64>,
     pub snippets: Vec<String>,
@@ -33,11 +34,12 @@ impl From<SearchResult> for FileItem {
     fn from(r: SearchResult) -> Self {
         FileItem {
             title: r.title.unwrap_or_else(|| {
-                r.file_path
-                    .split(['\\', '/'])
-                    .next_back()
-                    .unwrap_or("Unknown")
-                    .to_string()
+                CompactString::from(
+                    r.file_path
+                        .split(['\\', '/'])
+                        .next_back()
+                        .unwrap_or("Unknown"),
+                )
             }),
             path: r.file_path,
             score: r.score,
@@ -51,14 +53,18 @@ impl From<SearchResult> for FileItem {
 
 impl From<FilenameSearchResult> for FileItem {
     fn from(r: FilenameSearchResult) -> Self {
-        let ext = r.file_name.split('.').next_back().map(String::from);
+        let ext = r
+            .file_name
+            .split('.')
+            .next_back()
+            .map(CompactString::from);
         FileItem {
-            title: r.file_name, // Reverted to original as the provided diff was syntactically incorrect here
+            title: r.file_name,
             path: r.file_path,
             score: 1.0,
             extension: ext,
-            modified: None, // Added missing fields with default values
-            size: None,     // Added missing fields with default values
+            modified: None,
+            size: None,
             snippets: Vec::new(),
         }
     }
@@ -481,9 +487,9 @@ impl App {
     fn save_settings(&self) {
         if let Some(state) = &self.state {
             let _ = state.settings_manager.save(&self.settings);
-            if let Ok(mut watcher) = state.watcher.lock() {
-                let _ = watcher.update_watch_list(self.settings.index_dirs.clone());
-            }
+            let mut watcher = state.watcher.lock();
+            let _ = watcher.update_watch_list(self.settings.index_dirs.clone());
+
         }
     }
 }
@@ -1059,10 +1065,10 @@ mod tests {
         let sr = SearchResult {
             file_path: "C:\\path\\to\\file.txt".to_string(),
             score: 0.95,
-            title: Some("My File".to_string()),
+            title: Some("My File".into()),
             modified: None,
             size: None,
-            extension: Some("txt".to_string()),
+            extension: Some("txt".into()),
             matched_terms: vec![],
             snippets: Vec::new(),
         };

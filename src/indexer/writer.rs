@@ -1,6 +1,6 @@
 use crate::error::{FlashError, Result};
 use crate::parsers::ParsedDocument;
-use std::sync::Mutex;
+use parking_lot::Mutex;
 use tantivy::schema::{Field, Schema};
 use tantivy::{Index, IndexWriter, TantivyDocument};
 use tracing::info;
@@ -93,10 +93,8 @@ impl IndexWriterManager {
     pub fn add_document(&self, doc: &ParsedDocument, modified: u64, size: u64) -> Result<()> {
         let tantivy_doc = self.create_tantivy_document(doc, modified, size);
 
-        let writer = self
-            .writer
-            .lock()
-            .map_err(|_| FlashError::poisoned_lock("IndexWriter"))?;
+        #[allow(unused_mut)]
+        let mut writer = self.writer.lock();
 
         writer
             .add_document(tantivy_doc)
@@ -111,10 +109,8 @@ impl IndexWriterManager {
             return Ok(());
         }
 
-        let writer = self
-            .writer
-            .lock()
-            .map_err(|_| FlashError::poisoned_lock("IndexWriter"))?;
+        #[allow(unused_mut)]
+        let mut writer = self.writer.lock();
 
         for (doc, modified, size) in docs {
             let tantivy_doc = self.create_tantivy_document(doc, *modified, *size);
@@ -160,10 +156,8 @@ impl IndexWriterManager {
 
     /// Remove a document from the index
     pub fn remove_document(&self, path: &str) -> Result<()> {
-        let writer = self
-            .writer
-            .lock()
-            .map_err(|_| FlashError::poisoned_lock("IndexWriter"))?;
+        #[allow(unused_mut)]
+        let mut writer = self.writer.lock();
 
         let term = tantivy::Term::from_field_text(self.path_field, path);
         writer.delete_term(term);
@@ -173,10 +167,8 @@ impl IndexWriterManager {
 
     /// Delete all documents from the index
     pub fn delete_all_documents(&self) -> Result<()> {
-        let writer = self
-            .writer
-            .lock()
-            .map_err(|_| FlashError::poisoned_lock("IndexWriter"))?;
+        #[allow(unused_mut)]
+        let mut writer = self.writer.lock();
 
         writer
             .delete_all_documents()
@@ -187,10 +179,8 @@ impl IndexWriterManager {
 
     /// Commit pending changes to disk
     pub fn commit(&self) -> Result<()> {
-        let mut writer = self
-            .writer
-            .lock()
-            .map_err(|_| FlashError::poisoned_lock("IndexWriter"))?;
+        #[allow(unused_mut)]
+        let mut writer = self.writer.lock();
 
         writer
             .commit()

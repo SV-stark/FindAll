@@ -34,7 +34,7 @@ tokio = { version = "1", features = [
 ] }
 rayon = "1.8"
 parking_lot = "0.12"
-tokio-util = { version = "0.7", features = ["sync"] }
+tokio-util = { version = "0.7", features = ["rt"] }
 
 # File System
 notify = "8.2"
@@ -52,7 +52,10 @@ moka = { version = "0.12", features = ["sync"] }
 fst = "0.4"
 rkyv = { version = "0.8", features = ["bytecheck"] }
 sysinfo = "0.38"
-compact_str = "0.8"
+compact_str = { version = "0.9", features = ["rkyv", "serde"] }
+
+
+
 smallvec = "1.13"
 
 # Utilities

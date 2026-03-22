@@ -2,6 +2,8 @@
 mod windows_usn {
     use crate::error::{FlashError, Result};
     use crate::scanner::{ProgressEvent, ProgressType};
+    use compact_str::CompactString;
+    use smallvec::SmallVec;
     use std::collections::HashMap;
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -21,7 +23,7 @@ mod windows_usn {
 
     #[derive(Debug)]
     struct DirInfo {
-        name: String,
+        name: CompactString,
         parent_frn: u64,
     }
 
@@ -89,7 +91,7 @@ mod windows_usn {
         };
 
         let mut dir_map: HashMap<u64, DirInfo> = HashMap::with_capacity(100_000);
-        let mut files: Vec<(String, u64)> = Vec::with_capacity(500_000);
+        let mut files: Vec<(CompactString, u64)> = Vec::with_capacity(500_000);
         let mut buffer = [0u8; 65536];
 
         info!("Enumerating MFT records...");
@@ -123,8 +125,9 @@ mod windows_usn {
                     let name_ptr =
                         buffer.as_ptr().add(offset + record.FileNameOffset as usize) as *const u16;
                     let name_len = (record.FileNameLength / 2) as usize;
-                    let name =
-                        String::from_utf16_lossy(std::slice::from_raw_parts(name_ptr, name_len));
+                    let name = CompactString::from_utf16_lossy(std::slice::from_raw_parts(
+                        name_ptr, name_len,
+                    ));
 
                     let frn = record.FileReferenceNumber;
                     let parent_frn = record.ParentFileReferenceNumber;
@@ -149,7 +152,7 @@ mod windows_usn {
         let mut count = 0;
 
         for (name, mut current_parent) in files {
-            let mut path_parts = Vec::with_capacity(8);
+            let mut path_parts: SmallVec<[&str; 16]> = SmallVec::new();
             path_parts.push(name.as_str());
 
             let mut depth = 0;
@@ -188,7 +191,7 @@ mod windows_usn {
                     if let Some(tx) = &progress_tx {
                         let _ = tx.try_send(ProgressEvent {
                             ptype: ProgressType::Filename,
-                            current_file: name.clone(),
+                            current_file: name.to_string(),
                             current_folder: "".to_string(),
                             processed: count,
                             total: 0,

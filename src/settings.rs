@@ -1,7 +1,10 @@
 use crate::error::{FlashError, Result};
+use config::{Config, Environment, File as ConfigFile};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
+use strum::{Display, EnumIter, EnumString};
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchHistoryItem {
@@ -83,56 +86,36 @@ fn default_settings_version() -> u32 {
     1
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, Default, Display, EnumString, EnumIter, PartialEq,
+)]
+#[strum(serialize_all = "lowercase")]
 pub enum Theme {
-    #[serde(rename = "auto")]
     #[default]
     Auto,
-    #[serde(rename = "light")]
     Light,
-    #[serde(rename = "dark")]
     Dark,
 }
 
-impl std::fmt::Display for Theme {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Theme::Auto => write!(f, "auto"),
-            Theme::Light => write!(f, "light"),
-            Theme::Dark => write!(f, "dark"),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, Default, Display, EnumString, EnumIter, PartialEq,
+)]
+#[strum(serialize_all = "lowercase")]
 pub enum FontSize {
-    #[serde(rename = "small")]
     Small,
-    #[serde(rename = "medium")]
     #[default]
     Medium,
-    #[serde(rename = "large")]
     Large,
 }
 
-impl std::fmt::Display for FontSize {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            FontSize::Small => write!(f, "small"),
-            FontSize::Medium => write!(f, "medium"),
-            FontSize::Large => write!(f, "large"),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, Default, Display, EnumString, EnumIter, PartialEq,
+)]
+#[strum(serialize_all = "snake_case")]
 pub enum DoubleClickAction {
-    #[serde(rename = "open_file")]
     #[default]
     OpenFile,
-    #[serde(rename = "show_in_folder")]
     ShowInFolder,
-    #[serde(rename = "preview")]
     Preview,
 }
 
@@ -223,17 +206,22 @@ impl SettingsManager {
     }
 
     pub fn load(&self) -> Result<AppSettings> {
-        if !self.path.exists() {
-            let defaults = AppSettings::default();
-            // If we can't save the defaults, we still return them but log the error
-            if let Err(e) = self.save(&defaults) {
-                tracing::warn!("Failed to save default settings: {}", e);
-            }
-            Ok(defaults)
-        } else {
-            let content = fs::read_to_string(&self.path).map_err(FlashError::Io)?;
-            serde_json::from_str(&content)
-                .map_err(|e| FlashError::config("parse_settings", e.to_string()))
+        let builder = Config::builder()
+            // Start with default settings
+            .add_source(ConfigFile::from_str(
+                &serde_json::to_string(&AppSettings::default()).unwrap(),
+                config::FileFormat::Json,
+            ))
+            // Add settings from file if it exists
+            .add_source(ConfigFile::from(self.path.clone()).required(false))
+            // Override with environment variables (e.g., FLASH_SEARCH_THEME=dark)
+            .add_source(Environment::with_prefix("FLASH_SEARCH").separator("_"));
+
+        match builder.build() {
+            Ok(config) => config
+                .try_deserialize()
+                .map_err(|e| FlashError::config("parse_settings", e.to_string())),
+            Err(e) => Err(FlashError::config("build_config", e.to_string())),
         }
     }
 
@@ -266,53 +254,6 @@ mod tests {
         manager.save(&settings).unwrap();
         let loaded = manager.load().unwrap();
         assert_eq!(loaded.max_results, 100);
-        assert!(matches!(loaded.theme, Theme::Dark));
-    }
-    #[allow(dead_code)]
-    fn test_settings_unknown_fields() {
-        let temp_dir = tempdir().unwrap();
-        let manager = SettingsManager::new(temp_dir.path());
-
-        // Create a JSON string with an unknown field "future_feature_flag"
-        let json_with_unknown = r#"{
-            "max_results": 150,
-            "theme": "dark",
-            "future_feature_flag": true,
-            "index_dirs": [],
-            "exclude_patterns": [],
-            "exclude_folders": [],
-            "auto_index_on_startup": true,
-            "index_file_size_limit_mb": 100,
-            "search_history_enabled": true,
-            "fuzzy_matching": true,
-            "case_sensitive": false,
-            "default_filters": {
-                "file_types": [],
-                "min_size_mb": null,
-                "max_size_mb": null,
-                "modified_within_days": null
-            },
-            "recent_searches": null,
-            "search_history": null,
-            "filename_index_enabled": true,
-            "font_size": "medium",
-            "show_file_extensions": true,
-            "results_per_page": 50,
-            "minimize_to_tray": true,
-            "auto_start_on_boot": false,
-            "double_click_action": "open_file",
-            "show_preview_panel": true,
-            "context_menu_enabled": false,
-            "global_hotkey": "Alt+Space",
-            "indexing_threads": 4,
-            "memory_limit_mb": 512,
-            "pinned_files": []
-        }"#;
-
-        fs::write(manager.path.clone(), json_with_unknown).unwrap();
-
-        let loaded = manager.load().expect("Should tolerate unknown fields");
-        assert_eq!(loaded.max_results, 150);
-        assert!(matches!(loaded.theme, Theme::Dark));
+        assert_eq!(loaded.theme, Theme::Dark);
     }
 }
