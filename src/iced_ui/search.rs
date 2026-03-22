@@ -6,7 +6,69 @@ use iced::widget::{
 use iced::{font, Alignment, Element, Font, Length, Padding};
 
 // --- Icons from TTF Font ---
-use crate::iced_ui::icons::load_icon;
+use crate::iced_ui::icons::{load_icon, load_icon_size};
+
+use syntect::parsing::SyntaxSet;
+use syntect::highlighting::ThemeSet;
+use syntect::easy::HighlightLines;
+use syntect::util::LinesWithEndings;
+use std::sync::OnceLock;
+
+fn get_syntax_set() -> &'static SyntaxSet {
+    static SYNTAX_SET: OnceLock<SyntaxSet> = OnceLock::new();
+    SYNTAX_SET.get_or_init(SyntaxSet::load_defaults_newlines)
+}
+
+fn get_theme_set() -> &'static ThemeSet {
+    static THEME_SET: OnceLock<ThemeSet> = OnceLock::new();
+    THEME_SET.get_or_init(ThemeSet::load_defaults)
+}
+
+fn render_code_preview<'a>(content: &'a str, extension: &str, is_dark: bool) -> Element<'a, Message> {
+    let ps = get_syntax_set();
+    let ts = get_theme_set();
+
+    let syntax = ps.find_syntax_by_extension(extension)
+        .unwrap_or_else(|| ps.find_syntax_plain_text());
+
+    let theme_name = if is_dark { "base16-ocean.dark" } else { "base16-ocean.light" };
+    let theme = &ts.themes[theme_name];
+
+    let mut h = HighlightLines::new(syntax, theme);
+    let mut spans: Vec<iced::widget::text::Span<'a, Message>> = Vec::new();
+
+    // Limit to first 1000 lines to prevent UI freezing on massive files
+    for line in LinesWithEndings::from(content).take(1000) {
+        if let Ok(ranges) = h.highlight_line(line, ps) {
+            for (style, text) in ranges {
+                spans.push(
+                    span(text)
+                        .size(13)
+                        .font(Font {
+                            family: font::Family::Monospace,
+                            ..Font::default()
+                        })
+                        .color(iced::Color::from_rgb8(
+                            style.foreground.r,
+                            style.foreground.g,
+                            style.foreground.b,
+                        ))
+                );
+            }
+        } else {
+            spans.push(span(line).size(13).font(Font {
+                family: font::Family::Monospace,
+                ..Font::default()
+            }));
+        }
+    }
+
+    if spans.is_empty() {
+        return text(content).size(13).into();
+    }
+
+    rich_text(spans).into()
+}
 
 pub fn search_view(app: &App) -> Element<'_, Message> {
     column![
@@ -64,21 +126,33 @@ fn top_navigation(_app: &App) -> Element<'_, Message> {
 
 fn search_input_bar(app: &App) -> Element<'_, Message> {
     let input = TextInput::new("Enter search keywords...", &app.search_query)
+        .id(crate::iced_ui::get_search_input_id())
         .on_input(Message::SearchQueryChanged)
         .on_submit(Message::SearchSubmitted)
         .padding(Padding::new(10.0))
         .style(theme::search_input())
         .width(Length::Fill);
 
-    let search_button = button(row![load_icon("search"), text("Search")].spacing(8))
-        .on_press(Message::SearchSubmitted)
-        .style(theme::search_button())
-        .padding(Padding {
-            top: 10.0,
-            bottom: 10.0,
-            left: 20.0,
-            right: 20.0,
-        });
+    let search_button = if app.is_searching {
+        button(row![text("Searching...").size(12)].spacing(8))
+            .style(theme::secondary_button())
+            .padding(Padding {
+                top: 10.0,
+                bottom: 10.0,
+                left: 20.0,
+                right: 20.0,
+            })
+    } else {
+        button(row![load_icon("search"), text("Search")].spacing(8))
+            .on_press(Message::SearchSubmitted)
+            .style(theme::search_button())
+            .padding(Padding {
+                top: 10.0,
+                bottom: 10.0,
+                left: 20.0,
+                right: 20.0,
+            })
+    };
 
     container(
         row![input, search_button]
@@ -97,17 +171,85 @@ fn search_input_bar(app: &App) -> Element<'_, Message> {
 }
 
 fn main_layout(app: &App) -> Element<'_, Message> {
-    row![left_sidebar(app), right_panel(app),]
+    if app.sidebar_collapsed {
+        row![
+            collapsed_sidebar(app),
+            column![filter_chips(app), right_panel(app)].width(Length::Fill),
+        ]
         .width(Length::Fill)
         .height(Length::Fill)
         .into()
+    } else {
+        row![
+            left_sidebar(app),
+            column![filter_chips(app), right_panel(app)].width(Length::Fill),
+        ]
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
+    }
+}
+
+fn filter_chips(app: &App) -> Element<'_, Message> {
+    if app.filter_extensions.is_empty() {
+        return Space::new().height(0).into();
+    }
+
+    let mut chips_row = row![].spacing(8).padding(Padding::new(8.0));
+    
+    for ext in &app.filter_extensions {
+        let ext_clone = ext.clone();
+        chips_row = chips_row.push(
+            button(
+                row![
+                    text(ext).size(12),
+                    load_icon_size("x", 12.0), // Assuming 'x' is close icon
+                ]
+                .spacing(4),
+            )
+            .style(theme::secondary_button())
+            .padding(Padding::new(4.0))
+            .on_press(Message::ToggleFilterExtension(ext_clone)),
+        );
+    }
+
+    container(chips_row)
+        .width(Length::Fill)
+        .style(theme::header_container)
+        .into()
+}
+
+fn collapsed_sidebar(_app: &App) -> Element<'_, Message> {
+    container(
+        column![
+            button(load_icon_size("filter", 16.0))
+                .on_press(Message::ToggleSidebar)
+                .style(theme::ghost_button())
+                .padding(Padding::new(8.0)),
+        ]
+        .spacing(16)
+        .padding(Padding::new(8.0))
+        .align_x(Alignment::Center),
+    )
+    .style(theme::sidebar_container)
+    .height(Length::Fill)
+    .width(Length::Fixed(48.0))
+    .into()
 }
 
 fn left_sidebar(app: &App) -> Element<'_, Message> {
-    let filter_header = text("Search Filters").size(14).font(Font {
-        weight: font::Weight::Bold,
-        ..Font::default()
-    });
+    let filter_header = row![
+        text("Search Filters").size(14).font(Font {
+            weight: font::Weight::Bold,
+            ..Font::default()
+        }),
+        Space::new().width(Length::Fill),
+        button(load_icon_size("chevron-left", 16.0))
+            .on_press(Message::ToggleSidebar)
+            .style(theme::ghost_button())
+            .padding(Padding::new(4.0))
+    ]
+    .align_y(Alignment::Center);
 
     let extension_section = column![
         text("File Extension")
@@ -229,92 +371,76 @@ fn left_sidebar(app: &App) -> Element<'_, Message> {
             .enumerate()
             .map(|(i, res)| {
                 let is_selected = app.selected_index == Some(i);
+                let is_hovered = app.hovered_item_index == Some(i);
 
-                let item_area = mouse_area(
-                    container(
-                        row![
-                            row![load_icon("file"), text(&*res.title).size(13)]
-
-                                .spacing(8)
-                                .width(Length::FillPortion(2)),
-                            text(
-                                res.modified
-                                    .map(crate::iced_ui::format_date)
-                                    .unwrap_or_else(|| "Unknown".to_string())
-                            )
-                            .size(12)
-                            .style(theme::muted_text_style())
-                            .width(Length::FillPortion(1)),
-                            text(res.extension.as_deref().unwrap_or("File"))
-                                .size(12)
-                                .style(theme::muted_text_style())
-                                .width(Length::FillPortion(1)),
-                            text(
-                                res.size
-                                    .map(crate::iced_ui::format_size)
-                                    .unwrap_or_else(|| "Unknown".to_string())
-                            )
-                            .size(12)
-                            .style(theme::muted_text_style())
-                            .width(Length::FillPortion(1)),
-                        ]
-                        .align_y(Alignment::Center),
+                let mut row_content = row![
+                    row![load_icon("file"), text(&*res.title).size(13)]
+                        .spacing(8)
+                        .width(Length::FillPortion(2)),
+                    text(
+                        res.modified
+                            .map(crate::iced_ui::format_date)
+                            .unwrap_or_else(|| "Unknown".to_string())
                     )
-                    .padding(Padding {
-                        top: 6.0,
-                        bottom: 6.0,
-                        left: 8.0,
-                        right: 8.0,
-                    })
-                    .style(if is_selected {
-                        theme::result_card_selected
-                    } else {
-                        theme::result_card_normal
-                    })
-                    .width(Length::Fill),
-                )
-                .on_press(Message::ResultSelected(i))
-                .on_right_press(Message::ShowContextMenu(i));
+                    .size(12)
+                    .style(theme::muted_text_style())
+                    .width(Length::FillPortion(1)),
+                    text(res.extension.as_deref().unwrap_or("File"))
+                        .size(12)
+                        .style(theme::muted_text_style())
+                        .width(Length::FillPortion(1)),
+                    text(
+                        res.size
+                            .map(crate::iced_ui::format_size)
+                            .unwrap_or_else(|| "Unknown".to_string())
+                    )
+                    .size(12)
+                    .style(theme::muted_text_style())
+                    .width(Length::FillPortion(1)),
+                ]
+                .align_y(Alignment::Center);
 
-                let mut col = column![item_area];
-
-                if app.context_menu_index == Some(i) {
-                    let ctx_menu = container(
+                if is_hovered {
+                    row_content = row_content.push(
                         row![
-                            button(text("Open File").size(11))
+                            button(load_icon_size("external-link", 14.0))
                                 .on_press(Message::OpenFile(res.path.clone()))
-                                .style(theme::secondary_button())
+                                .style(theme::ghost_button())
                                 .padding(Padding::new(4.0)),
-                            button(text("Open Location").size(11))
+                            button(load_icon_size("folder-open", 14.0))
                                 .on_press(Message::OpenFolder(res.path.clone()))
-                                .style(theme::secondary_button())
+                                .style(theme::ghost_button())
                                 .padding(Padding::new(4.0)),
-                            button(text("Copy Path").size(11))
+                            button(load_icon_size("copy", 14.0))
                                 .on_press(Message::CopyPath(res.path.clone()))
-                                .style(theme::secondary_button())
-                                .padding(Padding::new(4.0)),
-                            Space::new().width(Length::Fill),
-                            button(text("Close").size(11))
-                                .on_press(Message::CloseContextMenu)
                                 .style(theme::ghost_button())
                                 .padding(Padding::new(4.0)),
                         ]
-                        .spacing(8)
-                        .align_y(Alignment::Center),
-                    )
-                    .padding(Padding {
-                        top: 6.0,
-                        bottom: 6.0,
-                        left: 32.0,
-                        right: 8.0,
-                    })
-                    .style(theme::table_header_container)
-                    .width(Length::Fill);
-
-                    col = col.push(ctx_menu);
+                        .spacing(4)
+                    );
                 }
 
-                col.width(Length::Fill).into()
+                let item_area = mouse_area(
+                    container(row_content)
+                        .padding(Padding {
+                            top: 6.0,
+                            bottom: 6.0,
+                            left: 8.0,
+                            right: 8.0,
+                        })
+                        .style(if is_selected {
+                            theme::result_card_selected
+                        } else {
+                            theme::result_card_normal
+                        })
+                        .width(Length::Fill),
+                )
+                .on_press(Message::ResultSelected(i))
+                .on_right_press(Message::ShowContextMenu(i))
+                .on_enter(Message::ItemHovered(Some(i)))
+                .on_exit(Message::ItemHovered(None));
+
+                column![item_area].width(Length::Fill).into()
             })
             .collect::<Vec<Element<Message>>>(),
     ))
@@ -455,8 +581,20 @@ fn right_panel(app: &App) -> Element<'_, Message> {
             .center_y(Length::Fill)
             .into()
     } else if let Some(preview_result) = &app.preview_result {
-        let highlighted_text =
-            highlight_text(&preview_result.content, &preview_result.matched_terms);
+        let ext = app
+            .selected_index
+            .and_then(|i| app.results.get(i))
+            .and_then(|r| r.extension.as_deref())
+            .unwrap_or("txt");
+
+        // Prefer syntax highlighting, but fall back to term highlighting if there are matches
+        let highlighted_text = if preview_result.matched_terms.is_empty() {
+            render_code_preview(&preview_result.content, ext, app.is_dark)
+        } else {
+            // For now, if there's a search term, we use the plain text highlighter 
+            // so we can see the yellow background highlights.
+            highlight_text(&preview_result.content, &preview_result.matched_terms)
+        };
 
         container(scrollable(
             container(highlighted_text).padding(Padding::new(20.0)),

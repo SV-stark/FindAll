@@ -79,6 +79,8 @@ itertools = "0.13"
 strum = { version = "0.26", features = ["derive"] }
 config = "0.14"
 bon = "3.1"
+lazy_static = "1.4"
+syntect = "5.2"
 
 # Performance & Observability
 mimalloc = { version = "0.1", default-features = false }

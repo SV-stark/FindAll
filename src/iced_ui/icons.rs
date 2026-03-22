@@ -48,3 +48,7 @@ pub fn icon<'a>(name: &str) -> Text<'a> {
 pub fn load_icon<'a>(name: &str) -> Element<'a, super::Message> {
     icon(name).size(16).into()
 }
+
+pub fn load_icon_size<'a>(name: &str, size: f32) -> Element<'a, super::Message> {
+    icon(name).size(size).into()
+}

@@ -109,7 +109,9 @@ pub enum Message {
     SearchResultsReceived(u64, Vec<FileItem>),
     SearchError(FlashError),
     ResultSelected(usize),
+    ItemHovered(Option<usize>),
     OpenFile(String),
+    OpenSelected,
     CopyPath(String),
     TabChanged(Tab),
     RebuildIndex,
@@ -125,6 +127,7 @@ pub enum Message {
     ToggleWholeWord(bool),
     FilterExtensionChanged(String),
     ToggleFilterExtension(String),
+    ToggleSidebar,
     ClearFilters,
     MinSizeChanged(String),
     MaxSizeChanged(String),
@@ -137,6 +140,7 @@ pub enum Message {
     OpenFolder(String),
     MoveUp,
     MoveDown,
+    FocusSearch,
     DismissError,
     Quit,
     GlobalHotkeyChanged(String),
@@ -162,7 +166,9 @@ pub struct App {
     search_query: String,
     results: Vec<FileItem>,
     selected_index: Option<usize>,
+    hovered_item_index: Option<usize>,
     is_searching: bool,
+    sidebar_collapsed: bool,
     settings: AppSettings,
     active_tab: Tab,
     files_indexed: i32,
@@ -187,6 +193,14 @@ pub struct App {
     search_id: u64,
 }
 
+use iced::widget::Id;
+use std::sync::OnceLock;
+
+pub fn get_search_input_id() -> Id {
+    static ID: OnceLock<Id> = OnceLock::new();
+    ID.get_or_init(Id::unique).clone()
+}
+
 impl App {
     fn new(state: Result<Arc<AppState>, String>) -> Self {
         match state {
@@ -203,7 +217,9 @@ impl App {
                     search_query: String::new(),
                     results: Vec::new(),
                     selected_index: None,
+                    hovered_item_index: None,
                     is_searching: false,
+                    sidebar_collapsed: false,
                     settings: settings.clone(),
                     active_tab: Tab::Search,
                     files_indexed: stats.total_documents as i32,
@@ -257,7 +273,9 @@ impl App {
                 search_query: String::new(),
                 results: Vec::new(),
                 selected_index: None,
+                hovered_item_index: None,
                 is_searching: false,
+                sidebar_collapsed: false,
                 settings: AppSettings::default(),
                 active_tab: Tab::Search,
                 files_indexed: 0,
@@ -544,6 +562,27 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                 app.context_menu_index = None;
                 app.selected_index = Some(idx);
                 app.load_preview()
+            }
+            Message::ItemHovered(idx) => {
+                app.hovered_item_index = idx;
+                Task::none()
+            }
+            Message::ToggleSidebar => {
+                app.sidebar_collapsed = !app.sidebar_collapsed;
+                Task::none()
+            }
+            Message::FocusSearch => iced::widget::operation::focus(get_search_input_id()),
+            Message::OpenSelected => {
+                if let Some(idx) = app.selected_index {
+                    if let Some(item) = app.results.get(idx) {
+                        let path = item.path.clone();
+                        return Task::perform(
+                            async move { path },
+                            Message::OpenFile,
+                        );
+                    }
+                }
+                Task::none()
             }
             Message::OpenFile(path) => {
                 app.context_menu_index = None;
@@ -951,9 +990,25 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
 }
 
 pub fn subscription(app: &App) -> Subscription<Message> {
+    use iced::keyboard;
+    use iced::Event;
+
     let mut subs = vec![
         iced::time::every(std::time::Duration::from_millis(200)).map(|_| Message::PollHotkey),
         iced::time::every(std::time::Duration::from_millis(500)).map(|_| Message::PollTray),
+        iced::event::listen_with(|event, _status, _window_id| {
+            if let Event::Keyboard(keyboard::Event::KeyPressed { key, .. }) = event {
+                match key.as_ref() {
+                    keyboard::Key::Named(keyboard::key::Named::ArrowUp) => Some(Message::MoveUp),
+                    keyboard::Key::Named(keyboard::key::Named::ArrowDown) => Some(Message::MoveDown),
+                    keyboard::Key::Character("/") => Some(Message::FocusSearch),
+                    keyboard::Key::Named(keyboard::key::Named::Enter) => Some(Message::OpenSelected),
+                    _ => None,
+                }
+            } else {
+                None
+            }
+        }),
     ];
 
     if app.search_deadline.is_some() {
