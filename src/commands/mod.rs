@@ -44,7 +44,9 @@ pub struct AppState {
     pub scanner: Arc<crate::scanner::Scanner>,
 }
 
+#[bon::bon]
 impl AppState {
+    #[builder]
     pub fn new(
         indexer: Arc<IndexManager>,
         metadata_db: Arc<MetadataDb>,

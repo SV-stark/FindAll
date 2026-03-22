@@ -97,15 +97,17 @@ pub fn setup_app() -> std::result::Result<
         settings.clone(),
     ));
 
-    let state = Arc::new(AppState::new(
-        indexer_shared,
-        metadata_db_shared,
-        settings_manager,
-        watcher,
-        filename_index,
-        progress_tx,
-        scanner,
-    ));
+    let state = Arc::new(
+        AppState::builder()
+            .indexer(indexer_shared)
+            .metadata_db(metadata_db_shared)
+            .settings_manager(settings_manager)
+            .watcher(watcher)
+            .maybe_filename_index(filename_index)
+            .progress_tx(progress_tx)
+            .scanner(scanner)
+            .build(),
+    );
 
     Ok((state, progress_rx))
 }

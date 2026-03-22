@@ -101,10 +101,7 @@ impl Scanner {
     pub async fn scan_directory(&self, root: PathBuf, exclude_patterns: Vec<String>) -> Result<()> {
         info!("Starting directory scan for {}", root.display());
 
-        let (path_tx, path_rx): (
-            std::sync::mpsc::Sender<PathBuf>,
-            std::sync::mpsc::Receiver<PathBuf>,
-        ) = std::sync::mpsc::channel();
+        let (path_tx, path_rx) = crossbeam_channel::unbounded::<PathBuf>();
 
         let root_clone = root.clone();
         let tx_clone = self.progress_tx.clone();
@@ -125,7 +122,7 @@ impl Scanner {
         // --- Stage 2: Content Indexing (Batched) ---
         // Parse files in parallel via Rayon, collect results via mpsc,
         // then batch-write to the index and metadata DB.
-        let (task_tx, task_rx) = std::sync::mpsc::sync_channel::<IndexTask>(BATCH_SIZE * 8);
+        let (task_tx, task_rx) = crossbeam_channel::bounded::<IndexTask>(BATCH_SIZE * 8);
         let metadata_db_for_parser = self.metadata_db.clone();
         let metadata_db_for_writer = self.metadata_db.clone();
         let indexer_clone = self.indexer.clone();
@@ -305,7 +302,7 @@ impl Scanner {
         metadata_db: &Arc<MetadataDb>,
         file_size_limit_mb: u32,
         allowed_extensions: &std::collections::HashSet<String>,
-        task_tx: &std::sync::mpsc::SyncSender<IndexTask>,
+        task_tx: &crossbeam_channel::Sender<IndexTask>,
     ) {
         let limit_bytes = (file_size_limit_mb as u64) * 1024 * 1024;
         let mut batch_entries = Vec::with_capacity(chunk.len());

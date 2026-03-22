@@ -1062,16 +1062,14 @@ mod tests {
 
     #[test]
     fn test_file_item_from_search_result() {
-        let sr = SearchResult {
-            file_path: "C:\\path\\to\\file.txt".to_string(),
-            score: 0.95,
-            title: Some("My File".into()),
-            modified: None,
-            size: None,
-            extension: Some("txt".into()),
-            matched_terms: vec![],
-            snippets: Vec::new(),
-        };
+        let sr = SearchResult::builder()
+            .file_path("C:\\path\\to\\file.txt".to_string())
+            .score(0.95)
+            .maybe_title(Some("My File".into()))
+            .maybe_extension(Some("txt".into()))
+            .matched_terms(vec![])
+            .snippets(Vec::new())
+            .build();
         let fi = FileItem::from(sr);
         assert_eq!(fi.title, "My File");
         assert_eq!(fi.path, "C:\\path\\to\\file.txt");

@@ -18,7 +18,7 @@ const MAX_CACHE_SIZE: usize = 100;
 /// Cache TTL in seconds
 const CACHE_TTL_SECS: u64 = 30;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, bon::Builder)]
 pub struct SearchResult {
     pub file_path: String,
     pub title: Option<CompactString>,
@@ -381,16 +381,18 @@ impl IndexSearcher {
                 vec![snippet_text]
             };
 
-            results.push(SearchResult {
-                file_path,
-                title,
-                score,
-                modified,
-                size,
-                extension,
-                matched_terms: highlight_terms.clone(),
-                snippets,
-            });
+            results.push(
+                SearchResult::builder()
+                    .file_path(file_path)
+                    .maybe_title(title)
+                    .score(score)
+                    .maybe_modified(modified)
+                    .maybe_size(size)
+                    .maybe_extension(extension)
+                    .matched_terms(highlight_terms.clone())
+                    .snippets(snippets)
+                    .build(),
+            );
 
             if results.len() >= limit {
                 break;
@@ -528,16 +530,18 @@ impl IndexSearcher {
                     date.into_timestamp_secs() as u64
                 });
 
-            results.push(SearchResult {
-                file_path,
-                title,
-                score: 1.0,
-                modified,
-                size,
-                extension,
-                matched_terms: vec![],
-                snippets: vec![],
-            });
+            results.push(
+                SearchResult::builder()
+                    .file_path(file_path)
+                    .maybe_title(title)
+                    .score(1.0)
+                    .maybe_modified(modified)
+                    .maybe_size(size)
+                    .maybe_extension(extension)
+                    .matched_terms(vec![])
+                    .snippets(vec![])
+                    .build(),
+            );
         }
 
         // Reverse because order_by_fast_field might sort ascending? We'll test it.
@@ -610,16 +614,12 @@ mod tests {
             max_size: None,
             extensions: None,
         };
-        let results = vec![SearchResult {
-            file_path: "path".to_string(),
-            title: None,
-            score: 1.0,
-            modified: None,
-            size: None,
-            extension: None,
-            matched_terms: vec!["test".to_string()],
-            snippets: vec!["snippet".to_string()],
-        }];
+        let results = vec![SearchResult::builder()
+            .file_path("path".to_string())
+            .score(1.0)
+            .matched_terms(vec!["test".to_string()])
+            .snippets(vec!["snippet".to_string()])
+            .build()];
         cache.insert(key.clone(), results.clone());
         let cached = cache.get(&key);
         assert!(cached.is_some());

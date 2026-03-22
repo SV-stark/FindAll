@@ -55,10 +55,8 @@ fst = "0.4"
 rkyv = { version = "0.8", features = ["bytecheck"] }
 sysinfo = "0.38"
 compact_str = { version = "0.9", features = ["rkyv", "serde"] }
-
-
-
 smallvec = "1.13"
+crossbeam-channel = "0.5"
 
 # Utilities
 anyhow = "1.0"
@@ -80,6 +78,7 @@ self_update = { version = "0.41", features = ["rustls"] }
 itertools = "0.13"
 strum = { version = "0.26", features = ["derive"] }
 config = "0.14"
+bon = "3.1"
 
 # Performance & Observability
 mimalloc = { version = "0.1", default-features = false }

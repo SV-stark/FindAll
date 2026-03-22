@@ -29,7 +29,7 @@ mod windows_usn {
 
     pub fn scan_volume(
         root: &Path,
-        path_tx: std::sync::mpsc::Sender<PathBuf>,
+        path_tx: crossbeam_channel::Sender<PathBuf>,
         progress_tx: Option<mpsc::Sender<ProgressEvent>>,
         total_count: Arc<AtomicUsize>,
     ) -> Result<()> {
@@ -65,7 +65,7 @@ mod windows_usn {
     unsafe fn iterate_mft(
         handle: HANDLE,
         drive_root: &str,
-        path_tx: std::sync::mpsc::Sender<PathBuf>,
+        path_tx: crossbeam_channel::Sender<PathBuf>,
         progress_tx: Option<mpsc::Sender<ProgressEvent>>,
         total_count: Arc<AtomicUsize>,
     ) -> Result<()> {
@@ -377,7 +377,7 @@ pub trait DriveScanner: Send + Sync {
         &self,
         root: PathBuf,
         exclude_patterns: Vec<String>,
-        path_tx: std::sync::mpsc::Sender<PathBuf>,
+        path_tx: crossbeam_channel::Sender<PathBuf>,
         progress_tx: Option<mpsc::Sender<ProgressEvent>>,
         total_count: Arc<AtomicUsize>,
     ) -> Result<()>;
@@ -400,7 +400,7 @@ impl DriveScanner for DefaultDriveScanner {
         &self,
         root: PathBuf,
         exclude_patterns: Vec<String>,
-        path_tx: std::sync::mpsc::Sender<PathBuf>,
+        path_tx: crossbeam_channel::Sender<PathBuf>,
         progress_tx: Option<mpsc::Sender<ProgressEvent>>,
         total_count: Arc<AtomicUsize>,
     ) -> Result<()> {
@@ -481,7 +481,7 @@ impl DriveScanner for WindowsDriveScanner {
         &self,
         root: PathBuf,
         exclude_patterns: Vec<String>,
-        path_tx: std::sync::mpsc::Sender<PathBuf>,
+        path_tx: crossbeam_channel::Sender<PathBuf>,
         progress_tx: Option<mpsc::Sender<ProgressEvent>>,
         total_count: Arc<AtomicUsize>,
     ) -> Result<()> {
@@ -578,7 +578,7 @@ impl DriveScanner for MacDriveScanner {
         &self,
         root: PathBuf,
         exclude_patterns: Vec<String>,
-        path_tx: std::sync::mpsc::Sender<PathBuf>,
+        path_tx: crossbeam_channel::Sender<PathBuf>,
         progress_tx: Option<mpsc::Sender<ProgressEvent>>,
         total_count: Arc<AtomicUsize>,
     ) -> Result<()> {
@@ -597,7 +597,7 @@ impl DriveScanner for LinuxDriveScanner {
         &self,
         root: PathBuf,
         exclude_patterns: Vec<String>,
-        path_tx: std::sync::mpsc::Sender<PathBuf>,
+        path_tx: crossbeam_channel::Sender<PathBuf>,
         progress_tx: Option<mpsc::Sender<ProgressEvent>>,
         total_count: Arc<AtomicUsize>,
     ) -> Result<()> {
