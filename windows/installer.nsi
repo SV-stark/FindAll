@@ -7,6 +7,7 @@
 !define APP_VERSION "0.2.0"
 !define APP_PUBLISHER "Flash Search Team"
 !define APP_URL "https://github.com/flash-search/flash-search"
+!define APP_ICON "..\assets\icon.ico"
 
 Name "${APP_NAME}"
 OutFile "..\FlashSearchSetup.exe"
@@ -16,6 +17,8 @@ RequestExecutionLevel admin
 
 # MUI Settings
 !define MUI_ABORTWARNING
+!define MUI_ICON "${APP_ICON}"
+!define MUI_UNICON "${APP_ICON}"
 !define MUI_WELCOMEPAGE_TITLE "Welcome to ${APP_NAME} Setup"
 !define MUI_FINISHPAGE_RUN "$INSTDIR\${APP_EXECUTABLE}"
 

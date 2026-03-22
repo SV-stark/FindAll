@@ -10,6 +10,8 @@ rust-version = "1.75"
 name = "flash_search"
 
 [build-dependencies]
+winres = "0.1"
+image = { version = "0.25", default-features = false, features = ["png", "ico"] }
 
 [dependencies]
 # UI Framework
@@ -72,7 +74,7 @@ rfd = "0.17"
 ctrlc = "3.2"
 tray-icon = "0.21"
 auto-launch = "0.6"
-image = { version = "0.25", default-features = false, features = ["png"] }
+image = { version = "0.25", default-features = false, features = ["png", "ico"] }
 global-hotkey = "0.5.0"
 self_update = { version = "0.41", features = ["rustls"] }
 itertools = "0.13"
