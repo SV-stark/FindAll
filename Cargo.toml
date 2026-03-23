@@ -103,6 +103,31 @@ windows = { version = "0.58", features = [
 
 [dev-dependencies]
 tempfile = "3.0"
+divan = "0.1"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(windows)'] }
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+all = { level = "warn", priority = -1 }
+
+[[bench]]
+name = "benchmarks"
+harness = false
+
+[package.metadata.dist]
+# The preferred cargo-dist version to use in CI (Cargo.toml SemVer syntax)
+cargo-dist-version = "0.22.1"
+# CI backends to support
+ci = ["github"]
+# The installers to generate for each app
+installers = ["powershell", "shell"]
+# Target platforms to build apps for (Rust target-triple syntax)
+targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin"]
+# Whether to install an updater binary
+install-updater = true
 
 [profile.release]
 opt-level = 3

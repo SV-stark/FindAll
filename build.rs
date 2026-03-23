@@ -15,7 +15,7 @@ fn main() -> Result<()> {
                 // Resize to 256x256 for a high-quality icon that isn't massive
                 let resized = img.resize(256, 256, image::imageops::FilterType::Lanczos3);
                 if let Err(e) = resized.save_with_format(icon_path, image::ImageFormat::Ico) {
-                    println!("cargo:warning=Failed to save icon.ico: {}", e);
+                    println!("cargo:warning=Failed to save icon.ico: {e}");
                 } else {
                     println!("cargo:warning=Successfully generated icon.ico");
                 }

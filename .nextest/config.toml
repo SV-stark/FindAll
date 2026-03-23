@@ -1,0 +1,8 @@
+[profile.default]
+retries = 1
+slow-timeout = "60s"
+leak-timeout = "100ms"
+
+[profile.ci]
+retries = 3
+backtrace = "short"

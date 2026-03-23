@@ -1,0 +1,18 @@
+project_root = "."
+tag_prefix = "v"
+branch_whitelist = ["main", "master"]
+pre_bump_hooks = []
+post_bump_hooks = []
+pre_package_bump_hooks = []
+post_package_bump_hooks = []
+
+[git_hooks]
+
+[commit_types]
+
+[changelog]
+path = "CHANGELOG.md"
+template = "remote"
+remote = "github.com/flash-search/flash-search"
+
+[bump_profiles]
