@@ -80,7 +80,7 @@ pub async fn get_file_preview_highlighted_internal(
     state: &Arc<AppState>,
 ) -> Result<PreviewResult, String> {
     use crate::indexer::query_parser::extract_highlight_terms;
-    let case_sensitive = state.settings_cache.read().case_sensitive;
+    let case_sensitive = state.settings_cache.load().case_sensitive;
     let matched_terms = extract_highlight_terms(&query, case_sensitive);
 
     let content = get_file_preview_internal(path).await?;

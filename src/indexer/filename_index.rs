@@ -2,7 +2,7 @@ use crate::error::Result;
 use compact_str::CompactString;
 use fst::automaton::Subsequence;
 use fst::{IntoStreamer, Streamer};
-use parking_lot::RwLock;
+use arc_swap::ArcSwap;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::Arc;
@@ -33,9 +33,9 @@ const INDEX_FILENAME: &str = "filenames.bin";
 const LEGACY_INDEX_FILENAME: &str = "filenames.json";
 
 pub struct FilenameIndex {
-    entries: Arc<RwLock<Vec<FilenameEntry>>>,
+    entries: Arc<ArcSwap<Vec<FilenameEntry>>>,
     data_path: std::path::PathBuf,
-    fst_map: Arc<RwLock<Arc<[u8]>>>,
+    fst_map: Arc<ArcSwap<Arc<[u8]>>>,
 }
 
 impl FilenameIndex {
@@ -105,10 +105,10 @@ impl FilenameIndex {
             Vec::new()
         };
 
-        let fst_map = Arc::new(RwLock::new(Arc::from(Self::build_fst(&entries))));
+        let fst_map = Arc::new(ArcSwap::from_pointee(Arc::from(Self::build_fst(&entries))));
 
         Ok(Self {
-            entries: Arc::new(RwLock::new(entries)),
+            entries: Arc::new(ArcSwap::from_pointee(entries)),
             data_path,
             fst_map,
         })
@@ -120,47 +120,40 @@ impl FilenameIndex {
             name: CompactString::from(name),
         };
 
-        let entries = self.entries.clone();
+        let mut current = self.entries.load().as_ref().clone();
+        current.push(entry);
 
-        {
-            let mut guard = entries.write();
-            guard.push(entry);
+        let should_save = current.len() % 1000 == 0;
+        let data = if should_save { Some(current.clone()) } else { None };
+        let data_path = self.data_path.clone();
 
-            if guard.len() % 1000 == 0 {
-                let data = guard.clone();
-                let data_path = self.data_path.clone();
-                std::thread::spawn(move || {
-                    Self::save_to_disk_sync(&data, &data_path);
-                });
-            }
+        self.entries.store(Arc::new(current));
+
+        if let Some(data) = data {
+            std::thread::spawn(move || {
+                Self::save_to_disk_sync(&data, &data_path);
+            });
         }
 
         Ok(())
     }
 
     pub fn commit(&self) -> Result<()> {
-        let entries = self.entries.clone();
+        let guard = self.entries.load();
+        let data_path = self.data_path.clone();
+        let data: Vec<_> = guard
+            .iter()
+            .map(|e| FilenameEntry {
+                path: e.path.clone(),
+                name: e.name.clone(),
+            })
+            .collect();
 
-        {
-            let guard = entries.read();
-            let data_path = self.data_path.clone();
-            let data: Vec<_> = guard
-                .iter()
-                .map(|e| FilenameEntry {
-                    path: e.path.clone(),
-                    name: e.name.clone(),
-                })
-                .collect();
+        self.fst_map.store(Arc::new(Arc::from(Self::build_fst(&data))));
 
-            {
-                let mut fst_guard = self.fst_map.write();
-                *fst_guard = Arc::from(Self::build_fst(&data));
-            }
-
-            std::thread::spawn(move || {
-                Self::save_to_disk_sync(&data, &data_path);
-            });
-        }
+        std::thread::spawn(move || {
+            Self::save_to_disk_sync(&data, &data_path);
+        });
 
         Ok(())
     }
@@ -193,13 +186,13 @@ impl FilenameIndex {
     }
 
     pub fn search(&self, query: &str, limit: usize) -> Result<Vec<FilenameSearchResult>> {
-        let fst_guard = self.fst_map.read();
+        let fst_guard = self.fst_map.load();
         if fst_guard.is_empty() {
             return Ok(Vec::new());
         }
 
         // FST Map - use reference borrow from the guard to avoid trait bound issues with Arc
-        let map = match fst::Map::new(&**fst_guard) {
+        let map = match fst::Map::new(&***fst_guard) {
             Ok(m) => m,
             Err(_) => return Ok(Vec::new()),
         };
@@ -210,7 +203,7 @@ impl FilenameIndex {
 
         let mut stream = map.search(aut).into_stream();
 
-        let entries_lock = self.entries.read();
+        let entries_lock = self.entries.load();
 
         let mut results = Vec::new();
         while let Some((_, v)) = stream.next() {
@@ -229,25 +222,19 @@ impl FilenameIndex {
     }
 
     pub fn clear(&self) -> Result<()> {
-        let entries = self.entries.clone();
-
-        {
-            let mut guard = entries.write();
-            guard.clear();
-            let data_path = self.data_path.clone();
-            std::thread::spawn(move || {
-                let _ = std::fs::remove_file(data_path.join(INDEX_FILENAME));
-                let _ = std::fs::remove_file(data_path.join(LEGACY_INDEX_FILENAME));
-            });
-        }
+        self.entries.store(Arc::new(Vec::new()));
+        self.fst_map.store(Arc::new(Arc::from(Vec::new().into_boxed_slice())));
+        let data_path = self.data_path.clone();
+        std::thread::spawn(move || {
+            let _ = std::fs::remove_file(data_path.join(INDEX_FILENAME));
+            let _ = std::fs::remove_file(data_path.join(LEGACY_INDEX_FILENAME));
+        });
 
         Ok(())
     }
 
     pub fn get_stats(&self) -> Result<FilenameIndexStats> {
-        let entries = self.entries.clone();
-
-        let entries = entries.read();
+        let entries = self.entries.load();
 
         let size: u64 = entries
             .iter()
@@ -261,36 +248,23 @@ impl FilenameIndex {
     }
 
     pub fn rebuild_index(&self, paths: Vec<(String, String)>) -> Result<()> {
-        let entries = self.entries.clone();
         let data_path = self.data_path.clone();
+        let new_entries: Vec<FilenameEntry> = paths
+            .into_iter()
+            .map(|(path, name)| FilenameEntry {
+                path,
+                name: CompactString::from(name),
+            })
+            .collect();
+            
+        let data = new_entries.clone();
 
-        {
-            let mut guard = entries.write();
-            *guard = paths
-                .into_iter()
-                .map(|(path, name)| FilenameEntry {
-                    path,
-                    name: CompactString::from(name),
-                })
-                .collect();
+        self.fst_map.store(Arc::new(Arc::from(Self::build_fst(&new_entries))));
+        self.entries.store(Arc::new(new_entries));
 
-            let data: Vec<_> = guard
-                .iter()
-                .map(|e| FilenameEntry {
-                    path: e.path.clone(),
-                    name: e.name.clone(),
-                })
-                .collect();
-
-            {
-                let mut fst_guard = self.fst_map.write();
-                *fst_guard = Arc::from(Self::build_fst(&data));
-            }
-
-            std::thread::spawn(move || {
-                Self::save_to_disk_sync(&data, &data_path);
-            });
-        }
+        std::thread::spawn(move || {
+            Self::save_to_disk_sync(&data, &data_path);
+        });
 
         Ok(())
     }

@@ -2283,6 +2283,7 @@ dependencies = [
  "ahash",
  "anyhow",
  "arboard",
+ "arc-swap",
  "auto-launch",
  "blake3",
  "bon",

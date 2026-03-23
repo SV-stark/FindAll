@@ -29,7 +29,8 @@ use crate::indexer::{filename_index::FilenameIndex, IndexManager};
 use crate::metadata::MetadataDb;
 use crate::settings::{AppSettings, SettingsManager};
 use crate::watcher::WatcherManager;
-use parking_lot::{Mutex, RwLock};
+use arc_swap::ArcSwap;
+use parking_lot::Mutex;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
@@ -37,7 +38,7 @@ pub struct AppState {
     pub indexer: Arc<IndexManager>,
     pub metadata_db: Arc<MetadataDb>,
     pub settings_manager: Arc<SettingsManager>,
-    pub settings_cache: Arc<RwLock<AppSettings>>,
+    pub settings_cache: Arc<ArcSwap<AppSettings>>,
     pub watcher: Mutex<WatcherManager>,
     pub filename_index: Option<Arc<FilenameIndex>>,
     pub progress_tx: mpsc::Sender<crate::scanner::ProgressEvent>,
@@ -64,7 +65,7 @@ impl AppState {
             indexer,
             metadata_db,
             settings_manager: Arc::new(settings_manager),
-            settings_cache: Arc::new(RwLock::new(cache)),
+            settings_cache: Arc::new(ArcSwap::from_pointee(cache)),
             watcher: Mutex::new(watcher),
             filename_index,
             progress_tx,
