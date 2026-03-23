@@ -8,7 +8,7 @@ use tracing::error;
 pub async fn start_indexing_internal(path: String, state: Arc<AppState>) -> Result<(), String> {
     let path = PathBuf::from(path);
     let mut handle_guard = state.indexing_handle.lock();
-    
+
     // Abort previous indexing if still running
     if let Some(handle) = handle_guard.take() {
         handle.abort();
@@ -21,7 +21,11 @@ pub async fn start_indexing_internal(path: String, state: Arc<AppState>) -> Resu
             exclude_patterns.push(folder.clone());
         }
 
-        if let Err(e) = state_clone.scanner.scan_directory(path, exclude_patterns).await {
+        if let Err(e) = state_clone
+            .scanner
+            .scan_directory(path, exclude_patterns)
+            .await
+        {
             error!("Indexing error: {}", e);
         }
     });

@@ -191,7 +191,13 @@ pub fn extract_highlight_terms(query: &str, case_sensitive: bool) -> Vec<String>
         .text_query
         .split_whitespace()
         .filter(|t| *t != "*")
-        .map(|t| if case_sensitive { t.to_string() } else { t.to_lowercase() })
+        .map(|t| {
+            if case_sensitive {
+                t.to_string()
+            } else {
+                t.to_lowercase()
+            }
+        })
         .collect();
 
     if terms.is_empty() && parsed.text_query == "*" {
@@ -293,7 +299,7 @@ mod tests {
             ) {
                 let input = format!("{}:{} {}", op, val, text);
                 let parsed = ParsedQuery::new(&input, false);
-                
+
                 match op.as_str() {
                     "ext" => {
                         let expected = val.trim_start_matches('.').to_lowercase();
@@ -301,7 +307,7 @@ mod tests {
                     },
                     "path" => assert_eq!(parsed.path_filter, Some(val.to_lowercase())),
                     "title" => assert_eq!(parsed.title_filter, Some(val.to_lowercase())),
-                    "size" => {}, 
+                    "size" => {},
                     _ => unreachable!(),
                 }
             }

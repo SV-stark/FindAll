@@ -253,9 +253,20 @@ impl IndexSearcher {
             }
 
             if let Some(min_mod) = min_modified {
-                let modified_field = self.reader.searcher().schema().get_field("modified").unwrap();
-                let lower = Term::from_field_date(modified_field, tantivy::DateTime::from_timestamp_secs(min_mod as i64));
-                let upper = Term::from_field_date(modified_field, tantivy::DateTime::from_timestamp_secs(i64::MAX / 1000)); // Use a very large date
+                let modified_field = self
+                    .reader
+                    .searcher()
+                    .schema()
+                    .get_field("modified")
+                    .unwrap();
+                let lower = Term::from_field_date(
+                    modified_field,
+                    tantivy::DateTime::from_timestamp_secs(min_mod as i64),
+                );
+                let upper = Term::from_field_date(
+                    modified_field,
+                    tantivy::DateTime::from_timestamp_secs(i64::MAX / 1000),
+                ); // Use a very large date
                 let range = RangeQuery::new(Bound::Included(lower), Bound::Included(upper));
                 combine.push((Occur::Must, Box::new(range)));
             }
@@ -357,12 +368,10 @@ impl IndexSearcher {
                 .and_then(|f| f.as_str())
                 .map(|s: &str| CompactString::from(s));
 
-
             let extension = retrieved_doc
                 .get_first(self.extension_field)
                 .and_then(|f| f.as_str())
                 .map(|s: &str| CompactString::from(s));
-
 
             // Get fast fields for size and modified
             let size = searcher
@@ -520,12 +529,10 @@ impl IndexSearcher {
                 .and_then(|f| f.as_str())
                 .map(|s: &str| CompactString::from(s));
 
-
             let extension = retrieved_doc
                 .get_first(self.extension_field)
                 .and_then(|f| f.as_str())
                 .map(|s: &str| CompactString::from(s));
-
 
             // Get fast fields for size and modified
             let size = searcher

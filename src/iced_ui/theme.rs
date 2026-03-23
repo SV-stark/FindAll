@@ -379,7 +379,11 @@ pub fn search_input() -> impl Fn(&Theme, text_input::Status) -> text_input::Styl
         text_input::Style {
             background: Background::Color(surface_color(theme)),
             border: Border {
-                color: if is_focused { ACCENT_BLUE } else { border_color(theme) },
+                color: if is_focused {
+                    ACCENT_BLUE
+                } else {
+                    border_color(theme)
+                },
                 width: 1.0,
                 radius: Radius::from(8.0),
             },

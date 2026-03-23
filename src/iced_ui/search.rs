@@ -8,11 +8,11 @@ use iced::{font, Alignment, Element, Font, Length, Padding};
 // --- Icons from TTF Font ---
 use crate::iced_ui::icons::{load_icon, load_icon_size};
 
-use syntect::parsing::SyntaxSet;
-use syntect::highlighting::ThemeSet;
-use syntect::easy::HighlightLines;
-use syntect::util::LinesWithEndings;
 use std::sync::OnceLock;
+use syntect::easy::HighlightLines;
+use syntect::highlighting::ThemeSet;
+use syntect::parsing::SyntaxSet;
+use syntect::util::LinesWithEndings;
 
 fn get_syntax_set() -> &'static SyntaxSet {
     static SYNTAX_SET: OnceLock<SyntaxSet> = OnceLock::new();
@@ -24,14 +24,23 @@ fn get_theme_set() -> &'static ThemeSet {
     THEME_SET.get_or_init(ThemeSet::load_defaults)
 }
 
-fn render_code_preview<'a>(content: &'a str, extension: &str, is_dark: bool) -> Element<'a, Message> {
+fn render_code_preview<'a>(
+    content: &'a str,
+    extension: &str,
+    is_dark: bool,
+) -> Element<'a, Message> {
     let ps = get_syntax_set();
     let ts = get_theme_set();
 
-    let syntax = ps.find_syntax_by_extension(extension)
+    let syntax = ps
+        .find_syntax_by_extension(extension)
         .unwrap_or_else(|| ps.find_syntax_plain_text());
 
-    let theme_name = if is_dark { "base16-ocean.dark" } else { "base16-ocean.light" };
+    let theme_name = if is_dark {
+        "base16-ocean.dark"
+    } else {
+        "base16-ocean.light"
+    };
     let theme = &ts.themes[theme_name];
 
     let mut h = HighlightLines::new(syntax, theme);
@@ -52,7 +61,7 @@ fn render_code_preview<'a>(content: &'a str, extension: &str, is_dark: bool) -> 
                             style.foreground.r,
                             style.foreground.g,
                             style.foreground.b,
-                        ))
+                        )),
                 );
             }
         } else {
@@ -181,7 +190,7 @@ fn filter_chips(app: &App) -> Element<'_, Message> {
     }
 
     let mut chips_row = row![].spacing(8).padding(Padding::new(8.0));
-    
+
     for ext in &app.filter_extensions {
         let ext_clone = ext.clone();
         chips_row = chips_row.push(
@@ -206,12 +215,10 @@ fn filter_chips(app: &App) -> Element<'_, Message> {
 
 fn collapsed_sidebar(_app: &App) -> Element<'_, Message> {
     container(
-        column![
-            button(load_icon_size("filter", 16.0))
-                .on_press(Message::ToggleSidebar)
-                .style(theme::ghost_button())
-                .padding(Padding::new(8.0)),
-        ]
+        column![button(load_icon_size("filter", 16.0))
+            .on_press(Message::ToggleSidebar)
+            .style(theme::ghost_button())
+            .padding(Padding::new(8.0)),]
         .spacing(16)
         .padding(Padding::new(8.0))
         .align_x(Alignment::Center),
@@ -285,7 +292,9 @@ fn left_sidebar(app: &App) -> Element<'_, Message> {
     .spacing(8);
 
     let date_section = column![
-        text("Date Modified").size(12).style(theme::dim_text_style()),
+        text("Date Modified")
+            .size(12)
+            .style(theme::dim_text_style()),
         row![
             date_filter_button("Anytime", DateFilter::Anytime, app),
             date_filter_button("Today", DateFilter::Today, app),
@@ -350,7 +359,7 @@ fn results_panel(app: &App) -> Element<'_, Message> {
             } else {
                 "No files found matching criteria."
             })
-            .style(theme::dim_text_style())
+            .style(theme::dim_text_style()),
         )
         .center_x(Length::Fill)
         .center_y(Length::Fill)
@@ -395,9 +404,7 @@ fn results_panel(app: &App) -> Element<'_, Message> {
                     ]
                     .spacing(8)
                     .align_y(Alignment::Center),
-                    text(&res.path)
-                        .size(11)
-                        .style(theme::dim_text_style()),
+                    text(&res.path).size(11).style(theme::dim_text_style()),
                     row![
                         text(res.extension.as_deref().unwrap_or("File"))
                             .size(11)
@@ -606,7 +613,7 @@ fn right_panel(app: &App) -> Element<'_, Message> {
         let highlighted_text = if preview_result.matched_terms.is_empty() {
             render_code_preview(&preview_result.content, ext, app.is_dark)
         } else {
-            // For now, if there's a search term, we use the plain text highlighter 
+            // For now, if there's a search term, we use the plain text highlighter
             // so we can see the yellow background highlights.
             highlight_text(&preview_result.content, &preview_result.matched_terms)
         };

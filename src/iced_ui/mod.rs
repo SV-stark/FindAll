@@ -52,11 +52,7 @@ impl From<SearchResult> for FileItem {
 
 impl From<FilenameSearchResult> for FileItem {
     fn from(r: FilenameSearchResult) -> Self {
-        let ext = r
-            .file_name
-            .split('.')
-            .next_back()
-            .map(CompactString::from);
+        let ext = r.file_name.split('.').next_back().map(CompactString::from);
         FileItem {
             title: r.file_name,
             path: r.file_path,
@@ -607,10 +603,7 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                 if let Some(idx) = app.selected_index {
                     if let Some(item) = app.results.get(idx) {
                         let path = item.path.clone();
-                        return Task::perform(
-                            async move { path },
-                            Message::OpenFile,
-                        );
+                        return Task::perform(async move { path }, Message::OpenFile);
                     }
                 }
                 Task::none()
@@ -1049,9 +1042,13 @@ pub fn subscription(_app: &App) -> Subscription<Message> {
             if let Event::Keyboard(keyboard::Event::KeyPressed { key, .. }) = event {
                 match key.as_ref() {
                     keyboard::Key::Named(keyboard::key::Named::ArrowUp) => Some(Message::MoveUp),
-                    keyboard::Key::Named(keyboard::key::Named::ArrowDown) => Some(Message::MoveDown),
+                    keyboard::Key::Named(keyboard::key::Named::ArrowDown) => {
+                        Some(Message::MoveDown)
+                    }
                     keyboard::Key::Character("/") => Some(Message::FocusSearch),
-                    keyboard::Key::Named(keyboard::key::Named::Enter) => Some(Message::OpenSelected),
+                    keyboard::Key::Named(keyboard::key::Named::Enter) => {
+                        Some(Message::OpenSelected)
+                    }
                     _ => Some(Message::WindowIdCaptured(window_id)),
                 }
             } else {

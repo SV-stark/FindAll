@@ -6,10 +6,11 @@ fn main() -> Result<()> {
         use std::path::Path;
         let icon_path = Path::new("assets/icon.ico");
         let logo_path = Path::new("assets/logo.png");
-        
+
         // Generate icon if it doesn't exist (or is empty) and logo exists
-        if (!icon_path.exists() || std::fs::metadata(icon_path).map(|m| m.len()).unwrap_or(0) == 0) 
-            && logo_path.exists() {
+        if (!icon_path.exists() || std::fs::metadata(icon_path).map(|m| m.len()).unwrap_or(0) == 0)
+            && logo_path.exists()
+        {
             println!("cargo:warning=Generating icon from logo.png...");
             if let Ok(img) = image::open(logo_path) {
                 // Resize to 256x256 for a high-quality icon that isn't massive
@@ -32,6 +33,6 @@ fn main() -> Result<()> {
             println!("cargo:warning=No valid icon found at assets/icon.ico - skipping embedding");
         }
     }
-    
+
     Ok(())
 }

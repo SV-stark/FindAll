@@ -5,7 +5,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use strum::{Display, EnumIter, EnumString};
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchHistoryItem {
     pub query: String,

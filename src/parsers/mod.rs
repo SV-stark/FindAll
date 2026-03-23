@@ -5,7 +5,6 @@ pub mod memory_map;
 
 use compact_str::CompactString;
 
-
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ParsedDocument {
     pub path: String,
@@ -40,7 +39,6 @@ pub fn parse_file(path: &Path) -> Result<ParsedDocument> {
         path: path.to_string_lossy().to_string(),
         content: result.content,
         title: result.metadata.title.map(CompactString::from),
-
     })
 }
 

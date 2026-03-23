@@ -5,7 +5,6 @@ use std::sync::Arc;
 
 pub fn get_settings_internal(state: &Arc<AppState>) -> Result<AppSettings, String> {
     Ok(state.settings_cache.read().clone())
-
 }
 
 pub fn save_settings_internal(settings: AppSettings, state: &Arc<AppState>) -> Result<(), String> {
@@ -26,11 +25,7 @@ pub fn save_settings_internal(settings: AppSettings, state: &Arc<AppState>) -> R
 }
 
 pub fn get_recent_searches_internal(state: &Arc<AppState>) -> Result<Vec<String>, String> {
-    Ok(state
-        .settings_cache
-        .read()
-        .recent_searches
-        .clone())
+    Ok(state.settings_cache.read().recent_searches.clone())
 }
 
 pub fn add_recent_search_internal(query: String, state: &Arc<AppState>) -> Result<(), String> {
@@ -109,11 +104,7 @@ pub fn get_search_history_internal(
     limit: usize,
     state: &Arc<AppState>,
 ) -> Result<Vec<SearchHistoryItem>, String> {
-    let mut history = state
-        .settings_cache
-        .read()
-        .search_history
-        .clone();
+    let mut history = state.settings_cache.read().search_history.clone();
     history.truncate(limit);
 
     Ok(history)
@@ -145,5 +136,4 @@ pub fn unpin_file_internal(path: String, state: &Arc<AppState>) -> Result<(), St
 
 pub fn get_pinned_files_internal(state: &Arc<AppState>) -> Result<Vec<String>, String> {
     Ok(state.settings_cache.read().pinned_files.clone())
-
 }
