@@ -133,7 +133,7 @@ pub async fn run_cli(
         let (state, _) = setup_app()?;
         let results = state
             .indexer
-            .search(&query_str, 20, None, None, None, false)
+            .search(&query_str, 20, None, None, None, None, false)
             .await?;
 
         if is_json {

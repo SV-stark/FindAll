@@ -23,6 +23,7 @@ pub async fn search_query_internal(
     state: &Arc<AppState>,
     min_size: Option<u64>,
     max_size: Option<u64>,
+    min_modified: Option<u64>,
     file_extensions: Option<Vec<String>>,
     case_sensitive: bool,
 ) -> Result<Vec<SearchResult>, String> {
@@ -33,6 +34,7 @@ pub async fn search_query_internal(
             limit,
             min_size,
             max_size,
+            min_modified,
             file_extensions.as_deref(),
             case_sensitive,
         )

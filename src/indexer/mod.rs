@@ -168,11 +168,20 @@ impl IndexManager {
         limit: usize,
         min_size: Option<u64>,
         max_size: Option<u64>,
+        min_modified: Option<u64>,
         file_extensions: Option<&[String]>,
         case_sensitive: bool,
     ) -> Result<Vec<SearchResult>> {
         self.searcher
-            .search(query, limit, min_size, max_size, file_extensions, case_sensitive)
+            .search(
+                query,
+                limit,
+                min_size,
+                max_size,
+                min_modified,
+                file_extensions,
+                case_sensitive,
+            )
             .await
     }
 

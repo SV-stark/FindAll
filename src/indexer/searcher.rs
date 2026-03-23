@@ -56,6 +56,7 @@ pub(crate) struct CacheKey {
     limit: usize,
     min_size: Option<u64>,
     max_size: Option<u64>,
+    min_modified: Option<u64>,
     extensions: Option<Vec<String>>,
     case_sensitive: bool,
 }
@@ -177,6 +178,7 @@ impl IndexSearcher {
         limit: usize,
         min_size: Option<u64>,
         max_size: Option<u64>,
+        min_modified: Option<u64>,
         file_extensions: Option<&[String]>,
         case_sensitive: bool,
     ) -> Result<Vec<SearchResult>> {
@@ -191,6 +193,7 @@ impl IndexSearcher {
                 limit,
                 min_size,
                 max_size,
+                min_modified,
                 extensions_owned.as_deref(),
                 case_sensitive,
             )
@@ -206,6 +209,7 @@ impl IndexSearcher {
         limit: usize,
         min_size: Option<u64>,
         max_size: Option<u64>,
+        min_modified: Option<u64>,
         file_extensions: Option<&[String]>,
         case_sensitive: bool,
     ) -> Result<Vec<SearchResult>> {
@@ -217,6 +221,7 @@ impl IndexSearcher {
             limit,
             min_size,
             max_size,
+            min_modified,
             extensions: file_extensions.map(|e| e.to_vec()),
             case_sensitive,
         };
@@ -243,6 +248,14 @@ impl IndexSearcher {
             if min_size.is_some() || max_size.is_some() {
                 let lower = Term::from_field_u64(self.size_field, min_size.unwrap_or(0));
                 let upper = Term::from_field_u64(self.size_field, max_size.unwrap_or(u64::MAX));
+                let range = RangeQuery::new(Bound::Included(lower), Bound::Included(upper));
+                combine.push((Occur::Must, Box::new(range)));
+            }
+
+            if let Some(min_mod) = min_modified {
+                let modified_field = self.reader.searcher().schema().get_field("modified").unwrap();
+                let lower = Term::from_field_date(modified_field, tantivy::DateTime::from_timestamp_secs(min_mod as i64));
+                let upper = Term::from_field_date(modified_field, tantivy::DateTime::from_timestamp_secs(i64::MAX / 1000)); // Use a very large date
                 let range = RangeQuery::new(Bound::Included(lower), Bound::Included(upper));
                 combine.push((Occur::Must, Box::new(range)));
             }
@@ -369,13 +382,11 @@ impl IndexSearcher {
                     date.into_timestamp_secs() as u64
                 });
 
-            // Generates snippets and replaces HTML tags.
+            // Generates snippets and keeps HTML tags for UI parsing.
             // NOTE: Offloading full rendering to UI.
             let snippet = snippet_generator.snippet_from_doc(&retrieved_doc);
             let snippet_text = snippet
                 .to_html()
-                .replace("<b>", "")
-                .replace("</b>", "")
                 .replace("&lt;", "<")
                 .replace("&gt;", ">")
                 .replace("&amp;", "&");
@@ -590,6 +601,7 @@ mod tests {
             limit: 10,
             min_size: None,
             max_size: None,
+            min_modified: None,
             extensions: None,
             case_sensitive: false,
         };
@@ -598,6 +610,7 @@ mod tests {
             limit: 10,
             min_size: None,
             max_size: None,
+            min_modified: None,
             extensions: None,
             case_sensitive: false,
         };
@@ -618,6 +631,7 @@ mod tests {
             limit: 10,
             min_size: None,
             max_size: None,
+            min_modified: None,
             extensions: None,
             case_sensitive: false,
         };
@@ -641,6 +655,7 @@ mod tests {
             limit: 10,
             min_size: None,
             max_size: None,
+            min_modified: None,
             extensions: None,
             case_sensitive: false,
         };

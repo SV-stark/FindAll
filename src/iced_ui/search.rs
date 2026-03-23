@@ -1,4 +1,4 @@
-use super::{theme, App, Message, Tab};
+use super::{theme, App, DateFilter, Message, Tab};
 use iced::widget::{
     button, checkbox, column, container, mouse_area, rich_text, row, scrollable, span, text, Space,
     TextInput,
@@ -284,6 +284,18 @@ fn left_sidebar(app: &App) -> Element<'_, Message> {
     ]
     .spacing(8);
 
+    let date_section = column![
+        text("Date Modified").size(12).style(theme::dim_text_style()),
+        row![
+            date_filter_button("Anytime", DateFilter::Anytime, app),
+            date_filter_button("Today", DateFilter::Today, app),
+            date_filter_button("7 Days", DateFilter::Last7Days, app),
+            date_filter_button("30 Days", DateFilter::Last30Days, app),
+        ]
+        .spacing(4)
+    ]
+    .spacing(8);
+
     let match_options = column![
         text("Match Options")
             .size(12)
@@ -312,7 +324,7 @@ fn left_sidebar(app: &App) -> Element<'_, Message> {
         Space::new().height(Length::Fixed(4.0)),
         row![
             extension_section.width(Length::FillPortion(1)),
-            column![size_section, match_options]
+            column![size_section, date_section, match_options]
                 .width(Length::FillPortion(1))
                 .spacing(12),
         ]
@@ -408,6 +420,13 @@ fn results_panel(app: &App) -> Element<'_, Message> {
                         .style(theme::muted_text_style()),
                     ]
                     .spacing(8),
+                    if let Some(snippet) = res.snippets.first() {
+                        container(parse_snippet(snippet))
+                            .padding(Padding::new(4.0))
+                            .style(theme::hit_highlight_container)
+                    } else {
+                        container(Space::new().height(0))
+                    },
                 ]
                 .spacing(4);
 
@@ -748,6 +767,21 @@ fn size_unit_button<'a>(unit: &'a str, app: &App) -> Element<'a, Message> {
     let is_active = app.size_unit == unit;
     button(text(unit).size(10))
         .on_press(Message::SizeUnitChanged(unit.to_string()))
+        .style(move |t: &iced::Theme, s| {
+            if is_active {
+                theme::primary_button()(t, s)
+            } else {
+                theme::secondary_button()(t, s)
+            }
+        })
+        .padding(Padding::new(4.0))
+        .into()
+}
+
+fn date_filter_button<'a>(label: &'a str, filter: DateFilter, app: &App) -> Element<'a, Message> {
+    let is_active = app.date_filter == filter;
+    button(text(label).size(10))
+        .on_press(Message::DateFilterChanged(filter))
         .style(move |t: &iced::Theme, s| {
             if is_active {
                 theme::primary_button()(t, s)

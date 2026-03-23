@@ -1,6 +1,6 @@
 [package]
 name = "flash-search"
-version = "0.2.0"
+version = "0.8.0"
 description = "Ultrafast local text search"
 authors = ["Flash Search Team"]
 edition = "2021"
@@ -15,7 +15,7 @@ image = { version = "0.25", default-features = false, features = ["png", "ico"] 
 
 [dependencies]
 # UI Framework
-iced = { version = "0.14", features = ["image", "svg", "tokio"] }
+iced = { version = "0.14", features = ["image", "svg", "tokio", "lazy"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -104,6 +104,7 @@ windows = { version = "0.58", features = [
 [dev-dependencies]
 tempfile = "3.0"
 divan = "0.1"
+proptest = "1.5"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(windows)'] }

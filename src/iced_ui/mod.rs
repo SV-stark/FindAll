@@ -95,6 +95,15 @@ pub fn format_date(timestamp: u64) -> String {
         .to_string()
 }
 
+#[derive(Clone, Debug, PartialEq, Default)]
+pub enum DateFilter {
+    #[default]
+    Anytime,
+    Today,
+    Last7Days,
+    Last30Days,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum SearchMode {
     FullText,
@@ -133,6 +142,7 @@ pub enum Message {
     MaxSizeChanged(String),
     SizeUnitChanged(String),
     FilterSizeChanged(String),
+    DateFilterChanged(DateFilter),
     PreviewRequested(usize),
     PreviewLoaded(Option<crate::models::PreviewResult>),
     ShowContextMenu(usize),
@@ -175,6 +185,7 @@ pub struct App {
     index_size: String,
     is_dark: bool,
     search_mode: SearchMode,
+    date_filter: DateFilter,
     filter_extension: String,
     filter_extensions: ahash::AHashSet<String>,
     min_size: String,
@@ -211,6 +222,7 @@ impl Default for App {
             index_size: "0 MB".to_string(),
             is_dark: true,
             search_mode: SearchMode::FullText,
+            date_filter: DateFilter::Anytime,
             filter_extension: String::new(),
             filter_extensions: ahash::AHashSet::default(),
             min_size: String::new(),
@@ -401,6 +413,35 @@ impl App {
             (min_size, max_size)
         };
 
+        let min_modified = match self.date_filter {
+            DateFilter::Anytime => None,
+            DateFilter::Today => Some(
+                jiff::Zoned::now()
+                    .with()
+                    .hour(0)
+                    .minute(0)
+                    .second(0)
+                    .build()
+                    .unwrap()
+                    .timestamp()
+                    .as_second() as u64,
+            ),
+            DateFilter::Last7Days => Some(
+                jiff::Zoned::now()
+                    .checked_sub(jiff::SignedDuration::from_secs(7 * 24 * 3600))
+                    .unwrap()
+                    .timestamp()
+                    .as_second() as u64,
+            ),
+            DateFilter::Last30Days => Some(
+                jiff::Zoned::now()
+                    .checked_sub(jiff::SignedDuration::from_secs(30 * 24 * 3600))
+                    .unwrap()
+                    .timestamp()
+                    .as_second() as u64,
+            ),
+        };
+
         self.is_searching = true;
         self.results.clear();
         self.preview_result = None;
@@ -427,6 +468,7 @@ impl App {
                         &state,
                         min_size,
                         max_size,
+                        min_modified,
                         extension,
                         case_sensitive,
                     )
@@ -614,6 +656,22 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                 app.context_menu_index = None;
                 let p = PathBuf::from(&path);
                 if p.is_absolute() {
+                    #[cfg(target_os = "windows")]
+                    {
+                        if p.exists() {
+                            let path_str = path.clone();
+                            return Task::perform(
+                                async move {
+                                    let _ = std::process::Command::new("explorer")
+                                        .args(["/select,", &path_str])
+                                        .spawn();
+                                },
+                                |_| Message::NoOp,
+                            );
+                        }
+                    }
+
+                    #[cfg(not(target_os = "windows"))]
                     if let Some(parent) = p.parent() {
                         let parent_buf = parent.to_path_buf();
                         if parent_buf.exists() {
@@ -876,6 +934,7 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                 app.max_size.clear();
                 app.filter_extension.clear();
                 app.filter_size.clear();
+                app.date_filter = DateFilter::Anytime;
                 Task::none()
             }
             Message::MinSizeChanged(val) => {
@@ -893,6 +952,14 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             Message::FilterSizeChanged(size) => {
                 app.filter_size = size;
                 Task::none()
+            }
+            Message::DateFilterChanged(filter) => {
+                app.date_filter = filter;
+                if !app.search_query.is_empty() {
+                    app.perform_search()
+                } else {
+                    Task::none()
+                }
             }
             Message::PreviewRequested(idx) => {
                 app.selected_index = Some(idx);

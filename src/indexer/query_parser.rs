@@ -35,14 +35,12 @@ impl ParsedQuery {
         let mut max_size = None;
         let fuzzy = true;
 
-        // Parse operators
-        // ext:pdf, path:docs, title:report, size:>1MB, size:<10MB, exact:"phrase"
+        // Parse operators: ext:pdf, path:docs, title:report, size:>1MB
         let operator_regex = OPERATOR_REGEX.get_or_init(|| {
-            Regex::new(
-                r#"(?i)(ext|path|title|size):(?:([<>]?)(\d+(?:\.\d+)?)(MB|KB|GB|B)?|"([^"]*)"|(\S+))"#,
-            )
-            .unwrap()
+            Regex::new(r#"(?i)(ext|path|title|size):(?:"([^"]*)"|(\S+))"#).unwrap()
         });
+
+        let size_regex = Regex::new(r#"(?i)^([<>]?)(\d+(?:\.\d+)?)(MB|KB|GB|B)?$"#).unwrap();
 
         let mut remaining = input.to_string();
 
@@ -53,9 +51,9 @@ impl ParsedQuery {
                 .map(|m| m.as_str().to_lowercase())
                 .unwrap_or_default();
             let value = cap
-                .get(5)
+                .get(2)
                 .map(|m| m.as_str().to_string()) // Quoted value
-                .or_else(|| cap.get(6).map(|m| m.as_str().to_string())) // Unquoted value
+                .or_else(|| cap.get(3).map(|m| m.as_str().to_string())) // Unquoted value
                 .unwrap_or_default();
 
             match operator.as_str() {
@@ -86,13 +84,12 @@ impl ParsedQuery {
                     }
                 }
                 "size" => {
-                    // Handle size operators
-                    if let Some(op) = cap.get(2) {
-                        let op = op.as_str();
-                        if let Some(num_str) = cap.get(3) {
+                    if let Some(scap) = size_regex.captures(&value) {
+                        let op = scap.get(1).map(|m| m.as_str()).unwrap_or("");
+                        if let Some(num_str) = scap.get(2) {
                             if let Ok(num) = num_str.as_str().parse::<f64>() {
-                                let multiplier = cap
-                                    .get(4)
+                                let multiplier = scap
+                                    .get(3)
                                     .map(|m| match m.as_str().to_uppercase().as_str() {
                                         "GB" => 1024 * 1024 * 1024,
                                         "MB" => 1024 * 1024,
@@ -103,16 +100,15 @@ impl ParsedQuery {
 
                                 let bytes = (num * multiplier as f64) as u64;
                                 match op {
-                                    ">" => min_size = Some(bytes),
-                                    "<" => max_size = Some(bytes),
-                                    _ => {}
+                                    ">" => min_size = Some(bytes + 1),
+                                    "<" => max_size = Some(bytes.saturating_sub(1)),
+                                    _ => {
+                                        min_size = Some(bytes);
+                                        max_size = Some(bytes + 1);
+                                    }
                                 }
                             }
                         }
-                    } else if let Ok(size_val) = value.parse::<u64>() {
-                        // Exact size match (treat as minimum for practical purposes)
-                        min_size = Some(size_val);
-                        max_size = Some(size_val + 1);
                     }
                     if let Some(m) = cap.get(0) {
                         remaining = remaining.replace(m.as_str(), "");
@@ -276,5 +272,39 @@ mod tests {
         let terms = extract_highlight_terms("ext:pdf report title:annual", false);
         assert!(terms.contains(&"report".to_string()));
         assert!(terms.contains(&"annual".to_string()));
+    }
+
+    #[cfg(test)]
+    mod proptests {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            #[test]
+            fn test_parse_no_panic(s in "\\PC*") {
+                let _ = ParsedQuery::new(&s, false);
+            }
+
+            #[test]
+            fn test_parse_with_known_operators(
+                op in "ext|path|title|size",
+                val in "[a-zA-Z0-9_.-]+",
+                text in "\\PC*"
+            ) {
+                let input = format!("{}:{} {}", op, val, text);
+                let parsed = ParsedQuery::new(&input, false);
+                
+                match op.as_str() {
+                    "ext" => {
+                        let expected = val.trim_start_matches('.').to_lowercase();
+                        assert_eq!(parsed.extension, Some(expected));
+                    },
+                    "path" => assert_eq!(parsed.path_filter, Some(val.to_lowercase())),
+                    "title" => assert_eq!(parsed.title_filter, Some(val.to_lowercase())),
+                    "size" => {}, 
+                    _ => unreachable!(),
+                }
+            }
+        }
     }
 }
