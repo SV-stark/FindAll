@@ -184,13 +184,13 @@ mod tests {
     #[test]
     fn test_helper_constructors() {
         let err = FlashError::unsupported_format("PDF", "pdf");
-        matches!(err, FlashError::UnsupportedFormat { .. });
+        assert!(matches!(err, FlashError::UnsupportedFormat { .. }));
     }
 
     #[test]
     fn test_io_conversion() {
         let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "File not found");
         let flash_err: FlashError = io_err.into();
-        matches!(flash_err, FlashError::Io(_));
+        assert!(matches!(flash_err, FlashError::Io(_)));
     }
 }

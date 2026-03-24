@@ -88,13 +88,19 @@ fn main() {
         .join("com.flashsearch");
     std::fs::create_dir_all(&app_dir).ok();
 
-    let lock_path = app_dir.join("flashsearch.lock");
-    let lock_file = std::fs::OpenOptions::new()
+    let lock_file = match std::fs::OpenOptions::new()
         .write(true)
         .create(true)
         .truncate(true)
         .open(&lock_path)
-        .expect("Failed to open lock file");
+    {
+        Ok(file) => file,
+        Err(e) => {
+            eprintln!("Error: Failed to open lock file at {:?}.", lock_path);
+            eprintln!("Details: {}", e);
+            std::process::exit(1);
+        }
+    };
 
     let mut lock = fd_lock::RwLock::new(lock_file);
     if lock.try_write().is_err() {

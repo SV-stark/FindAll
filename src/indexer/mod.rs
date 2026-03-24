@@ -61,12 +61,24 @@ impl IndexManager {
                 );
                 // Try to backup the index before destroying it
                 let backup_path = index_path.with_extension("backup");
-                let _ = std::fs::remove_dir_all(&backup_path); // Remove old backup if exists
-                let _ = copy_dir(index_path, &backup_path); // Try to backup
-                std::fs::remove_dir_all(index_path)
-                    .map_err(|e| FlashError::Io(std::sync::Arc::new(e)))?;
-                std::fs::create_dir_all(index_path)
-                    .map_err(|e| FlashError::Io(std::sync::Arc::new(e)))?;
+                if let Err(e) = std::fs::remove_dir_all(&backup_path) {
+                    if e.kind() != std::io::ErrorKind::NotFound {
+                        warn!("Failed to remove old backup at {:?}: {}", backup_path, e);
+                    }
+                }
+                if let Err(e) = copy_dir(index_path, &backup_path) {
+                    warn!("Failed to backup index to {:?}: {}", backup_path, e);
+                }
+
+                if let Err(e) = std::fs::remove_dir_all(index_path) {
+                    error!("Failed to remove corrupted index at {:?}: {}", index_path, e);
+                    return Err(FlashError::Io(std::sync::Arc::new(e)));
+                }
+
+                if let Err(e) = std::fs::create_dir_all(index_path) {
+                    error!("Failed to re-create index directory at {:?}: {}", index_path, e);
+                    return Err(FlashError::Io(std::sync::Arc::new(e)));
+                }
                 write_schema_version(index_path, SCHEMA_VERSION)?;
             }
         } else if index_path.join("meta.json").exists() {
@@ -74,12 +86,23 @@ impl IndexManager {
             warn!("No schema version found. Rebuilding index...");
             // Try to backup the index before destroying it
             let backup_path = index_path.with_extension("backup");
-            let _ = std::fs::remove_dir_all(&backup_path); // Remove old backup if exists
-            let _ = copy_dir(index_path, &backup_path); // Try to backup
-            std::fs::remove_dir_all(index_path)
-                .map_err(|e| FlashError::Io(std::sync::Arc::new(e)))?;
-            std::fs::create_dir_all(index_path)
-                .map_err(|e| FlashError::Io(std::sync::Arc::new(e)))?;
+            if let Err(e) = std::fs::remove_dir_all(&backup_path) {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    warn!("Failed to remove old backup at {:?}: {}", backup_path, e);
+                }
+            }
+            if let Err(e) = copy_dir(index_path, &backup_path) {
+                warn!("Failed to backup index to {:?}: {}", backup_path, e);
+            }
+
+            if let Err(e) = std::fs::remove_dir_all(index_path) {
+                error!("Failed to remove old index at {:?}: {}", index_path, e);
+                return Err(FlashError::Io(std::sync::Arc::new(e)));
+            }
+            if let Err(e) = std::fs::create_dir_all(index_path) {
+                error!("Failed to re-create index directory at {:?}: {}", index_path, e);
+                return Err(FlashError::Io(std::sync::Arc::new(e)));
+            }
             write_schema_version(index_path, SCHEMA_VERSION)?;
         } else {
             // New index - write version

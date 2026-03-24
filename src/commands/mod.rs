@@ -58,7 +58,10 @@ impl AppState {
         progress_tx: mpsc::Sender<crate::scanner::ProgressEvent>,
         scanner: Arc<crate::scanner::Scanner>,
     ) -> Self {
-        let cache = settings_manager.load().unwrap_or_default();
+        let cache = settings_manager.load().unwrap_or_else(|e| {
+            tracing::warn!("Failed to load settings (using defaults): {}", e);
+            AppSettings::default()
+        });
         let mut watcher = watcher;
         let _ = watcher.update_watch_list(cache.index_dirs.clone());
         Self {

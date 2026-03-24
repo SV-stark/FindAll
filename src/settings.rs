@@ -23,6 +23,9 @@ pub const COMMON_EXTENSIONS: &[&str] = &[
 pub struct AllowedExtensionsCache(pub std::sync::OnceLock<std::collections::HashSet<String>>);
 
 impl Clone for AllowedExtensionsCache {
+    /// NOTE: Clone intentionally resets the once-lock to empty.
+    /// This is common for types that wrap a cache/lazy value where
+    /// each clone should maintain its own independent cache lifecycle.
     fn clone(&self) -> Self {
         AllowedExtensionsCache(std::sync::OnceLock::new())
     }
@@ -225,7 +228,7 @@ impl SettingsManager {
         let builder = Config::builder()
             // Start with default settings
             .add_source(ConfigFile::from_str(
-                &serde_json::to_string(&AppSettings::default()).unwrap(),
+                &serde_json::to_string(&AppSettings::default()).unwrap_or_else(|_| "{}".to_string()),
                 config::FileFormat::Json,
             ))
             // Add settings from file if it exists

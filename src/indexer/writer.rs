@@ -43,15 +43,23 @@ impl IndexWriterManager {
         available_memory.clamp(32_000_000, 256_000_000)
     }
 
-    pub fn new(index: &Index, _memory_limit_mb: u32) -> Result<Self> {
+    pub fn new(index: &Index, memory_limit_mb: u32) -> Result<Self> {
         let schema = index.schema();
 
-        // Configure with adaptive heap size based on system resources
-        let heap_size = Self::calculate_heap_size();
-        info!(
-            "Tantivy index writer heap size: {} MB",
-            heap_size / 1_000_000
-        );
+        // Use user-provided memory limit if it's within reasonable bounds,
+        // otherwise fall back to adaptive calculation.
+        let heap_size = if memory_limit_mb >= 32 && memory_limit_mb <= 2048 {
+            info!("Using user-configured index writer heap size: {} MB", memory_limit_mb);
+            (memory_limit_mb as usize) * 1_000_000
+        } else {
+            let calculated = Self::calculate_heap_size();
+            info!(
+                "Using calculated index writer heap size: {} MB (config: {} MB)",
+                calculated / 1_000_000,
+                memory_limit_mb
+            );
+            calculated
+        };
 
         let writer = index
             .writer(heap_size)
@@ -93,8 +101,7 @@ impl IndexWriterManager {
     pub fn add_document(&self, doc: &ParsedDocument, modified: u64, size: u64) -> Result<()> {
         let tantivy_doc = self.create_tantivy_document(doc, modified, size);
 
-        #[allow(unused_mut)]
-        let mut writer = self.writer.lock();
+        let writer = self.writer.lock();
 
         writer
             .add_document(tantivy_doc)
@@ -109,8 +116,7 @@ impl IndexWriterManager {
             return Ok(());
         }
 
-        #[allow(unused_mut)]
-        let mut writer = self.writer.lock();
+        let writer = self.writer.lock();
 
         for (doc, modified, size) in docs {
             let tantivy_doc = self.create_tantivy_document(doc, *modified, *size);
@@ -156,8 +162,7 @@ impl IndexWriterManager {
 
     /// Remove a document from the index
     pub fn remove_document(&self, path: &str) -> Result<()> {
-        #[allow(unused_mut)]
-        let mut writer = self.writer.lock();
+        let writer = self.writer.lock();
 
         let term = tantivy::Term::from_field_text(self.path_field, path);
         writer.delete_term(term);
@@ -167,8 +172,7 @@ impl IndexWriterManager {
 
     /// Delete all documents from the index
     pub fn delete_all_documents(&self) -> Result<()> {
-        #[allow(unused_mut)]
-        let mut writer = self.writer.lock();
+        let writer = self.writer.lock();
 
         writer
             .delete_all_documents()
@@ -179,8 +183,7 @@ impl IndexWriterManager {
 
     /// Commit pending changes to disk
     pub fn commit(&self) -> Result<()> {
-        #[allow(unused_mut)]
-        let mut writer = self.writer.lock();
+        let writer = self.writer.lock();
 
         writer
             .commit()

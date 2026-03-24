@@ -55,7 +55,10 @@ pub fn setup_app() -> std::result::Result<
     info!("App data directory: {:?}", app_data_dir);
 
     let settings_manager = settings::SettingsManager::new(&app_data_dir);
-    let settings = settings_manager.load().unwrap_or_default();
+    let settings = settings_manager.load().unwrap_or_else(|e| {
+        warn!("Failed to load settings (using defaults): {}", e);
+        settings::AppSettings::default()
+    });
     let index_path = app_data_dir.join("index");
     let indexer =
         indexer::IndexManager::open(&index_path, settings.memory_limit_mb).map_err(|e| {
@@ -113,14 +116,12 @@ pub fn setup_app() -> std::result::Result<
 }
 
 pub fn run_ui() -> std::result::Result<(), FlashError> {
-    let result = setup_app().map(|(state, rx)| {
-        iced_ui::run_ui(Ok(state), rx);
-    });
+    let (state_res, rx) = match setup_app() {
+        Ok((state, rx)) => (Ok(state), rx),
+        Err(e) => (Err(e.to_string()), tokio::sync::mpsc::channel(1).1),
+    };
 
-    if let Err(e) = result {
-        iced_ui::run_ui(Err(e.to_string()), tokio::sync::mpsc::channel(1).1);
-    }
-
+    iced_ui::run_ui(state_res, rx);
     Ok(())
 }
 

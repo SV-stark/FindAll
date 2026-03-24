@@ -42,11 +42,8 @@ pub struct IndexStatistics {
 }
 
 /// Cached search result with timestamp
-#[derive(Clone)]
 struct CachedResult {
     results: Vec<SearchResult>,
-    #[allow(dead_code)]
-    timestamp: Instant,
 }
 
 /// Cache key for search queries
@@ -82,13 +79,7 @@ impl QueryCache {
     }
 
     pub(crate) fn insert(&self, key: CacheKey, results: Vec<SearchResult>) {
-        self.cache.insert(
-            key,
-            CachedResult {
-                results,
-                timestamp: Instant::now(),
-            },
-        );
+        self.cache.insert(key, CachedResult { results });
     }
 
     pub fn invalidate(&self) {
@@ -108,8 +99,7 @@ pub struct IndexSearcher {
     query_parser: QueryParser,
     path_field: Field,
     title_field: Field,
-    size_field: Field,
-    content_field: Field,
+    modified_field: Field,
     extension_field: Field,
     cache: QueryCache,
     index_path: std::path::PathBuf,
@@ -142,6 +132,9 @@ impl IndexSearcher {
         let size_field = schema
             .get_field("size")
             .map_err(|_| FlashError::index_field("size", "Field not found in schema"))?;
+        let modified_field = schema
+            .get_field("modified")
+            .map_err(|_| FlashError::index_field("modified", "Field not found in schema"))?;
         let content_field = schema
             .get_field("content")
             .map_err(|_| FlashError::index_field("content", "Field not found in schema"))?;
@@ -165,6 +158,7 @@ impl IndexSearcher {
             title_field,
             size_field,
             content_field,
+            modified_field,
             extension_field,
             cache: QueryCache::new(),
             index_path,
@@ -223,7 +217,11 @@ impl IndexSearcher {
             min_size,
             max_size,
             min_modified,
-            extensions: file_extensions.map(|e| e.iter().cloned().collect()),
+            extensions: file_extensions.map(|e| {
+                e.iter()
+                    .map(|s| CompactString::from(s.to_lowercase()))
+                    .collect()
+            }),
             case_sensitive,
         };
 
@@ -254,18 +252,12 @@ impl IndexSearcher {
             }
 
             if let Some(min_mod) = min_modified {
-                let modified_field = self
-                    .reader
-                    .searcher()
-                    .schema()
-                    .get_field("modified")
-                    .unwrap();
                 let lower = Term::from_field_date(
-                    modified_field,
+                    self.modified_field,
                     tantivy::DateTime::from_timestamp_secs(min_mod as i64),
                 );
                 let upper = Term::from_field_date(
-                    modified_field,
+                    self.modified_field,
                     tantivy::DateTime::from_timestamp_secs(i64::MAX / 1000),
                 ); // Use a very large date
                 let range = RangeQuery::new(Bound::Included(lower), Bound::Included(upper));
@@ -319,7 +311,7 @@ impl IndexSearcher {
         let (mut final_query, mut top_docs) = run_query(exact_query)?;
 
         // TIER 2: Fuzzy Fallback
-        let phrase_regex = PHRASE_REGEX.get_or_init(|| regex::Regex::new(r#""([^"]+)""#).unwrap());
+        let phrase_regex = PHRASE_REGEX.get_or_init(|| regex::Regex::new(r#""([^"]+)""#).expect("Invalid regex for phrase search"));
 
         if top_docs.len() < limit
             && !phrase_regex.is_match(&parsed.text_query)
@@ -354,71 +346,8 @@ impl IndexSearcher {
             SnippetGenerator::create(&searcher, &*final_query, self.content_field)?;
 
         for (score, doc_address) in top_docs {
-            let retrieved_doc: TantivyDocument = searcher.doc(doc_address).map_err(|e| {
-                FlashError::search(query, format!("Failed to retrieve document: {}", e))
-            })?;
-
-            let file_path = retrieved_doc
-                .get_first(self.path_field)
-                .and_then(|f| f.as_str())
-                .map(|s: &str| s.to_string())
-                .unwrap_or_default();
-
-            let title = retrieved_doc
-                .get_first(self.title_field)
-                .and_then(|f| f.as_str())
-                .map(|s: &str| CompactString::from(s));
-
-            let extension = retrieved_doc
-                .get_first(self.extension_field)
-                .and_then(|f| f.as_str())
-                .map(|s: &str| CompactString::from(s));
-
-            // Get fast fields for size and modified
-            let size = searcher
-                .segment_reader(doc_address.segment_ord)
-                .fast_fields()
-                .u64("size")
-                .ok()
-                .map(|f| f.values.get_val(doc_address.doc_id));
-
-            let modified = searcher
-                .segment_reader(doc_address.segment_ord)
-                .fast_fields()
-                .date("modified")
-                .ok()
-                .map(|f| {
-                    let date = f.values.get_val(doc_address.doc_id);
-                    date.into_timestamp_secs() as u64
-                });
-
-            // Generates snippets and keeps HTML tags for UI parsing.
-            // NOTE: Offloading full rendering to UI.
-            let snippet = snippet_generator.snippet_from_doc(&retrieved_doc);
-            let snippet_text = snippet
-                .to_html()
-                .replace("&lt;", "<")
-                .replace("&gt;", ">")
-                .replace("&amp;", "&");
-
-            let snippets = if snippet_text.is_empty() {
-                vec![]
-            } else {
-                vec![snippet_text]
-            };
-
-            results.push(
-                SearchResult::builder()
-                    .file_path(file_path)
-                    .maybe_title(title)
-                    .score(score)
-                    .maybe_modified(modified)
-                    .maybe_size(size)
-                    .maybe_extension(extension)
-                    .matched_terms(highlight_terms.clone())
-                    .snippets(snippets)
-                    .build(),
-            );
+            let result = self.retrieve_result(&searcher, query, score, doc_address, &highlight_terms)?;
+            results.push(result);
 
             if results.len() >= limit {
                 break;
@@ -434,7 +363,7 @@ impl IndexSearcher {
     /// Build a fuzzy query for better typo tolerance
     fn build_fuzzy_query(&self, text_query: &str) -> Result<Box<dyn tantivy::query::Query>> {
         // Check if it's a phrase query (contains quoted strings)
-        let phrase_regex = PHRASE_REGEX.get_or_init(|| regex::Regex::new(r#""([^"]+)""#).unwrap());
+        let phrase_regex = PHRASE_REGEX.get_or_init(|| regex::Regex::new(r#""([^"]+)""#).expect("Invalid regex for phrase search"));
 
         if phrase_regex.is_match(text_query) {
             // For phrase queries, use the query parser with phrase support
@@ -512,59 +441,8 @@ impl IndexSearcher {
         let mut results = Vec::with_capacity(top_docs.len().min(limit));
 
         for (_date, doc_address) in top_docs {
-            let retrieved_doc: TantivyDocument = searcher.doc(doc_address).map_err(|e| {
-                FlashError::search(
-                    "recent files",
-                    format!("Failed to retrieve document: {}", e),
-                )
-            })?;
-
-            let file_path = retrieved_doc
-                .get_first(self.path_field)
-                .and_then(|f| f.as_str())
-                .map(|s: &str| s.to_string())
-                .unwrap_or_default();
-
-            let title = retrieved_doc
-                .get_first(self.title_field)
-                .and_then(|f| f.as_str())
-                .map(|s: &str| CompactString::from(s));
-
-            let extension = retrieved_doc
-                .get_first(self.extension_field)
-                .and_then(|f| f.as_str())
-                .map(|s: &str| CompactString::from(s));
-
-            // Get fast fields for size and modified
-            let size = searcher
-                .segment_reader(doc_address.segment_ord)
-                .fast_fields()
-                .u64("size")
-                .ok()
-                .map(|f| f.values.get_val(doc_address.doc_id));
-
-            let modified = searcher
-                .segment_reader(doc_address.segment_ord)
-                .fast_fields()
-                .date("modified")
-                .ok()
-                .map(|f| {
-                    let date = f.values.get_val(doc_address.doc_id);
-                    date.into_timestamp_secs() as u64
-                });
-
-            results.push(
-                SearchResult::builder()
-                    .file_path(file_path)
-                    .maybe_title(title)
-                    .score(1.0)
-                    .maybe_modified(modified)
-                    .maybe_size(size)
-                    .maybe_extension(extension)
-                    .matched_terms(vec![])
-                    .snippets(vec![])
-                    .build(),
-            );
+            let result = self.retrieve_result(&searcher, "recent files", 1.0, doc_address, &[])?;
+            results.push(result);
         }
 
         // Tantivy sorts in ascending order by default, but we specified Order::Desc in order_by_fast_field.
@@ -593,6 +471,87 @@ impl IndexSearcher {
             total_size_bytes: total_size,
             last_updated: Some(jiff::Zoned::now().strftime("%Y-%m-%d %H:%M:%S").to_string()),
         })
+    }
+
+    /// Internal helper to retrieve a search result from a document address
+    fn retrieve_result(
+        &self,
+        searcher: &tantivy::Searcher,
+        query: &str,
+        score: f32,
+        doc_address: tantivy::DocAddress,
+        highlight_terms: &[String],
+    ) -> Result<SearchResult> {
+        let retrieved_doc: TantivyDocument = searcher.doc(doc_address).map_err(|e| {
+            FlashError::search(query, format!("Failed to retrieve document: {}", e))
+        })?;
+
+        let file_path = retrieved_doc
+            .get_first(self.path_field)
+            .and_then(|f| f.as_str())
+            .map(|s: &str| s.to_string())
+            .unwrap_or_default();
+
+        let title = retrieved_doc
+            .get_first(self.title_field)
+            .and_then(|f| f.as_str())
+            .map(|s: &str| CompactString::from(s));
+
+        let extension = retrieved_doc
+            .get_first(self.extension_field)
+            .and_then(|f| f.as_str())
+            .map(|s: &str| CompactString::from(s));
+
+        // Get fast fields for size and modified
+        let size = searcher
+            .segment_reader(doc_address.segment_ord)
+            .fast_fields()
+            .u64("size")
+            .ok()
+            .map(|f| f.values.get_val(doc_address.doc_id));
+
+        let modified = searcher
+            .segment_reader(doc_address.segment_ord)
+            .fast_fields()
+            .date("modified")
+            .ok()
+            .map(|f| {
+                let date = f.values.get_val(doc_address.doc_id);
+                date.into_timestamp_secs() as u64
+            });
+
+        let mut snippets = Vec::new();
+
+        // Only generate snippets if highlight terms are provided (meaning we are in search_sync)
+        if !highlight_terms.is_empty() {
+            if let Ok(query_obj) = self.query_parser.parse_query(query) {
+                if let Ok(snippet_generator) =
+                    SnippetGenerator::create(searcher, &*query_obj, self.content_field)
+                {
+                    let snippet = snippet_generator.snippet_from_doc(&retrieved_doc);
+                    let snippet_text = snippet
+                        .to_html()
+                        .replace("&lt;", "<")
+                        .replace("&gt;", ">")
+                        .replace("&amp;", "&");
+
+                    if !snippet_text.is_empty() {
+                        snippets.push(snippet_text);
+                    }
+                }
+            }
+        }
+
+        Ok(SearchResult::builder()
+            .file_path(file_path)
+            .maybe_title(title)
+            .score(score)
+            .maybe_modified(modified)
+            .maybe_size(size)
+            .maybe_extension(extension)
+            .matched_terms(highlight_terms.to_vec())
+            .snippets(snippets)
+            .build())
     }
 }
 

@@ -40,18 +40,42 @@ impl WatcherManager {
         // Spawn background processor for debounced events
         runtime_handle.spawn(async move {
             let mut buffer = HashMap::new();
+            let mut first_event_time: Option<std::time::Instant> = None;
+            const MAX_DEBOUNCE_WAIT: Duration = Duration::from_secs(5);
+            const DEBOUNCE_GAP: Duration = Duration::from_millis(500);
+
             loop {
-                // Use select to handle both periodic flushes and incoming external events
+                let timeout_duration = if let Some(first_time) = first_event_time {
+                    let elapsed = first_time.elapsed();
+                    if elapsed >= MAX_DEBOUNCE_WAIT {
+                        Duration::from_millis(0) // Force flush immediately
+                    } else {
+                        DEBOUNCE_GAP.min(MAX_DEBOUNCE_WAIT - elapsed)
+                    }
+                } else {
+                    Duration::from_secs(3600) // Sleep until next event
+                };
+
                 tokio::select! {
                     res = external_rx.recv() => {
                         if let Some((path, action)) = res {
+                            if buffer.is_empty() {
+                                first_event_time = Some(std::time::Instant::now());
+                            }
                             buffer.insert(path, action);
+                        } else {
+                            // Channel closed
+                            break;
                         }
                     }
-                    _ = tokio::time::sleep(Duration::from_millis(1000)) => {
+                    _ = tokio::time::sleep(timeout_duration) => {
                         if buffer.is_empty() {
                             continue;
                         }
+
+                        // Reset debounce timer
+                        first_event_time = None;
+
                         // Take all events
                         let events = std::mem::take(&mut buffer);
 

@@ -16,8 +16,9 @@ pub async fn start_indexing_internal(path: String, state: Arc<AppState>) -> Resu
 
     let state_clone = state.clone();
     let handle = tokio::spawn(async move {
-        let mut exclude_patterns = state_clone.settings_cache.load().exclude_patterns.clone();
-        for folder in &state_clone.settings_cache.load().exclude_folders {
+        let settings = state_clone.settings_cache.load();
+        let mut exclude_patterns = settings.exclude_patterns.clone();
+        for folder in &settings.exclude_folders {
             exclude_patterns.push(folder.clone());
         }
 
