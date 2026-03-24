@@ -19,6 +19,15 @@ pub const COMMON_EXTENSIONS: &[&str] = &[
     "h", "hpp", "cs", "html", "css",
 ];
 
+#[derive(Debug, Default)]
+pub struct AllowedExtensionsCache(pub std::sync::OnceLock<std::collections::HashSet<String>>);
+
+impl Clone for AllowedExtensionsCache {
+    fn clone(&self) -> Self {
+        AllowedExtensionsCache(std::sync::OnceLock::new())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
     #[serde(default = "default_settings_version")]
@@ -69,6 +78,9 @@ pub struct AppSettings {
 
     // Pinned files for quick access
     pub pinned_files: Vec<String>,
+
+    #[serde(skip)]
+    pub allowed_extensions_cache: AllowedExtensionsCache,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -175,6 +187,7 @@ impl Default for AppSettings {
 
             // Pinned files
             pinned_files: vec![],
+            allowed_extensions_cache: AllowedExtensionsCache::default(),
         }
     }
 }
@@ -184,18 +197,20 @@ pub struct SettingsManager {
 }
 
 impl AppSettings {
-    pub fn get_allowed_extensions(&self) -> std::collections::HashSet<String> {
-        let mut exts = std::collections::HashSet::new();
-        for ext in COMMON_EXTENSIONS {
-            exts.insert(ext.to_string());
-        }
-        for custom in self.custom_extensions.split(',') {
-            let trimmed = custom.trim().trim_start_matches('.').to_lowercase();
-            if !trimmed.is_empty() {
-                exts.insert(trimmed);
+    pub fn get_allowed_extensions(&self) -> &std::collections::HashSet<String> {
+        self.allowed_extensions_cache.0.get_or_init(|| {
+            let mut exts = std::collections::HashSet::new();
+            for ext in COMMON_EXTENSIONS {
+                exts.insert(ext.to_string());
             }
-        }
-        exts
+            for custom in self.custom_extensions.split(',') {
+                let trimmed = custom.trim().trim_start_matches('.').to_lowercase();
+                if !trimmed.is_empty() {
+                    exts.insert(trimmed);
+                }
+            }
+            exts
+        })
     }
 }
 
@@ -216,7 +231,7 @@ impl SettingsManager {
             // Add settings from file if it exists
             .add_source(ConfigFile::from(self.path.clone()).required(false))
             // Override with environment variables (e.g., FLASH_SEARCH_THEME=dark)
-            .add_source(Environment::with_prefix("FLASH_SEARCH").separator("_"));
+            .add_source(Environment::with_prefix("FLASH_SEARCH").separator("__"));
 
         match builder.build() {
             Ok(config) => config

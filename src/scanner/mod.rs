@@ -69,7 +69,7 @@ impl Scanner {
                 rayon::ThreadPoolBuilder::new()
                     .stack_size(8 * 1024 * 1024)
                     .build()
-                    .unwrap()
+                    .expect("Failed to initialize Rayon thread pool fallback")
             });
 
         Self {

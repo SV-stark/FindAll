@@ -41,7 +41,7 @@ pub fn add_recent_search_internal(query: String, state: &Arc<AppState>) -> Resul
         .settings_manager
         .save(&cache)
         .map_err(|e| e.to_string())?;
-    
+
     state.settings_cache.store(Arc::new(cache));
 
     Ok(())
@@ -55,7 +55,7 @@ pub fn clear_recent_searches_internal(state: &Arc<AppState>) -> Result<(), Strin
         .settings_manager
         .save(&cache)
         .map_err(|e| e.to_string())?;
-        
+
     state.settings_cache.store(Arc::new(cache));
     Ok(())
 }

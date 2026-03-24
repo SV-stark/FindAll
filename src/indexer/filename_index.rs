@@ -1,8 +1,8 @@
 use crate::error::Result;
+use arc_swap::ArcSwap;
 use compact_str::CompactString;
 use fst::automaton::Subsequence;
 use fst::{IntoStreamer, Streamer};
-use arc_swap::ArcSwap;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::Arc;
@@ -33,9 +33,10 @@ const INDEX_FILENAME: &str = "filenames.bin";
 const LEGACY_INDEX_FILENAME: &str = "filenames.json";
 
 pub struct FilenameIndex {
-    entries: Arc<ArcSwap<Vec<FilenameEntry>>>,
+    committed: ArcSwap<Vec<FilenameEntry>>,
     data_path: std::path::PathBuf,
-    fst_map: Arc<ArcSwap<Arc<[u8]>>>,
+    fst_map: ArcSwap<Arc<[u8]>>,
+    staging: parking_lot::Mutex<Vec<FilenameEntry>>,
 }
 
 impl FilenameIndex {
@@ -105,12 +106,13 @@ impl FilenameIndex {
             Vec::new()
         };
 
-        let fst_map = Arc::new(ArcSwap::from_pointee(Arc::from(Self::build_fst(&entries))));
+        let fst_map = ArcSwap::from_pointee(Arc::from(Self::build_fst(&entries)));
 
         Ok(Self {
-            entries: Arc::new(ArcSwap::from_pointee(entries)),
+            committed: ArcSwap::from_pointee(entries),
             data_path,
             fst_map,
+            staging: parking_lot::Mutex::new(Vec::new()),
         })
     }
 
@@ -120,39 +122,33 @@ impl FilenameIndex {
             name: CompactString::from(name),
         };
 
-        let mut current = self.entries.load().as_ref().clone();
-        current.push(entry);
-
-        let should_save = current.len() % 1000 == 0;
-        let data = if should_save { Some(current.clone()) } else { None };
-        let data_path = self.data_path.clone();
-
-        self.entries.store(Arc::new(current));
-
-        if let Some(data) = data {
-            std::thread::spawn(move || {
-                Self::save_to_disk_sync(&data, &data_path);
-            });
-        }
-
+        self.staging.lock().push(entry);
         Ok(())
     }
 
     pub fn commit(&self) -> Result<()> {
-        let guard = self.entries.load();
-        let data_path = self.data_path.clone();
-        let data: Vec<_> = guard
-            .iter()
-            .map(|e| FilenameEntry {
-                path: e.path.clone(),
-                name: e.name.clone(),
-            })
-            .collect();
+        let mut staging = self.staging.lock();
+        if staging.is_empty() {
+            return Ok(());
+        }
 
-        self.fst_map.store(Arc::new(Arc::from(Self::build_fst(&data))));
+        let new_items = std::mem::take(&mut *staging);
+
+        // Update committed list
+        let mut current = self.committed.load().as_ref().clone();
+        current.extend(new_items);
+
+        // Rebuild FST map
+        self.fst_map
+            .store(Arc::new(Arc::from(Self::build_fst(&current))));
+
+        let data_path = self.data_path.clone();
+        let data_to_save = current.clone();
+
+        self.committed.store(Arc::new(current));
 
         std::thread::spawn(move || {
-            Self::save_to_disk_sync(&data, &data_path);
+            Self::save_to_disk_sync(&data_to_save, &data_path);
         });
 
         Ok(())
@@ -191,8 +187,8 @@ impl FilenameIndex {
             return Ok(Vec::new());
         }
 
-        // FST Map - use reference borrow from the guard to avoid trait bound issues with Arc
-        let map = match fst::Map::new(&***fst_guard) {
+        // FST Map - use reference borrow from the guard
+        let map = match fst::Map::new(&**fst_guard) {
             Ok(m) => m,
             Err(_) => return Ok(Vec::new()),
         };
@@ -203,7 +199,7 @@ impl FilenameIndex {
 
         let mut stream = map.search(aut).into_stream();
 
-        let entries_lock = self.entries.load();
+        let entries_lock = self.committed.load();
 
         let mut results = Vec::new();
         while let Some((_, v)) = stream.next() {
@@ -222,8 +218,11 @@ impl FilenameIndex {
     }
 
     pub fn clear(&self) -> Result<()> {
-        self.entries.store(Arc::new(Vec::new()));
-        self.fst_map.store(Arc::new(Arc::from(Vec::new().into_boxed_slice())));
+        self.committed.store(Arc::new(Vec::new()));
+        self.fst_map
+            .store(Arc::new(Arc::from(Vec::new().into_boxed_slice())));
+        self.staging.lock().clear();
+
         let data_path = self.data_path.clone();
         std::thread::spawn(move || {
             let _ = std::fs::remove_file(data_path.join(INDEX_FILENAME));
@@ -234,7 +233,7 @@ impl FilenameIndex {
     }
 
     pub fn get_stats(&self) -> Result<FilenameIndexStats> {
-        let entries = self.entries.load();
+        let entries = self.committed.load();
 
         let size: u64 = entries
             .iter()
@@ -256,11 +255,13 @@ impl FilenameIndex {
                 name: CompactString::from(name),
             })
             .collect();
-            
+
         let data = new_entries.clone();
 
-        self.fst_map.store(Arc::new(Arc::from(Self::build_fst(&new_entries))));
-        self.entries.store(Arc::new(new_entries));
+        self.fst_map
+            .store(Arc::new(Arc::from(Self::build_fst(&new_entries))));
+        self.committed.store(Arc::new(new_entries));
+        self.staging.lock().clear();
 
         std::thread::spawn(move || {
             Self::save_to_disk_sync(&data, &data_path);

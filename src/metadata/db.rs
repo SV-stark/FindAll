@@ -3,7 +3,6 @@ use redb::{Database, ReadableTable, TableDefinition};
 use rkyv;
 use std::cmp::Reverse;
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::SystemTime;
 
@@ -20,41 +19,11 @@ pub struct FileMetadata {
 
 pub type RecentFileEntry = (String, Option<String>, u64, u64);
 
-/// Connection metrics for monitoring
-#[derive(Debug)]
-pub struct ConnectionMetrics {
-    pub read_operations: AtomicU64,
-    pub write_operations: AtomicU64,
-    pub bytes_read: AtomicU64,
-    pub bytes_written: AtomicU64,
-}
-
-impl Default for ConnectionMetrics {
-    fn default() -> Self {
-        Self {
-            read_operations: AtomicU64::new(0),
-            write_operations: AtomicU64::new(0),
-            bytes_read: AtomicU64::new(0),
-            bytes_written: AtomicU64::new(0),
-        }
-    }
-}
-
-/// Snapshot of metrics for reporting
-#[derive(Debug, Clone, Copy)]
-pub struct ConnectionMetricsSnapshot {
-    pub read_operations: u64,
-    pub write_operations: u64,
-    pub bytes_read: u64,
-    pub bytes_written: u64,
-}
-
 /// Manages file metadata database using redb
 /// Implements connection pooling pattern for redb (even though it's embedded)
 /// to ensure proper resource management and monitoring
 pub struct MetadataDb {
     db: Arc<Database>,
-    metrics: Arc<ConnectionMetrics>,
 }
 
 impl MetadataDb {
@@ -107,33 +76,16 @@ impl MetadataDb {
                 )
             })?;
 
-            return Ok(Self {
-                db,
-                metrics: Arc::new(ConnectionMetrics::default()),
-            });
+            return Ok(Self { db });
         }
 
-        Ok(Self {
-            db,
-            metrics: Arc::new(ConnectionMetrics::default()),
-        })
+        Ok(Self { db })
     }
 
     /// Clone with shared state (for multi-threaded access)
     pub fn clone_for_thread(&self) -> Self {
         Self {
             db: Arc::clone(&self.db),
-            metrics: Arc::clone(&self.metrics),
-        }
-    }
-
-    /// Get current metrics snapshot
-    pub fn get_metrics(&self) -> ConnectionMetricsSnapshot {
-        ConnectionMetricsSnapshot {
-            read_operations: self.metrics.read_operations.load(Ordering::Relaxed),
-            write_operations: self.metrics.write_operations.load(Ordering::Relaxed),
-            bytes_read: self.metrics.bytes_read.load(Ordering::Relaxed),
-            bytes_written: self.metrics.bytes_written.load(Ordering::Relaxed),
         }
     }
 
@@ -155,10 +107,6 @@ impl MetadataDb {
         {
             Some(metadata) => {
                 let bytes = metadata.value();
-                self.metrics.read_operations.fetch_add(1, Ordering::Relaxed);
-                self.metrics
-                    .bytes_read
-                    .fetch_add(bytes.len() as u64, Ordering::Relaxed);
                 // Zero-copy read and validate with byte alignment
                 let mut aligned_bytes = rkyv::util::AlignedVec::<16>::new();
                 aligned_bytes.extend_from_slice(bytes);
@@ -327,8 +275,6 @@ impl MetadataDb {
             .unwrap_or_default()
             .as_secs();
 
-        let mut total_bytes_written = 0u64;
-
         {
             let mut table = txn.open_table(FILES_TABLE).map_err(|e| {
                 FlashError::database("database_operation", "files_table", e.to_string())
@@ -351,9 +297,6 @@ impl MetadataDb {
                     )
                 })?;
 
-                total_bytes_written += bytes.len() as u64;
-                total_bytes_written += path.len() as u64;
-
                 table.insert(path.as_str(), bytes.as_slice()).map_err(|e| {
                     FlashError::database("database_operation", "files_table", e.to_string())
                 })?;
@@ -363,14 +306,6 @@ impl MetadataDb {
         txn.commit().map_err(|e| {
             FlashError::database("database_operation", "files_table", e.to_string())
         })?;
-
-        // Update metrics
-        self.metrics
-            .write_operations
-            .fetch_add(1, Ordering::Relaxed);
-        self.metrics
-            .bytes_written
-            .fetch_add(total_bytes_written, Ordering::Relaxed);
 
         Ok(entries.len())
     }
@@ -446,21 +381,14 @@ impl MetadataDb {
                 FlashError::database("database_operation", "files_table", e.to_string())
             })?;
             let bytes = v.value();
-            let modified = if let Ok(meta) =
+            let (modified, size) = if let Ok(meta) =
                 rkyv::access::<rkyv::Archived<FileMetadata>, rkyv::rancor::Error>(bytes)
             {
-                meta.modified.to_native()
+                (meta.modified.to_native(), meta.size.to_native())
             } else {
-                0
+                (0, 0)
             };
             let path = k.value().to_string();
-            let size = if let Ok(meta) =
-                rkyv::access::<rkyv::Archived<FileMetadata>, rkyv::rancor::Error>(bytes)
-            {
-                meta.size.to_native()
-            } else {
-                0
-            };
 
             // Push the entry into the heap
             heap.push(Reverse((modified, path, size)));

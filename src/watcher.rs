@@ -6,7 +6,7 @@ use blake3;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
@@ -32,9 +32,6 @@ impl WatcherManager {
         metadata_db: Arc<MetadataDb>,
         allowed_extensions: std::collections::HashSet<String>,
     ) -> Self {
-        let buffer: Arc<Mutex<HashMap<PathBuf, WatcherAction>>> =
-            Arc::new(Mutex::new(HashMap::new()));
-        let buffer_for_task = buffer.clone();
         let indexer_for_task = indexer.clone();
         let metadata_db_for_task = metadata_db.clone();
         let (external_tx, mut external_rx) = mpsc::channel::<(PathBuf, WatcherAction)>(1000);
@@ -42,31 +39,21 @@ impl WatcherManager {
 
         // Spawn background processor for debounced events
         runtime_handle.spawn(async move {
+            let mut buffer = HashMap::new();
             loop {
                 // Use select to handle both periodic flushes and incoming external events
                 tokio::select! {
                     res = external_rx.recv() => {
                         if let Some((path, action)) = res {
-                            if let Ok(mut guard) = buffer_for_task.lock() {
-                                guard.insert(path, action);
-                            }
+                            buffer.insert(path, action);
                         }
                     }
                     _ = tokio::time::sleep(Duration::from_millis(1000)) => {
-                        let events = {
-                            let mut guard = match buffer_for_task.lock() {
-                                Ok(g) => g,
-                                Err(e) => {
-                                    error!("Watcher lock poisoned: {}", e);
-                                    continue;
-                                }
-                            };
-                            if guard.is_empty() {
-                                continue;
-                            }
-                            // Take all events
-                            std::mem::take(&mut *guard)
-                        };
+                        if buffer.is_empty() {
+                            continue;
+                        }
+                        // Take all events
+                        let events = std::mem::take(&mut buffer);
 
                         let mut needs_commit = false;
 

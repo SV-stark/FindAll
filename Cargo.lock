@@ -2303,7 +2303,6 @@ dependencies = [
  "itertools 0.13.0",
  "jiff 0.1.29",
  "kreuzberg",
- "lazy_static",
  "log-panics",
  "memmap2",
  "mimalloc",

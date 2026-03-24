@@ -57,7 +57,7 @@ pub(crate) struct CacheKey {
     min_size: Option<u64>,
     max_size: Option<u64>,
     min_modified: Option<u64>,
-    extensions: Option<Vec<String>>,
+    extensions: Option<smallvec::SmallVec<[CompactString; 8]>>,
     case_sensitive: bool,
 }
 
@@ -183,7 +183,8 @@ impl IndexSearcher {
         case_sensitive: bool,
     ) -> Result<Vec<SearchResult>> {
         let query_owned = query.to_string();
-        let extensions_owned = file_extensions.map(|e| e.to_vec());
+        let extensions_owned: Option<smallvec::SmallVec<[CompactString; 8]>> =
+            file_extensions.map(|e| e.iter().map(|s| CompactString::from(s.as_str())).collect());
         // Arc::clone is O(1) — no heap allocation, just an atomic refcount bump
         let this = std::sync::Arc::clone(self);
 
@@ -210,7 +211,7 @@ impl IndexSearcher {
         min_size: Option<u64>,
         max_size: Option<u64>,
         min_modified: Option<u64>,
-        file_extensions: Option<&[String]>,
+        file_extensions: Option<&[CompactString]>,
         case_sensitive: bool,
     ) -> Result<Vec<SearchResult>> {
         use super::query_parser::{extract_highlight_terms, ParsedQuery};
@@ -222,7 +223,7 @@ impl IndexSearcher {
             min_size,
             max_size,
             min_modified,
-            extensions: file_extensions.map(|e| e.to_vec()),
+            extensions: file_extensions.map(|e| e.iter().cloned().collect()),
             case_sensitive,
         };
 
@@ -566,9 +567,7 @@ impl IndexSearcher {
             );
         }
 
-        // Reverse because order_by_fast_field might sort ascending? We'll test it.
-        // Actually Tantivy sorts in ascending order by default.
-        results.reverse();
+        // Tantivy sorts in ascending order by default, but we specified Order::Desc in order_by_fast_field.
 
         Ok(results)
     }

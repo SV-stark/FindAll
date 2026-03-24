@@ -10,6 +10,9 @@ static GLOBAL: MiMalloc = MiMalloc;
 use tracing_appender::rolling;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
+static LOG_GUARD: std::sync::OnceLock<tracing_appender::non_blocking::WorkerGuard> =
+    std::sync::OnceLock::new();
+
 fn init_logging(app_data_dir: &std::path::Path) {
     let log_dir = app_data_dir.join("logs");
     std::fs::create_dir_all(&log_dir).ok();
@@ -18,7 +21,7 @@ fn init_logging(app_data_dir: &std::path::Path) {
     let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
 
     // Keep the guard alive for the lifetime of the program
-    Box::leak(Box::new(_guard));
+    let _ = LOG_GUARD.set(_guard);
 
     let env_filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new("flash_search=info,kreuzberg=info"));
