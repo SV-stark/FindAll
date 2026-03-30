@@ -28,5 +28,16 @@ pub fn create_schema() -> Schema {
     // File extension - indexed as keyword for fast filtering
     schema_builder.add_text_field("extension", STRING | STORED);
 
+    // Language code - indexed as keyword for filtering (e.g., lang:eng)
+    schema_builder.add_text_field("language", STRING | STORED);
+
+    // Keywords - indexed and tokenized for search visibility
+    let keywords_options = TextOptions::default().set_indexing_options(
+        TextFieldIndexing::default()
+            .set_tokenizer("default")
+            .set_index_option(IndexRecordOption::WithFreqsAndPositions),
+    ).set_stored();
+    schema_builder.add_text_field("keywords", keywords_options);
+
     schema_builder.build()
 }

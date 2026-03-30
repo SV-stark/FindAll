@@ -15,7 +15,7 @@ use tantivy::{directory::MmapDirectory, Index};
 use tracing::{info, warn};
 
 /// Current schema version - bump this when schema changes
-pub const SCHEMA_VERSION: &str = "1.2.0";
+pub const SCHEMA_VERSION: &str = "1.3.0";
 
 fn get_schema_version_path(index_path: &Path) -> PathBuf {
     index_path.join(".schema_version")

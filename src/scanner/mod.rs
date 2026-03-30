@@ -369,21 +369,48 @@ impl Scanner {
             .map(|(_, data)| data)
             .collect();
 
-        paths_to_parse
-            .into_par_iter()
-            .for_each(|(path, modified, size)| {
-                if let Ok(parsed) = parse_file(&path) {
-                    let content_hash = blake3::hash(parsed.content.as_bytes()).into();
-                    let _ = task_tx.send(IndexTask {
-                        doc: parsed,
-                        modified,
-                        size,
-                        content_hash,
-                    });
-                } else {
-                    warn!("Failed to parse file {:?}", path);
+        let just_paths: Vec<PathBuf> = paths_to_parse.iter().map(|(p, _, _)| p.clone()).collect();
+
+        // Stage 1: Attempt native batch computation
+        match crate::parsers::parse_files_batch(just_paths) {
+            Ok(results) => {
+                for (parsed_res, (path, modified, size)) in results.into_iter().zip(paths_to_parse.into_iter()) {
+                    match parsed_res {
+                        Ok(parsed) => {
+                            let content_hash = blake3::hash(parsed.content.as_bytes()).into();
+                            let _ = task_tx.send(IndexTask {
+                                doc: parsed,
+                                modified,
+                                size,
+                                content_hash,
+                            });
+                        }
+                        Err(e) => {
+                            warn!("Failed to parse file {:?}: {}", path, e);
+                        }
+                    }
                 }
-            });
+            }
+            Err(_) => {
+                // Stage 2: Fallback to standalone parsing to isolate obscure file panic loops
+                warn!("Batch parsing crashed, dropping to discrete fallback loops");
+                paths_to_parse
+                    .into_par_iter()
+                    .for_each(|(path, modified, size)| {
+                        if let Ok(parsed) = parse_file(&path) {
+                            let content_hash = blake3::hash(parsed.content.as_bytes()).into();
+                            let _ = task_tx.send(IndexTask {
+                                doc: parsed,
+                                modified,
+                                size,
+                                content_hash,
+                            });
+                        } else {
+                            warn!("Failed to parse file {:?}", path);
+                        }
+                    });
+            }
+        }
     }
 }
 

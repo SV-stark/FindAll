@@ -16,6 +16,8 @@ pub struct IndexWriterManager {
     modified_field: Field,
     size_field: Field,
     extension_field: Field,
+    language_field: Field,
+    keywords_field: Field,
 }
 
 impl IndexWriterManager {
@@ -83,6 +85,12 @@ impl IndexWriterManager {
         let extension_field = schema
             .get_field("extension")
             .map_err(|_| FlashError::index_field("extension", "Field not found in schema"))?;
+        let language_field = schema
+            .get_field("language")
+            .map_err(|_| FlashError::index_field("language", "Field not found in schema"))?;
+        let keywords_field = schema
+            .get_field("keywords")
+            .map_err(|_| FlashError::index_field("keywords", "Field not found in schema"))?;
 
         Ok(Self {
             writer: Mutex::new(writer),
@@ -93,6 +101,8 @@ impl IndexWriterManager {
             modified_field,
             size_field,
             extension_field,
+            language_field,
+            keywords_field,
         })
     }
 
@@ -143,6 +153,14 @@ impl IndexWriterManager {
 
         if let Some(ref title) = doc.title {
             document.add_text(self.title_field, title);
+        }
+
+        if let Some(ref language) = doc.language {
+            document.add_text(self.language_field, language);
+        }
+
+        if let Some(ref keywords) = doc.keywords {
+            document.add_text(self.keywords_field, keywords);
         }
 
         let modified_date = tantivy::DateTime::from_timestamp_secs(modified as i64);
