@@ -72,7 +72,7 @@ impl MetadataDb {
                 FlashError::database(
                     "database_operation",
                     "files_table",
-                    format!("Retry failed: {}", e),
+                    format!("Retry failed: {e}"),
                 )
             })?;
 
@@ -83,6 +83,7 @@ impl MetadataDb {
     }
 
     /// Clone with shared state (for multi-threaded access)
+    #[must_use]
     pub fn clone_for_thread(&self) -> Self {
         Self {
             db: Arc::clone(&self.db),
@@ -157,7 +158,7 @@ impl MetadataDb {
                 FlashError::database(
                     "database_operation",
                     "files_table",
-                    format!("Serialization error: {}", e),
+                    format!("Serialization error: {e}"),
                 )
             })?;
 
@@ -293,7 +294,7 @@ impl MetadataDb {
                     FlashError::database(
                         "database_operation",
                         "files_table",
-                        format!("Serialization error: {}", e),
+                        format!("Serialization error: {e}"),
                     )
                 })?;
 

@@ -31,7 +31,7 @@ pub struct FileItem {
 
 impl From<SearchResult> for FileItem {
     fn from(r: SearchResult) -> Self {
-        FileItem {
+        Self {
             title: r.title.unwrap_or_else(|| {
                 CompactString::from(
                     r.file_path
@@ -53,7 +53,7 @@ impl From<SearchResult> for FileItem {
 impl From<FilenameSearchResult> for FileItem {
     fn from(r: FilenameSearchResult) -> Self {
         let ext = r.file_name.split('.').next_back().map(CompactString::from);
-        FileItem {
+        Self {
             title: r.file_name,
             path: r.file_path,
             score: 1.0,
@@ -71,9 +71,10 @@ pub enum Tab {
     Settings,
 }
 
+#[must_use]
 pub fn format_size(bytes: u64) -> String {
     if bytes < 1024 {
-        format!("{} B", bytes)
+        format!("{bytes} B")
     } else if bytes < 1024 * 1024 {
         format!("{:.1} KB", bytes as f64 / 1024.0)
     } else if bytes < 1024 * 1024 * 1024 {
@@ -83,6 +84,7 @@ pub fn format_size(bytes: u64) -> String {
     }
 }
 
+#[must_use]
 pub fn format_date(timestamp: u64) -> String {
     jiff::Timestamp::from_second(timestamp as i64)
         .unwrap_or_else(|_| jiff::Timestamp::from_second(0).unwrap())
@@ -91,7 +93,7 @@ pub fn format_date(timestamp: u64) -> String {
         .to_string()
 }
 
-#[derive(Clone, Debug, PartialEq, Default)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub enum DateFilter {
     #[default]
     Anytime,
@@ -100,7 +102,7 @@ pub enum DateFilter {
     Last30Days,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SearchMode {
     FullText,
     Filename,
@@ -252,14 +254,17 @@ impl App {
         match state {
             Ok(state) => {
                 let settings = state.settings_manager.load().unwrap_or_default();
-                let stats = state.indexer.get_statistics().unwrap_or_default();
-                let index_size = format!("{:.1} MB", (stats.total_size_bytes as f64) / 1_048_576.0);
+                let index_stats = state.indexer.get_statistics().unwrap_or_default();
+                let index_size = format!(
+                    "{:.1} MB",
+                    (index_stats.total_size_bytes as f64) / 1_048_576.0
+                );
                 let is_dark = matches!(settings.theme, crate::settings::Theme::Dark);
 
-                let mut app = App {
+                let mut app = Self {
                     state: Some(state),
                     settings: settings.clone(),
-                    files_indexed: stats.total_documents as i32,
+                    files_indexed: index_stats.total_documents as i32,
                     index_size,
                     is_dark,
                     ..Default::default()
@@ -287,7 +292,7 @@ impl App {
 
                 app
             }
-            Err(err_msg) => App {
+            Err(err_msg) => Self {
                 error: Some(err_msg),
                 ..Default::default()
             },
@@ -358,7 +363,7 @@ impl App {
             && !query.ends_with('"')
             && !query.contains(':')
         {
-            query = format!("\"{}\"", query);
+            query = format!("\"{query}\"");
         }
 
         let max_results = self.settings.max_results;
@@ -494,7 +499,7 @@ impl App {
             None => return Task::none(),
         };
 
-        let path = item.path.clone();
+        let path = item.path;
         let query = self.search_query.clone();
         self.is_loading_preview = true;
 
@@ -521,7 +526,7 @@ impl App {
                     let mut watcher = state.watcher.lock();
                     let _ = watcher.update_watch_list(settings.index_dirs.clone());
                 },
-                |_| Message::NoOp,
+                |()| Message::NoOp,
             );
         }
         Task::none()
@@ -546,17 +551,17 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
         match message {
             Message::SearchQueryChanged(q) => {
                 app.search_query = q;
-                if !app.search_query.is_empty() {
+                if app.search_query.is_empty() {
+                    app.search_id += 1;
+                    app.results.clear();
+                    Task::none()
+                } else {
                     app.search_id += 1;
                     let current_id = app.search_id;
                     Task::perform(
                         tokio::time::sleep(std::time::Duration::from_millis(150)),
-                        move |_| Message::DebouncedSearch(current_id),
+                        move |()| Message::DebouncedSearch(current_id),
                     )
-                } else {
-                    app.search_id += 1;
-                    app.results.clear();
-                    Task::none()
                 }
             }
             Message::DebouncedSearch(id) => {
@@ -617,7 +622,7 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                         async move {
                             let _ = opener::open(p);
                         },
-                        |_| Message::NoOp,
+                        |()| Message::NoOp,
                     )
                 } else {
                     tracing::warn!("Blocked attempt to open invalid or relative path: {}", path);
@@ -652,14 +657,14 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                     #[cfg(target_os = "windows")]
                     {
                         if p.exists() {
-                            let path_str = path.clone();
+                            let path_str = path;
                             return Task::perform(
                                 async move {
                                     let _ = std::process::Command::new("explorer")
                                         .args(["/select,", &path_str])
                                         .spawn();
                                 },
-                                |_| Message::NoOp,
+                                |()| Message::NoOp,
                             );
                         }
                     }
@@ -887,10 +892,10 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                     SearchMode::FullText => SearchMode::Filename,
                     SearchMode::Filename => SearchMode::FullText,
                 };
-                if !app.search_query.is_empty() {
-                    app.perform_search()
-                } else {
+                if app.search_query.is_empty() {
                     Task::none()
+                } else {
+                    app.perform_search()
                 }
             }
             Message::ToggleCaseSensitive(val) => {
@@ -948,10 +953,10 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             }
             Message::DateFilterChanged(filter) => {
                 app.date_filter = filter;
-                if !app.search_query.is_empty() {
-                    app.perform_search()
-                } else {
+                if app.search_query.is_empty() {
                     Task::none()
+                } else {
+                    app.perform_search()
                 }
             }
             Message::PreviewRequested(idx) => {
@@ -1002,7 +1007,7 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                 if let Ok(event) = global_hotkey::GlobalHotKeyEvent::receiver().try_recv() {
                     tracing::info!("Global hotkey pressed: {:?}", event);
                     if let Some(id) = app.window_id {
-                        return iced::window::gain_focus(id).map(|_: ()| Message::NoOp);
+                        return iced::window::gain_focus(id).map(|(): ()| Message::NoOp);
                     }
                 }
                 Task::none()
@@ -1013,7 +1018,7 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                         crate::SHUTDOWN_FLAG.store(true, std::sync::atomic::Ordering::SeqCst);
                     } else if event.id.0 == "show" {
                         if let Some(id) = app.window_id {
-                            return iced::window::gain_focus(id).map(|_: ()| Message::NoOp);
+                            return iced::window::gain_focus(id).map(|(): ()| Message::NoOp);
                         }
                     }
                 }
@@ -1021,8 +1026,7 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             }
             Message::NotImplemented(feature) => {
                 app.error = Some(format!(
-                    "Feature '{}' is not yet implemented in this version.",
-                    feature
+                    "Feature '{feature}' is not yet implemented in this version."
                 ));
                 Task::none()
             }
@@ -1098,7 +1102,7 @@ pub fn app_title(_app: &App) -> String {
     String::from("Flash Search")
 }
 
-pub fn app_theme(app: &App) -> iced::Theme {
+pub const fn app_theme(app: &App) -> iced::Theme {
     if app.is_dark {
         iced::Theme::Dark
     } else {

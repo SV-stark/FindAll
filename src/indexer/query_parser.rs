@@ -23,6 +23,7 @@ pub struct ParsedQuery {
 }
 
 impl ParsedQuery {
+    #[must_use]
     pub fn new(query: &str, case_sensitive: bool) -> Self {
         Self::parse(query, case_sensitive)
     }
@@ -40,7 +41,7 @@ impl ParsedQuery {
             Regex::new(r#"(?i)(ext|path|title|size):(?:"([^"]*)"|(\S+))"#).unwrap()
         });
 
-        let size_regex = Regex::new(r#"(?i)^([<>]?)(\d+(?:\.\d+)?)(MB|KB|GB|B)?$"#).unwrap();
+        let size_regex = Regex::new(r"(?i)^([<>]?)(\d+(?:\.\d+)?)(MB|KB|GB|B)?$").unwrap();
 
         let mut remaining = input.to_string();
 
@@ -85,20 +86,19 @@ impl ParsedQuery {
                 }
                 "size" => {
                     if let Some(scap) = size_regex.captures(&value) {
-                        let op = scap.get(1).map(|m| m.as_str()).unwrap_or("");
+                        let op = scap.get(1).map_or("", |m| m.as_str());
                         if let Some(num_str) = scap.get(2) {
                             if let Ok(num) = num_str.as_str().parse::<f64>() {
-                                let multiplier = scap
-                                    .get(3)
-                                    .map(|m| match m.as_str().to_uppercase().as_str() {
+                                let multiplier = scap.get(3).map_or(1, |m| {
+                                    match m.as_str().to_uppercase().as_str() {
                                         "GB" => 1024 * 1024 * 1024,
                                         "MB" => 1024 * 1024,
                                         "KB" => 1024,
                                         _ => 1,
-                                    })
-                                    .unwrap_or(1);
+                                    }
+                                });
 
-                                let bytes = (num * multiplier as f64) as u64;
+                                let bytes = (num * f64::from(multiplier)) as u64;
                                 match op {
                                     ">" => min_size = Some(bytes + 1),
                                     "<" => max_size = Some(bytes.saturating_sub(1)),
@@ -143,16 +143,18 @@ impl ParsedQuery {
     }
 
     /// Check if a path matches the extension filter
+    #[must_use]
     pub fn matches_extension(&self, path: &str) -> bool {
         if let Some(ref ext) = self.extension {
             let path_lower = path.to_lowercase();
-            path_lower.ends_with(&format!(".{}", ext))
+            path_lower.ends_with(&format!(".{ext}"))
         } else {
             true
         }
     }
 
     /// Check if a path matches the path filter
+    #[must_use]
     pub fn matches_path(&self, path: &str) -> bool {
         if let Some(ref filter) = self.path_filter {
             if self.case_sensitive {
@@ -166,6 +168,7 @@ impl ParsedQuery {
     }
 
     /// Check if a title matches the title filter
+    #[must_use]
     pub fn matches_title(&self, title: Option<&str>) -> bool {
         if let Some(ref filter) = self.title_filter {
             if let Some(t) = title {
@@ -184,6 +187,7 @@ impl ParsedQuery {
 }
 
 /// Extract search terms for highlighting from a query
+#[must_use]
 pub fn extract_highlight_terms(query: &str, case_sensitive: bool) -> Vec<String> {
     let parsed = ParsedQuery::new(query, case_sensitive);
 
@@ -236,7 +240,7 @@ mod tests {
     fn test_parse_size_operators() {
         let query = "size:>1MB document";
         let parsed = ParsedQuery::new(query, false);
-        assert_eq!(parsed.min_size, Some(1048576));
+        assert_eq!(parsed.min_size, Some(1_048_576));
         assert_eq!(parsed.text_query, "document");
     }
 
@@ -246,7 +250,7 @@ mod tests {
         let parsed = ParsedQuery::new(query, false);
         assert_eq!(parsed.extension, Some("pdf".to_string()));
         assert_eq!(parsed.path_filter, Some("reports".to_string()));
-        assert_eq!(parsed.max_size, Some(10485760));
+        assert_eq!(parsed.max_size, Some(10_485_760));
         assert_eq!(parsed.text_query, "annual");
     }
 
@@ -297,7 +301,7 @@ mod tests {
                 val in "[a-zA-Z0-9_.-]+",
                 text in "\\PC*"
             ) {
-                let input = format!("{}:{} {}", op, val, text);
+                let input = format!("{op}:{val} {text}");
                 let parsed = ParsedQuery::new(&input, false);
 
                 match op.as_str() {

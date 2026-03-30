@@ -1,6 +1,9 @@
-use tantivy::schema::*;
+use tantivy::schema::{
+    IndexRecordOption, Schema, TextFieldIndexing, TextOptions, FAST, INDEXED, STORED, STRING, TEXT,
+};
 
 /// Create Tantivy schema optimized for file search
+#[must_use]
 pub fn create_schema() -> Schema {
     let mut schema_builder = Schema::builder();
 
@@ -32,11 +35,13 @@ pub fn create_schema() -> Schema {
     schema_builder.add_text_field("language", STRING | STORED);
 
     // Keywords - indexed and tokenized for search visibility
-    let keywords_options = TextOptions::default().set_indexing_options(
-        TextFieldIndexing::default()
-            .set_tokenizer("default")
-            .set_index_option(IndexRecordOption::WithFreqsAndPositions),
-    ).set_stored();
+    let keywords_options = TextOptions::default()
+        .set_indexing_options(
+            TextFieldIndexing::default()
+                .set_tokenizer("default")
+                .set_index_option(IndexRecordOption::WithFreqsAndPositions),
+        )
+        .set_stored();
     schema_builder.add_text_field("keywords", keywords_options);
 
     schema_builder.build()

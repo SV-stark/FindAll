@@ -27,7 +27,7 @@ impl Clone for AllowedExtensionsCache {
     /// This is common for types that wrap a cache/lazy value where
     /// each clone should maintain its own independent cache lifecycle.
     fn clone(&self) -> Self {
-        AllowedExtensionsCache(std::sync::OnceLock::new())
+        Self(std::sync::OnceLock::new())
     }
 }
 
@@ -98,12 +98,12 @@ fn default_global_hotkey() -> String {
     "Alt+Space".to_string()
 }
 
-fn default_settings_version() -> u32 {
+const fn default_settings_version() -> u32 {
     1
 }
 
 #[derive(
-    Debug, Clone, Serialize, Deserialize, Default, Display, EnumString, EnumIter, PartialEq,
+    Debug, Clone, Serialize, Deserialize, Default, Display, EnumString, EnumIter, PartialEq, Eq,
 )]
 #[strum(serialize_all = "lowercase")]
 pub enum Theme {
@@ -114,7 +114,7 @@ pub enum Theme {
 }
 
 #[derive(
-    Debug, Clone, Serialize, Deserialize, Default, Display, EnumString, EnumIter, PartialEq,
+    Debug, Clone, Serialize, Deserialize, Default, Display, EnumString, EnumIter, PartialEq, Eq,
 )]
 #[strum(serialize_all = "lowercase")]
 pub enum FontSize {
@@ -125,7 +125,7 @@ pub enum FontSize {
 }
 
 #[derive(
-    Debug, Clone, Serialize, Deserialize, Default, Display, EnumString, EnumIter, PartialEq,
+    Debug, Clone, Serialize, Deserialize, Default, Display, EnumString, EnumIter, PartialEq, Eq,
 )]
 #[strum(serialize_all = "snake_case")]
 pub enum DoubleClickAction {
@@ -204,7 +204,7 @@ impl AppSettings {
         self.allowed_extensions_cache.0.get_or_init(|| {
             let mut exts = std::collections::HashSet::new();
             for ext in COMMON_EXTENSIONS {
-                exts.insert(ext.to_string());
+                exts.insert((*ext).to_string());
             }
             for custom in self.custom_extensions.split(',') {
                 let trimmed = custom.trim().trim_start_matches('.').to_lowercase();
@@ -218,6 +218,7 @@ impl AppSettings {
 }
 
 impl SettingsManager {
+    #[must_use]
     pub fn new(app_data_dir: &Path) -> Self {
         Self {
             path: app_data_dir.join("settings.json"),
@@ -228,7 +229,8 @@ impl SettingsManager {
         let builder = Config::builder()
             // Start with default settings
             .add_source(ConfigFile::from_str(
-                &serde_json::to_string(&AppSettings::default()).unwrap_or_else(|_| "{}".to_string()),
+                &serde_json::to_string(&AppSettings::default())
+                    .unwrap_or_else(|_| "{}".to_string()),
                 config::FileFormat::Json,
             ))
             // Add settings from file if it exists

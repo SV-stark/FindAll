@@ -28,19 +28,21 @@ impl IndexWriterManager {
         let available_memory = std::env::var("FLASH_SEARCH_MEMORY_MB")
             .ok()
             .and_then(|s| s.parse::<usize>().ok())
-            .map(|mb| mb * 1_000_000)
-            .unwrap_or_else(|| {
-                // Default calculation: use 5% of system memory, capped at 256MB
-                // This is a heuristic - in production, use sysinfo to get actual memory
-                let mut sys = sysinfo::System::new_with_specifics(
-                    sysinfo::RefreshKind::nothing()
-                        .with_memory(sysinfo::MemoryRefreshKind::everything()),
-                );
-                sys.refresh_memory();
-                let system_memory = sys.total_memory() as usize;
+            .map_or_else(
+                || {
+                    // Default calculation: use 5% of system memory, capped at 256MB
+                    // This is a heuristic - in production, use sysinfo to get actual memory
+                    let mut sys = sysinfo::System::new_with_specifics(
+                        sysinfo::RefreshKind::nothing()
+                            .with_memory(sysinfo::MemoryRefreshKind::everything()),
+                    );
+                    sys.refresh_memory();
+                    let system_memory = sys.total_memory() as usize;
 
-                (system_memory / 20).clamp(32_000_000, 256_000_000)
-            });
+                    (system_memory / 20).clamp(32_000_000, 256_000_000)
+                },
+                |mb| mb * 1_000_000,
+            );
 
         available_memory.clamp(32_000_000, 256_000_000)
     }
@@ -50,8 +52,11 @@ impl IndexWriterManager {
 
         // Use user-provided memory limit if it's within reasonable bounds,
         // otherwise fall back to adaptive calculation.
-        let heap_size = if memory_limit_mb >= 32 && memory_limit_mb <= 2048 {
-            info!("Using user-configured index writer heap size: {} MB", memory_limit_mb);
+        let heap_size = if (32..=2048).contains(&memory_limit_mb) {
+            info!(
+                "Using user-configured index writer heap size: {} MB",
+                memory_limit_mb
+            );
             (memory_limit_mb as usize) * 1_000_000
         } else {
             let calculated = Self::calculate_heap_size();
@@ -65,7 +70,7 @@ impl IndexWriterManager {
 
         let writer = index
             .writer(heap_size)
-            .map_err(|e| FlashError::index(format!("Failed to create index writer: {}", e)))?;
+            .map_err(|e| FlashError::index(format!("Failed to create index writer: {e}")))?;
 
         let path_field = schema
             .get_field("file_path")
@@ -107,7 +112,7 @@ impl IndexWriterManager {
     }
 
     /// Add a single document to the index
-    /// Note: For better performance, use add_documents_batch for multiple docs
+    /// Note: For better performance, use `add_documents_batch` for multiple docs
     pub fn add_document(&self, doc: &ParsedDocument, modified: u64, size: u64) -> Result<()> {
         let tantivy_doc = self.create_tantivy_document(doc, modified, size);
 
@@ -115,7 +120,7 @@ impl IndexWriterManager {
 
         writer
             .add_document(tantivy_doc)
-            .map_err(|e| FlashError::index(format!("Failed to add document: {}", e)))?;
+            .map_err(|e| FlashError::index(format!("Failed to add document: {e}")))?;
 
         Ok(())
     }
@@ -132,13 +137,13 @@ impl IndexWriterManager {
             let tantivy_doc = self.create_tantivy_document(doc, *modified, *size);
             writer
                 .add_document(tantivy_doc)
-                .map_err(|e| FlashError::index(format!("Failed to add document: {}", e)))?;
+                .map_err(|e| FlashError::index(format!("Failed to add document: {e}")))?;
         }
 
         Ok(())
     }
 
-    /// Create a Tantivy document from ParsedDocument
+    /// Create a Tantivy document from `ParsedDocument`
     #[inline]
     fn create_tantivy_document(
         &self,
@@ -194,18 +199,18 @@ impl IndexWriterManager {
 
         writer
             .delete_all_documents()
-            .map_err(|e| FlashError::index(format!("Failed to delete all documents: {}", e)))?;
+            .map_err(|e| FlashError::index(format!("Failed to delete all documents: {e}")))?;
 
         Ok(())
     }
 
     /// Commit pending changes to disk
     pub fn commit(&self) -> Result<()> {
-        let writer = self.writer.lock();
+        let mut writer = self.writer.lock();
 
         writer
             .commit()
-            .map_err(|e| FlashError::index(format!("Failed to commit index: {}", e)))?;
+            .map_err(|e| FlashError::index(format!("Failed to commit index: {e}")))?;
 
         Ok(())
     }

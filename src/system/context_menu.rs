@@ -15,8 +15,8 @@ pub fn register_context_menu(enable: bool) -> Result<()> {
 
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
     let paths = [
-        r#"Software\Classes\Directory\shell\FlashSearch"#,
-        r#"Software\Classes\*\shell\FlashSearch"#,
+        r"Software\Classes\Directory\shell\FlashSearch",
+        r"Software\Classes\*\shell\FlashSearch",
     ];
 
     if enable {

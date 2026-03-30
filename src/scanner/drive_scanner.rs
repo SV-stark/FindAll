@@ -48,7 +48,7 @@ mod windows_usn {
                 FILE_FLAG_BACKUP_SEMANTICS,
                 None,
             )
-            .map_err(|e| FlashError::index(format!("Failed to open volume handle: {}", e)))?;
+            .map_err(|e| FlashError::index(format!("Failed to open volume handle: {e}")))?;
 
             let result = iterate_mft(
                 handle,
@@ -77,12 +77,12 @@ mod windows_usn {
             FSCTL_QUERY_USN_JOURNAL,
             None,
             0,
-            Some(&mut journal_data as *mut _ as *mut _),
+            Some(std::ptr::addr_of_mut!(journal_data).cast()),
             std::mem::size_of::<USN_JOURNAL_DATA_V0>() as u32,
             Some(&mut bytes_returned),
             None,
         )
-        .map_err(|e| FlashError::index(format!("Query USN Journal failed: {}", e)))?;
+        .map_err(|e| FlashError::index(format!("Query USN Journal failed: {e}")))?;
 
         let mut mft_enum_data = MFT_ENUM_DATA_V0 {
             StartFileReferenceNumber: 0,
@@ -101,9 +101,9 @@ mod windows_usn {
             let success = DeviceIoControl(
                 handle,
                 FSCTL_ENUM_USN_DATA,
-                Some(&mft_enum_data as *const _ as *const _),
+                Some(std::ptr::addr_of!(mft_enum_data).cast()),
                 std::mem::size_of::<MFT_ENUM_DATA_V0>() as u32,
-                Some(buffer.as_mut_ptr() as *mut _),
+                Some(buffer.as_mut_ptr().cast()),
                 buffer.len() as u32,
                 Some(&mut bytes_returned),
                 None,
@@ -113,17 +113,19 @@ mod windows_usn {
                 break;
             }
 
-            let next_usn = *(buffer.as_ptr() as *const i64);
+            let next_usn = *buffer.as_ptr().cast::<i64>();
             mft_enum_data.StartFileReferenceNumber = next_usn as u64;
 
             let mut offset = 8;
             while offset < bytes_returned as usize {
-                let record = &*(buffer.as_ptr().add(offset) as *const USN_RECORD_V2);
+                let record = &*buffer.as_ptr().add(offset).cast::<USN_RECORD_V2>();
 
                 // Skip system files to clean up the output and increase performance
                 if (record.FileAttributes & FILE_ATTRIBUTE_SYSTEM.0) == 0 {
-                    let name_ptr =
-                        buffer.as_ptr().add(offset + record.FileNameOffset as usize) as *const u16;
+                    let name_ptr = buffer
+                        .as_ptr()
+                        .add(offset + record.FileNameOffset as usize)
+                        .cast::<u16>();
                     let name_len = (record.FileNameLength / 2) as usize;
                     let name = CompactString::from_utf16_lossy(std::slice::from_raw_parts(
                         name_ptr, name_len,
@@ -131,7 +133,7 @@ mod windows_usn {
 
                     let frn = record.FileReferenceNumber;
                     let parent_frn = record.ParentFileReferenceNumber;
-                    let is_dir = (record.FileAttributes & 0x00000010) != 0; // FILE_ATTRIBUTE_DIRECTORY
+                    let is_dir = (record.FileAttributes & 0x0000_0010) != 0; // FILE_ATTRIBUTE_DIRECTORY
 
                     if is_dir {
                         dir_map.insert(frn, DirInfo { name, parent_frn });
@@ -192,10 +194,10 @@ mod windows_usn {
                         let _ = tx.try_send(ProgressEvent {
                             ptype: ProgressType::Filename,
                             current_file: name.to_string(),
-                            current_folder: "".to_string(),
+                            current_folder: String::new(),
                             processed: count,
                             total: 0,
-                            status: format!("Reconstructing MFT: {} files", count),
+                            status: format!("Reconstructing MFT: {count} files"),
                             eta_seconds: 0,
                             files_per_second: 0.0,
                         });
@@ -245,7 +247,7 @@ mod windows_usn {
                     FSCTL_QUERY_USN_JOURNAL,
                     None,
                     0,
-                    Some(&mut journal_data as *mut _ as *mut _),
+                    Some(std::ptr::addr_of_mut!(journal_data).cast()),
                     std::mem::size_of::<USN_JOURNAL_DATA_V0>() as u32,
                     Some(&mut bytes_returned),
                     None,
@@ -256,11 +258,11 @@ mod windows_usn {
                     return;
                 }
 
-                const USN_REASON_FILE_DELETE: u32 = 0x00000200;
+                const USN_REASON_FILE_DELETE: u32 = 0x0000_0200;
 
                 let mut read_data = READ_USN_JOURNAL_DATA_V0 {
                     StartUsn: journal_data.NextUsn,
-                    ReasonMask: 0xFFFFFFFF,
+                    ReasonMask: 0xFFFF_FFFF,
                     ReturnOnlyOnClose: 1, // Only get events when file is closed (finished writing)
                     Timeout: 0,
                     BytesToWaitFor: 0,
@@ -274,26 +276,27 @@ mod windows_usn {
                     let success = DeviceIoControl(
                         handle,
                         FSCTL_READ_USN_JOURNAL,
-                        Some(&read_data as *const _ as *const _),
+                        Some(std::ptr::addr_of!(read_data).cast()),
                         std::mem::size_of::<READ_USN_JOURNAL_DATA_V0>() as u32,
-                        Some(buffer.as_mut_ptr() as *mut _),
+                        Some(buffer.as_mut_ptr().cast()),
                         buffer.len() as u32,
                         Some(&mut bytes_returned),
                         None,
                     );
 
                     if success.is_ok() && bytes_returned >= 8 {
-                        let next_usn = *(buffer.as_ptr() as *const i64);
+                        let next_usn = *buffer.as_ptr().cast::<i64>();
                         read_data.StartUsn = next_usn;
 
                         let mut offset = 8;
                         while offset < bytes_returned as usize {
-                            let record = &*(buffer.as_ptr().add(offset) as *const USN_RECORD_V2);
+                            let record = &*buffer.as_ptr().add(offset).cast::<USN_RECORD_V2>();
 
                             if (record.FileAttributes & FILE_ATTRIBUTE_SYSTEM.0) == 0 {
-                                let name_ptr =
-                                    buffer.as_ptr().add(offset + record.FileNameOffset as usize)
-                                        as *const u16;
+                                let name_ptr = buffer
+                                    .as_ptr()
+                                    .add(offset + record.FileNameOffset as usize)
+                                    .cast::<u16>();
                                 let name_len = (record.FileNameLength / 2) as usize;
                                 let name = String::from_utf16_lossy(std::slice::from_raw_parts(
                                     name_ptr, name_len,
@@ -408,7 +411,7 @@ impl DriveScanner for DefaultDriveScanner {
 
         let mut override_builder = ignore::overrides::OverrideBuilder::new(&root);
         for pattern in &exclude_patterns {
-            let ignore_pattern = format!("!{}", pattern);
+            let ignore_pattern = format!("!{pattern}");
             if let Err(e) = override_builder.add(&ignore_pattern) {
                 warn!("Invalid exclude pattern '{}': {}", pattern, e);
             }
@@ -429,7 +432,7 @@ impl DriveScanner for DefaultDriveScanner {
             let total = total_count.clone();
             Box::new(move |entry| {
                 if let Ok(entry) = entry {
-                    if entry.file_type().map(|ft| ft.is_file()).unwrap_or(false) {
+                    if entry.file_type().is_some_and(|ft| ft.is_file()) {
                         let path = entry.path().to_path_buf();
                         let _ = path_tx.send(path);
                         let count = total.fetch_add(1, Ordering::Relaxed);
@@ -439,7 +442,7 @@ impl DriveScanner for DefaultDriveScanner {
                                 let _ = tx.try_send(ProgressEvent {
                                     ptype: ProgressType::Filename,
                                     current_file: entry.file_name().to_string_lossy().to_string(),
-                                    current_folder: "".to_string(),
+                                    current_folder: String::new(),
                                     processed: count,
                                     total: 0,
                                     status: "Scanning filenames...".to_string(),
@@ -458,8 +461,8 @@ impl DriveScanner for DefaultDriveScanner {
         if let Some(tx) = &progress_tx {
             let _ = tx.try_send(ProgressEvent {
                 ptype: ProgressType::Filename,
-                current_file: "".to_string(),
-                current_folder: "".to_string(),
+                current_file: String::new(),
+                current_folder: String::new(),
                 processed: final_count,
                 total: final_count,
                 status: "Filename scan complete".to_string(),

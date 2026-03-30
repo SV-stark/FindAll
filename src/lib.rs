@@ -21,7 +21,7 @@ use crate::error::FlashError;
 use commands::AppState;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 pub fn get_app_data_dir() -> std::result::Result<PathBuf, FlashError> {
     #[cfg(target_os = "windows")]
@@ -63,7 +63,7 @@ pub fn setup_app() -> std::result::Result<
     let indexer =
         indexer::IndexManager::open(&index_path, settings.memory_limit_mb).map_err(|e| {
             FlashError::Index {
-                msg: format!("Failed to open search index: {}", e),
+                msg: format!("Failed to open search index: {e}"),
                 field: None,
             }
         })?;
@@ -97,7 +97,7 @@ pub fn setup_app() -> std::result::Result<
         metadata_db_shared.clone(),
         filename_index.clone(),
         Some(progress_tx.clone()),
-        settings.clone(),
+        settings,
     ));
 
     let state = Arc::new(

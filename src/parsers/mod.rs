@@ -24,19 +24,17 @@ pub fn parse_file(path: &Path) -> Result<ParsedDocument> {
         extension
     );
 
-    let mime = kreuzberg::detect_mime_type(path).ok();
+    let mime = kreuzberg::detect_mime_type(path, true).ok();
 
     // Disable cache to prevent unbounded memory growth during deep directory scans.
     let config = kreuzberg::ExtractionConfig {
         use_cache: false,
-        language_detection: Some(kreuzberg::LanguageDetectionConfig::default()),
-        keywords: Some(kreuzberg::KeywordConfig::default()),
         ..Default::default()
     };
 
     let result = kreuzberg::extract_file_sync(path, mime.as_deref(), &config).map_err(|e| {
         tracing::error!("Failed to extract file {}: {}", path.display(), e);
-        FlashError::parse(path, format!("Extraction failed: {}", e))
+        FlashError::parse(path, format!("Extraction failed: {e}"))
     })?;
 
     tracing::debug!("Successfully parsed file: {}", path.display());
@@ -46,10 +44,12 @@ pub fn parse_file(path: &Path) -> Result<ParsedDocument> {
         .as_ref()
         .and_then(|langs| langs.first().map(CompactString::from));
 
-    let keywords = result
-        .extracted_keywords
-        .as_ref()
-        .map(|kws| kws.iter().map(|k| k.text.as_str()).collect::<Vec<_>>().join(" "));
+    let keywords = result.extracted_keywords.as_ref().map(|kws| {
+        kws.iter()
+            .map(|k| k.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" ")
+    });
 
     Ok(ParsedDocument {
         path: path.to_string_lossy().to_string(),
@@ -66,19 +66,21 @@ pub fn parse_files_batch(paths: Vec<PathBuf>) -> Result<Vec<Result<ParsedDocumen
 
     let config = kreuzberg::ExtractionConfig {
         use_cache: false,
-        language_detection: Some(kreuzberg::LanguageDetectionConfig::default()),
-        keywords: Some(kreuzberg::KeywordConfig::default()),
         ..Default::default()
     };
-    
+
     // Dispatch to the native batching execution pool
-    let batch_results = kreuzberg::batch_extract_file_sync(paths.clone(), &config).map_err(|e| {
-        tracing::error!("Kreuzberg batch extraction failed entirely: {}", e);
-        FlashError::parse(Path::new("batch"), format!("Batch extraction crashed: {}", e))
-    })?;
+    let batched_paths: Vec<(PathBuf, Option<kreuzberg::FileExtractionConfig>)> =
+        paths.clone().into_iter().map(|p| (p, None)).collect();
+
+    let batch_results =
+        kreuzberg::batch_extract_file_sync(batched_paths, &config).map_err(|e| {
+            tracing::error!("Kreuzberg batch extraction failed entirely: {}", e);
+            FlashError::parse(Path::new("batch"), format!("Batch extraction crashed: {e}"))
+        })?;
 
     let mut final_results = Vec::with_capacity(batch_results.len());
-    
+
     for (i, result) in batch_results.into_iter().enumerate() {
         if let Some(path) = paths.get(i) {
             let language = result
@@ -86,10 +88,12 @@ pub fn parse_files_batch(paths: Vec<PathBuf>) -> Result<Vec<Result<ParsedDocumen
                 .as_ref()
                 .and_then(|langs| langs.first().map(CompactString::from));
 
-            let keywords = result
-                .extracted_keywords
-                .as_ref()
-                .map(|kws| kws.iter().map(|k| k.text.as_str()).collect::<Vec<_>>().join(" "));
+            let keywords = result.extracted_keywords.as_ref().map(|kws| {
+                kws.iter()
+                    .map(|k| k.text.as_str())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            });
 
             final_results.push(Ok(ParsedDocument {
                 path: path.to_string_lossy().to_string(),
@@ -112,8 +116,7 @@ mod tests {
     fn extension_matches(extension: &OsStr, expected: &str) -> bool {
         extension
             .to_str()
-            .map(|s| s.to_lowercase() == expected)
-            .unwrap_or(false)
+            .is_some_and(|s| s.to_lowercase() == expected)
     }
 
     #[test]

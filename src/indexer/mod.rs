@@ -12,7 +12,7 @@ use crate::parsers::ParsedDocument;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tantivy::{directory::MmapDirectory, Index};
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 /// Current schema version - bump this when schema changes
 pub const SCHEMA_VERSION: &str = "1.3.0";
@@ -71,12 +71,18 @@ impl IndexManager {
                 }
 
                 if let Err(e) = std::fs::remove_dir_all(index_path) {
-                    error!("Failed to remove corrupted index at {:?}: {}", index_path, e);
+                    error!(
+                        "Failed to remove corrupted index at {:?}: {}",
+                        index_path, e
+                    );
                     return Err(FlashError::Io(std::sync::Arc::new(e)));
                 }
 
                 if let Err(e) = std::fs::create_dir_all(index_path) {
-                    error!("Failed to re-create index directory at {:?}: {}", index_path, e);
+                    error!(
+                        "Failed to re-create index directory at {:?}: {}",
+                        index_path, e
+                    );
                     return Err(FlashError::Io(std::sync::Arc::new(e)));
                 }
                 write_schema_version(index_path, SCHEMA_VERSION)?;
@@ -100,7 +106,10 @@ impl IndexManager {
                 return Err(FlashError::Io(std::sync::Arc::new(e)));
             }
             if let Err(e) = std::fs::create_dir_all(index_path) {
-                error!("Failed to re-create index directory at {:?}: {}", index_path, e);
+                error!(
+                    "Failed to re-create index directory at {:?}: {}",
+                    index_path, e
+                );
                 return Err(FlashError::Io(std::sync::Arc::new(e)));
             }
             write_schema_version(index_path, SCHEMA_VERSION)?;
@@ -110,7 +119,7 @@ impl IndexManager {
         }
 
         let directory = MmapDirectory::open(index_path)
-            .map_err(|e| FlashError::index(format!("Failed to open index directory: {}", e)))?;
+            .map_err(|e| FlashError::index(format!("Failed to open index directory: {e}")))?;
 
         let index = match Index::open_or_create(directory, schema.clone()) {
             Ok(idx) => idx,
@@ -137,15 +146,14 @@ impl IndexManager {
                     write_schema_version(index_path, SCHEMA_VERSION)?;
 
                     let new_directory = MmapDirectory::open(index_path).map_err(|e| {
-                        FlashError::index(format!("Failed to re-open index directory: {}", e))
+                        FlashError::index(format!("Failed to re-open index directory: {e}"))
                     })?;
                     Index::open_or_create(new_directory, schema).map_err(|e| {
-                        FlashError::index(format!("Failed to create new index after reset: {}", e))
+                        FlashError::index(format!("Failed to create new index after reset: {e}"))
                     })?
                 } else {
                     return Err(FlashError::index(format!(
-                        "Failed to open or create index: {}",
-                        e
+                        "Failed to open or create index: {e}"
                     )));
                 }
             }
@@ -232,7 +240,7 @@ impl IndexManager {
     }
 
     /// Get the searcher for direct document access
-    pub fn get_searcher(&self) -> &Arc<IndexSearcher> {
+    pub const fn get_searcher(&self) -> &Arc<IndexSearcher> {
         &self.searcher
     }
 }

@@ -15,10 +15,7 @@ pub fn read_file(path: &Path) -> Result<Vec<u8>> {
     if file_size > MAX_FILE_SIZE {
         return Err(FlashError::parse(
             path,
-            format!(
-                "File too large: {} bytes (max: {})",
-                file_size, MAX_FILE_SIZE
-            ),
+            format!("File too large: {file_size} bytes (max: {MAX_FILE_SIZE})"),
         ));
     }
 
@@ -31,7 +28,7 @@ pub fn read_file(path: &Path) -> Result<Vec<u8>> {
 
 pub fn read_file_as_string(path: &Path) -> Result<String> {
     let bytes = read_file(path)?;
-    String::from_utf8(bytes).map_err(|e| FlashError::parse(path, format!("Invalid UTF-8: {}", e)))
+    String::from_utf8(bytes).map_err(|e| FlashError::parse(path, format!("Invalid UTF-8: {e}")))
 }
 
 fn read_with_buffer(path: &Path) -> Result<Vec<u8>> {
@@ -44,7 +41,7 @@ fn read_with_buffer(path: &Path) -> Result<Vec<u8>> {
 
 fn read_with_mmap(path: &Path) -> Result<Vec<u8>> {
     let file = File::open(path)
-        .map_err(|e| FlashError::parse(path, format!("Failed to open file: {}", e)))?;
+        .map_err(|e| FlashError::parse(path, format!("Failed to open file: {e}")))?;
 
     // SAFETY: Memory mapping a file is unsafe because another process could modify it
     // while we are reading, potentially violating Rust's memory safety guarantees.
@@ -58,6 +55,7 @@ fn read_with_mmap(path: &Path) -> Result<Vec<u8>> {
     Ok(mmap.to_vec())
 }
 
+#[must_use]
 pub fn is_mmap_applicable(path: &Path) -> bool {
     std::fs::metadata(path)
         .map(|m| m.len() > MMAP_THRESHOLD)

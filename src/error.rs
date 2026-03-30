@@ -53,7 +53,7 @@ pub enum FlashError {
 
 impl From<std::io::Error> for FlashError {
     fn from(e: std::io::Error) -> Self {
-        FlashError::Io(Arc::new(e))
+        Self::Io(Arc::new(e))
     }
 }
 
@@ -146,7 +146,7 @@ impl FlashError {
 
 impl From<tantivy::TantivyError> for FlashError {
     fn from(e: tantivy::TantivyError) -> Self {
-        FlashError::Index {
+        Self::Index {
             msg: e.to_string(),
             field: None,
         }

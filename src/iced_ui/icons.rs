@@ -40,15 +40,18 @@ pub fn get_icon_char(name: &str) -> char {
 }
 
 /// Helper function to create an iced Text widget containing the given icon unicode.
+#[must_use]
 pub fn icon<'a>(name: &str) -> Text<'a> {
     text(get_icon_char(name).to_string()).font(FONT)
 }
 
 /// For the old `load_icon` helper signature
+#[must_use]
 pub fn load_icon<'a>(name: &str) -> Element<'a, super::Message> {
     icon(name).size(16).into()
 }
 
+#[must_use]
 pub fn load_icon_size<'a>(name: &str, size: f32) -> Element<'a, super::Message> {
     icon(name).size(size).into()
 }

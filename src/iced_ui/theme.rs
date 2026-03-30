@@ -24,21 +24,23 @@ pub const TEXT_BRIGHT_LIGHT: Color = Color::from_rgb(0.09, 0.09, 0.11); // #1818
 pub const TEXT_MUTED_LIGHT: Color = Color::from_rgb(0.45, 0.45, 0.50); // #71717a
 pub const TEXT_DIM_LIGHT: Color = Color::from_rgb(0.63, 0.63, 0.67); // #a1a1aa
 
-pub fn accent_color() -> Color {
+#[must_use]
+pub const fn accent_color() -> Color {
     ACCENT_BLUE
 }
 
-pub fn accent_color_light() -> Color {
+#[must_use]
+pub const fn accent_color_light() -> Color {
     let mut c = ACCENT_BLUE;
     c.a = 0.15;
     c
 }
 
-fn is_dark_theme(theme: &Theme) -> bool {
+const fn is_dark_theme(theme: &Theme) -> bool {
     matches!(theme, Theme::Dark)
 }
 
-fn surface_color(theme: &Theme) -> Color {
+const fn surface_color(theme: &Theme) -> Color {
     if is_dark_theme(theme) {
         SURFACE_DARK
     } else {
@@ -46,7 +48,7 @@ fn surface_color(theme: &Theme) -> Color {
     }
 }
 
-fn panel_color(theme: &Theme) -> Color {
+const fn panel_color(theme: &Theme) -> Color {
     if is_dark_theme(theme) {
         PANEL_DARK
     } else {
@@ -54,7 +56,7 @@ fn panel_color(theme: &Theme) -> Color {
     }
 }
 
-fn border_color(theme: &Theme) -> Color {
+const fn border_color(theme: &Theme) -> Color {
     if is_dark_theme(theme) {
         BORDER_DARK
     } else {
@@ -62,7 +64,7 @@ fn border_color(theme: &Theme) -> Color {
     }
 }
 
-fn text_bright_color(theme: &Theme) -> Color {
+const fn text_bright_color(theme: &Theme) -> Color {
     if is_dark_theme(theme) {
         TEXT_BRIGHT
     } else {
@@ -70,7 +72,7 @@ fn text_bright_color(theme: &Theme) -> Color {
     }
 }
 
-fn text_muted_color(theme: &Theme) -> Color {
+const fn text_muted_color(theme: &Theme) -> Color {
     if is_dark_theme(theme) {
         TEXT_MUTED
     } else {
@@ -78,7 +80,7 @@ fn text_muted_color(theme: &Theme) -> Color {
     }
 }
 
-fn text_dim_color(theme: &Theme) -> Color {
+const fn text_dim_color(theme: &Theme) -> Color {
     if is_dark_theme(theme) {
         TEXT_DIM
     } else {
@@ -88,6 +90,7 @@ fn text_dim_color(theme: &Theme) -> Color {
 
 // --- Container Styles ---
 
+#[must_use]
 pub fn main_content_container(theme: &Theme) -> container::Style {
     container::Style {
         background: Some(Background::Color(surface_color(theme))),
@@ -96,6 +99,7 @@ pub fn main_content_container(theme: &Theme) -> container::Style {
     }
 }
 
+#[must_use]
 pub fn sidebar_container(theme: &Theme) -> container::Style {
     container::Style {
         background: Some(Background::Color(panel_color(theme))),
@@ -108,6 +112,7 @@ pub fn sidebar_container(theme: &Theme) -> container::Style {
     }
 }
 
+#[must_use]
 pub fn side_nav_container(_theme: &Theme) -> container::Style {
     container::Style {
         background: Some(Background::Color(Color::TRANSPARENT)),
@@ -115,6 +120,7 @@ pub fn side_nav_container(_theme: &Theme) -> container::Style {
     }
 }
 
+#[must_use]
 pub fn top_bar_container(theme: &Theme) -> container::Style {
     container::Style {
         background: Some(Background::Color(panel_color(theme))),
@@ -127,6 +133,7 @@ pub fn top_bar_container(theme: &Theme) -> container::Style {
     }
 }
 
+#[must_use]
 pub fn header_container(theme: &Theme) -> container::Style {
     container::Style {
         background: Some(Background::Color(if is_dark_theme(theme) {
@@ -143,6 +150,7 @@ pub fn header_container(theme: &Theme) -> container::Style {
     }
 }
 
+#[must_use]
 pub fn input_container(theme: &Theme) -> container::Style {
     container::Style {
         background: Some(Background::Color(surface_color(theme))),
@@ -155,6 +163,7 @@ pub fn input_container(theme: &Theme) -> container::Style {
     }
 }
 
+#[must_use]
 pub fn result_card_normal(_theme: &Theme) -> container::Style {
     container::Style {
         background: Some(Background::Color(Color::TRANSPARENT)),
@@ -167,6 +176,7 @@ pub fn result_card_normal(_theme: &Theme) -> container::Style {
     }
 }
 
+#[must_use]
 pub fn result_card_hover(theme: &Theme) -> container::Style {
     let alpha = if is_dark_theme(theme) { 0.05 } else { 0.1 };
     let bg_color = if is_dark_theme(theme) {
@@ -181,6 +191,7 @@ pub fn result_card_hover(theme: &Theme) -> container::Style {
     }
 }
 
+#[must_use]
 pub fn result_card_selected(_theme: &Theme) -> container::Style {
     container::Style {
         background: Some(Background::Color(Color::from_rgba(0.23, 0.51, 0.96, 0.2))),
@@ -193,6 +204,7 @@ pub fn result_card_selected(_theme: &Theme) -> container::Style {
     }
 }
 
+#[must_use]
 pub fn table_header_container(theme: &Theme) -> container::Style {
     container::Style {
         background: Some(Background::Color(panel_color(theme))),
@@ -206,6 +218,7 @@ pub fn table_header_container(theme: &Theme) -> container::Style {
     }
 }
 
+#[must_use]
 pub fn hits_container(theme: &Theme) -> container::Style {
     container::Style {
         background: Some(Background::Color(panel_color(theme))),
@@ -218,6 +231,7 @@ pub fn hits_container(theme: &Theme) -> container::Style {
     }
 }
 
+#[must_use]
 pub fn hit_highlight_container(theme: &Theme) -> container::Style {
     container::Style {
         background: Some(Background::Color(if is_dark_theme(theme) {
@@ -419,6 +433,7 @@ pub fn error_text_style() -> impl Fn(&Theme) -> text::Style {
     }
 }
 
+#[must_use]
 pub fn error_container(_theme: &Theme) -> container::Style {
     container::Style {
         background: Some(Background::Color(Color::from_rgba(0.9, 0.2, 0.2, 0.1))),
@@ -432,6 +447,7 @@ pub fn error_container(_theme: &Theme) -> container::Style {
 }
 
 // --- Helper for Hit Highlights ---
+#[must_use]
 pub fn hit_tag_container(_theme: &Theme) -> container::Style {
     container::Style {
         background: Some(Background::Color(Color::from_rgba(0.96, 0.62, 0.04, 0.2))),
@@ -454,6 +470,7 @@ pub fn tab_button(is_active: bool) -> impl Fn(&Theme, button::Status) -> button:
     nav_button(is_active)
 }
 
+#[must_use]
 pub fn padded_card_container(theme: &Theme) -> container::Style {
     container::Style {
         background: Some(Background::Color(panel_color(theme))),
@@ -466,6 +483,7 @@ pub fn padded_card_container(theme: &Theme) -> container::Style {
     }
 }
 
+#[must_use]
 pub fn error_container_style() -> container::Style {
     error_container(&Theme::Dark)
 }

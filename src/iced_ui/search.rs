@@ -410,19 +410,17 @@ fn results_panel(app: &App) -> Element<'_, Message> {
                             .size(11)
                             .style(theme::muted_text_style()),
                         text("|").size(11).style(theme::dim_text_style()),
-                        text(
-                            res.size
-                                .map(crate::iced_ui::format_size)
-                                .unwrap_or_else(|| "Unknown size".to_string())
-                        )
+                        text(res.size.map_or_else(
+                            || "Unknown size".to_string(),
+                            crate::iced_ui::format_size
+                        ))
                         .size(11)
                         .style(theme::muted_text_style()),
                         text("|").size(11).style(theme::dim_text_style()),
-                        text(
-                            res.modified
-                                .map(crate::iced_ui::format_date)
-                                .unwrap_or_else(|| "Unknown date".to_string())
-                        )
+                        text(res.modified.map_or_else(
+                            || "Unknown date".to_string(),
+                            crate::iced_ui::format_date
+                        ))
                         .size(11)
                         .style(theme::muted_text_style()),
                     ]
@@ -643,7 +641,7 @@ fn hits_panel(app: &App) -> Element<'_, Message> {
     let result = app.selected_index.and_then(|i| app.results.get(i));
 
     let hits_content: Element<'_, Message> = if let Some(res) = result {
-        if res.snippets.is_empty() || res.snippets.iter().all(|s| s.is_empty()) {
+        if res.snippets.is_empty() || res.snippets.iter().all(std::string::String::is_empty) {
             container(text("No preview context available").style(theme::muted_text_style()))
                 .width(Length::Fill)
                 .height(Length::Fill)
@@ -656,8 +654,7 @@ fn hits_panel(app: &App) -> Element<'_, Message> {
                     res.snippets
                         .iter()
                         .enumerate()
-                        .map(|(i, s)| hit_row(i + 1, s))
-                        .collect::<Vec<_>>(),
+                        .map(|(i, s)| hit_row(i + 1, s)),
                 )
                 .spacing(8)
                 .padding(8),
@@ -691,12 +688,9 @@ fn hits_panel(app: &App) -> Element<'_, Message> {
                     ..Font::default()
                 }),
                 Space::new().width(Length::Fill),
-                text(format!(
-                    "{} total",
-                    result.map(|r| r.snippets.len()).unwrap_or(0)
-                ))
-                .size(11)
-                .style(theme::muted_text_style()),
+                text(format!("{} total", result.map_or(0, |r| r.snippets.len())))
+                    .size(11)
+                    .style(theme::muted_text_style()),
             ]
             .align_y(Alignment::Center)
             .padding(Padding::new(8.0))
@@ -714,7 +708,7 @@ fn hits_panel(app: &App) -> Element<'_, Message> {
 fn hit_row(_idx: usize, content: &str) -> Element<'_, Message> {
     container(
         row![
-            text(format!("{}.", _idx))
+            text(format!("{_idx}."))
                 .size(12)
                 .font(Font {
                     weight: font::Weight::Bold,

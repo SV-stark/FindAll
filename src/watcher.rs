@@ -50,7 +50,7 @@ impl WatcherManager {
                     if elapsed >= MAX_DEBOUNCE_WAIT {
                         Duration::from_millis(0) // Force flush immediately
                     } else {
-                        DEBOUNCE_GAP.min(MAX_DEBOUNCE_WAIT - elapsed)
+                        DEBOUNCE_GAP.min(MAX_DEBOUNCE_WAIT.checked_sub(elapsed).unwrap())
                     }
                 } else {
                     Duration::from_secs(3600) // Sleep until next event
@@ -68,7 +68,7 @@ impl WatcherManager {
                             break;
                         }
                     }
-                    _ = tokio::time::sleep(timeout_duration) => {
+                    () = tokio::time::sleep(timeout_duration) => {
                         if buffer.is_empty() {
                             continue;
                         }
@@ -169,6 +169,7 @@ impl WatcherManager {
     }
 
     /// Get a sender to push external events (like USN Journal) into the watcher
+    #[must_use]
     pub fn event_tx(&self) -> mpsc::Sender<(PathBuf, WatcherAction)> {
         self.external_tx.clone()
     }
@@ -251,7 +252,7 @@ impl WatcherManager {
         let path_buf = path.to_path_buf();
         let parsed_res = tokio::task::spawn_blocking(move || parse_file(&path_buf))
             .await
-            .map_err(|e| FlashError::parse(path, format!("Parse task failed: {}", e)))?;
+            .map_err(|e| FlashError::parse(path, format!("Parse task failed: {e}")))?;
 
         let parsed = match parsed_res {
             Ok(p) => p,

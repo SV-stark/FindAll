@@ -56,11 +56,11 @@ pub async fn get_index_status_internal(state: &Arc<AppState>) -> Result<IndexSta
         "idle".to_string()
     };
 
-    let stats = state.indexer.get_statistics().map_err(|e| e.to_string())?;
+    let index_stats = state.indexer.get_statistics().map_err(|e| e.to_string())?;
 
     Ok(IndexStatus {
         status,
-        files_indexed: stats.total_documents,
+        files_indexed: index_stats.total_documents,
     })
 }
 

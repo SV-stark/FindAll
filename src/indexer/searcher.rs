@@ -4,7 +4,7 @@ use itertools::Itertools;
 use moka::sync::Cache;
 use serde::{Deserialize, Serialize};
 use std::ops::Bound;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tantivy::collector::TopDocs;
 use tantivy::query::{BooleanQuery, FuzzyTermQuery, Occur, QueryParser, RangeQuery};
 use tantivy::schema::{Field, IndexRecordOption, Value};
@@ -42,6 +42,7 @@ pub struct IndexStatistics {
 }
 
 /// Cached search result with timestamp
+#[derive(Clone)]
 struct CachedResult {
     results: Vec<SearchResult>,
 }
@@ -65,6 +66,7 @@ pub struct QueryCache {
 }
 
 impl QueryCache {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             cache: Cache::builder()
@@ -99,6 +101,8 @@ pub struct IndexSearcher {
     query_parser: QueryParser,
     path_field: Field,
     title_field: Field,
+    size_field: Field,
+    content_field: Field,
     modified_field: Field,
     extension_field: Field,
     cache: QueryCache,
@@ -194,7 +198,7 @@ impl IndexSearcher {
             )
         })
         .await
-        .map_err(|e| FlashError::search(query, format!("Search task failed: {}", e)))?
+        .map_err(|e| FlashError::search(query, format!("Search task failed: {e}")))?
     }
 
     /// Synchronous search implementation
@@ -219,7 +223,7 @@ impl IndexSearcher {
             min_modified,
             extensions: file_extensions.map(|e| {
                 e.iter()
-                    .map(|s| CompactString::from(s.to_lowercase()))
+                    .map(compact_str::CompactString::to_lowercase)
                     .collect()
             }),
             case_sensitive,
@@ -311,7 +315,9 @@ impl IndexSearcher {
         let (mut final_query, mut top_docs) = run_query(exact_query)?;
 
         // TIER 2: Fuzzy Fallback
-        let phrase_regex = PHRASE_REGEX.get_or_init(|| regex::Regex::new(r#""([^"]+)""#).expect("Invalid regex for phrase search"));
+        let phrase_regex = PHRASE_REGEX.get_or_init(|| {
+            regex::Regex::new(r#""([^"]+)""#).expect("Invalid regex for phrase search")
+        });
 
         if top_docs.len() < limit
             && !phrase_regex.is_match(&parsed.text_query)
@@ -341,12 +347,12 @@ impl IndexSearcher {
 
         let mut results = Vec::with_capacity(top_docs.len().min(limit));
 
-        // Create snippet generator once outside the loop
-        let snippet_generator =
+        let _snippet_generator =
             SnippetGenerator::create(&searcher, &*final_query, self.content_field)?;
 
         for (score, doc_address) in top_docs {
-            let result = self.retrieve_result(&searcher, query, score, doc_address, &highlight_terms)?;
+            let result =
+                self.retrieve_result(&searcher, query, score, doc_address, &highlight_terms)?;
             results.push(result);
 
             if results.len() >= limit {
@@ -363,7 +369,9 @@ impl IndexSearcher {
     /// Build a fuzzy query for better typo tolerance
     fn build_fuzzy_query(&self, text_query: &str) -> Result<Box<dyn tantivy::query::Query>> {
         // Check if it's a phrase query (contains quoted strings)
-        let phrase_regex = PHRASE_REGEX.get_or_init(|| regex::Regex::new(r#""([^"]+)""#).expect("Invalid regex for phrase search"));
+        let phrase_regex = PHRASE_REGEX.get_or_init(|| {
+            regex::Regex::new(r#""([^"]+)""#).expect("Invalid regex for phrase search")
+        });
 
         if phrase_regex.is_match(text_query) {
             // For phrase queries, use the query parser with phrase support
@@ -482,9 +490,9 @@ impl IndexSearcher {
         doc_address: tantivy::DocAddress,
         highlight_terms: &[String],
     ) -> Result<SearchResult> {
-        let retrieved_doc: TantivyDocument = searcher.doc(doc_address).map_err(|e| {
-            FlashError::search(query, format!("Failed to retrieve document: {}", e))
-        })?;
+        let retrieved_doc: TantivyDocument = searcher
+            .doc(doc_address)
+            .map_err(|e| FlashError::search(query, format!("Failed to retrieve document: {e}")))?;
 
         let file_path = retrieved_doc
             .get_first(self.path_field)
@@ -606,7 +614,7 @@ mod tests {
             .matched_terms(vec!["test".to_string()])
             .snippets(vec!["snippet".to_string()])
             .build()];
-        cache.insert(key.clone(), results.clone());
+        cache.insert(key.clone(), results);
         let cached = cache.get(&key);
         assert!(cached.is_some());
         assert_eq!(cached.unwrap().len(), 1);

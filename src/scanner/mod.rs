@@ -148,7 +148,7 @@ impl Scanner {
         let allowed_extensions: Arc<std::collections::HashSet<String>> = Arc::new(
             self.settings
                 .get_allowed_extensions()
-                .into_iter()
+                .iter()
                 .map(|e| e.to_lowercase())
                 .collect(),
         );
@@ -161,10 +161,10 @@ impl Scanner {
 
             pool.install(|| {
                 let mut chunk = Vec::with_capacity(200);
-                for path in path_rx.into_iter() {
+                for path in path_rx {
                     chunk.push(path);
                     if chunk.len() >= 200 {
-                        Scanner::process_chunk(
+                        Self::process_chunk(
                             &chunk,
                             &metadata_db_for_parser,
                             file_size_limit_mb,
@@ -175,7 +175,7 @@ impl Scanner {
                     }
                 }
                 if !chunk.is_empty() {
-                    Scanner::process_chunk(
+                    Self::process_chunk(
                         &chunk,
                         &metadata_db_for_parser,
                         file_size_limit_mb,
@@ -196,7 +196,7 @@ impl Scanner {
             let mut meta_batch: Vec<(String, u64, u64, [u8; 32])> = Vec::with_capacity(BATCH_SIZE);
             let mut processed: usize = 0;
 
-            for task in task_rx.iter() {
+            for task in &task_rx {
                 // Add to filename index
                 if let Some(f_index) = &filename_index_clone {
                     let path = std::path::Path::new(&task.doc.path);
@@ -290,13 +290,13 @@ impl Scanner {
         // Wait for all stages to complete
         let _ = walker_handle
             .await
-            .map_err(|e| crate::error::FlashError::index(format!("Walk task failed: {}", e)))?;
+            .map_err(|e| crate::error::FlashError::index(format!("Walk task failed: {e}")))?;
         parser_handle
             .await
-            .map_err(|e| crate::error::FlashError::index(format!("Parse task failed: {}", e)))?;
+            .map_err(|e| crate::error::FlashError::index(format!("Parse task failed: {e}")))?;
         writer_handle
             .await
-            .map_err(|e| crate::error::FlashError::index(format!("Write task failed: {}", e)))?;
+            .map_err(|e| crate::error::FlashError::index(format!("Write task failed: {e}")))?;
 
         // Commit filename index to disk
         if let Some(f_index) = &self.filename_index {
@@ -313,7 +313,7 @@ impl Scanner {
         allowed_extensions: &std::collections::HashSet<String>,
         task_tx: &crossbeam_channel::Sender<IndexTask>,
     ) {
-        let limit_bytes = (file_size_limit_mb as u64) * 1024 * 1024;
+        let limit_bytes = u64::from(file_size_limit_mb) * 1024 * 1024;
         let mut batch_entries = Vec::with_capacity(chunk.len());
         let mut valid_paths = Vec::with_capacity(chunk.len());
 
@@ -372,44 +372,43 @@ impl Scanner {
         let just_paths: Vec<PathBuf> = paths_to_parse.iter().map(|(p, _, _)| p.clone()).collect();
 
         // Stage 1: Attempt native batch computation
-        match crate::parsers::parse_files_batch(just_paths) {
-            Ok(results) => {
-                for (parsed_res, (path, modified, size)) in results.into_iter().zip(paths_to_parse.into_iter()) {
-                    match parsed_res {
-                        Ok(parsed) => {
-                            let content_hash = blake3::hash(parsed.content.as_bytes()).into();
-                            let _ = task_tx.send(IndexTask {
-                                doc: parsed,
-                                modified,
-                                size,
-                                content_hash,
-                            });
-                        }
-                        Err(e) => {
-                            warn!("Failed to parse file {:?}: {}", path, e);
-                        }
+        if let Ok(results) = crate::parsers::parse_files_batch(just_paths) {
+            for (parsed_res, (path, modified, size)) in
+                results.into_iter().zip(paths_to_parse.into_iter())
+            {
+                match parsed_res {
+                    Ok(parsed) => {
+                        let content_hash = blake3::hash(parsed.content.as_bytes()).into();
+                        let _ = task_tx.send(IndexTask {
+                            doc: parsed,
+                            modified,
+                            size,
+                            content_hash,
+                        });
+                    }
+                    Err(e) => {
+                        warn!("Failed to parse file {:?}: {}", path, e);
                     }
                 }
             }
-            Err(_) => {
-                // Stage 2: Fallback to standalone parsing to isolate obscure file panic loops
-                warn!("Batch parsing crashed, dropping to discrete fallback loops");
-                paths_to_parse
-                    .into_par_iter()
-                    .for_each(|(path, modified, size)| {
-                        if let Ok(parsed) = parse_file(&path) {
-                            let content_hash = blake3::hash(parsed.content.as_bytes()).into();
-                            let _ = task_tx.send(IndexTask {
-                                doc: parsed,
-                                modified,
-                                size,
-                                content_hash,
-                            });
-                        } else {
-                            warn!("Failed to parse file {:?}", path);
-                        }
-                    });
-            }
+        } else {
+            // Stage 2: Fallback to standalone parsing to isolate obscure file panic loops
+            warn!("Batch parsing crashed, dropping to discrete fallback loops");
+            paths_to_parse
+                .into_par_iter()
+                .for_each(|(path, modified, size)| {
+                    if let Ok(parsed) = parse_file(&path) {
+                        let content_hash = blake3::hash(parsed.content.as_bytes()).into();
+                        let _ = task_tx.send(IndexTask {
+                            doc: parsed,
+                            modified,
+                            size,
+                            content_hash,
+                        });
+                    } else {
+                        warn!("Failed to parse file {:?}", path);
+                    }
+                });
         }
     }
 }

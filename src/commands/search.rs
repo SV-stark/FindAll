@@ -62,7 +62,7 @@ pub async fn get_file_preview_internal(path: String) -> Result<String, String> {
 
     let result = tokio::task::spawn_blocking(move || parse_file(&path_buf))
         .await
-        .map_err(|e| format!("Preview task failed: {}", e))?;
+        .map_err(|e| format!("Preview task failed: {e}"))?;
 
     match result {
         Ok(doc) => {
@@ -117,10 +117,10 @@ pub async fn get_filename_index_stats_internal(
     state: &Arc<AppState>,
 ) -> Result<FilenameIndexStats, String> {
     if let Some(ref filename_index) = state.filename_index {
-        let stats = filename_index.get_stats().map_err(|e| e.to_string())?;
+        let index_stats = filename_index.get_stats().map_err(|e| e.to_string())?;
         Ok(FilenameIndexStats {
-            total_files: stats.total_files,
-            index_size_bytes: stats.index_size_bytes,
+            total_files: index_stats.total_files,
+            index_size_bytes: index_stats.index_size_bytes,
         })
     } else {
         Err("Filename index not initialized".to_string())
