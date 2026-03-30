@@ -48,6 +48,7 @@ const result3 = await extractFile('document.pdf', null, {
 ```
 
 **Parameters**:
+
 - `filePath: string` — Path to the file to extract
 - `mimeType?: string | null` — Optional MIME type hint (auto-detect if null)
 - `config?: ExtractionConfig` — Optional extraction configuration
@@ -89,6 +90,7 @@ console.log(result.content);
 ```
 
 **Parameters**:
+
 - `data: Buffer | Uint8Array` — Raw file content
 - `mimeType: string` — MIME type (required)
 - `config?: ExtractionConfig` — Optional configuration
@@ -133,6 +135,7 @@ results.forEach((result, i) => {
 ```
 
 **Parameters**:
+
 - `paths: string[]` — Array of file paths
 - `config?: ExtractionConfig` — Configuration (applied to all files)
 
@@ -169,6 +172,7 @@ const results = await batchExtractBytes(dataList, mimeTypes);
 ```
 
 **Parameters**:
+
 - `dataList: Uint8Array[]` — Array of file contents
 - `mimeTypes: string[]` — MIME types (one per item, must match length)
 - `config?: ExtractionConfig` — Configuration (applied to all items)
@@ -193,6 +197,35 @@ const results = batchExtractBytesSync(dataList, mimeTypes);
 
 **Returns**: `ExtractionResult[]`
 
+#### `batchExtractFilesWithConfigs(paths, fileConfigs, config?): Promise<ExtractionResult[]>`
+
+Extract multiple files with per-file configuration overrides (asynchronous).
+
+```typescript
+const results = await batchExtractFilesWithConfigs(
+  ['report.pdf', 'scanned.pdf'],
+  [null, { forceOcr: true, ocr: { backend: 'tesseract', language: 'deu' } }],
+);
+```
+
+**Parameters**:
+
+- `paths: string[]` — File paths
+- `fileConfigs: (FileExtractionConfig | null)[]` — Per-file configs (null = use batch defaults)
+- `config?: ExtractionConfig` — Batch-level configuration
+
+#### `batchExtractFilesWithConfigsSync(paths, fileConfigs, config?): ExtractionResult[]`
+
+Synchronous variant.
+
+#### `batchExtractBytesWithConfigs(dataList, mimeTypes, fileConfigs, config?): Promise<ExtractionResult[]>`
+
+Extract multiple byte arrays with per-file overrides (asynchronous).
+
+#### `batchExtractBytesWithConfigsSync(dataList, mimeTypes, fileConfigs, config?): ExtractionResult[]`
+
+Synchronous variant.
+
 ---
 
 ## Worker Pool APIs
@@ -214,6 +247,7 @@ const pool4 = createWorkerPool(4);
 ```
 
 **Parameters**:
+
 - `size?: number` — Number of workers (defaults to CPU core count)
 
 **Returns**: `WorkerPool` — Opaque handle for use with worker extraction functions
@@ -242,6 +276,7 @@ try {
 ```
 
 **Parameters**:
+
 - `pool: WorkerPool` — Worker pool instance
 - `filePath: string` — File path
 - `mimeType?: string | null` — Optional MIME type
@@ -272,6 +307,7 @@ try {
 ```
 
 **Parameters**:
+
 - `pool: WorkerPool` — Worker pool instance
 - `paths: string[]` — File paths
 - `config?: ExtractionConfig` — Configuration (applied to all files)
@@ -294,6 +330,7 @@ console.log(`Queued tasks: ${stats.queuedTasks}`);
 ```
 
 **Parameters**:
+
 - `pool: WorkerPool` — Worker pool instance
 
 **Returns**: `WorkerPoolStats`
@@ -315,6 +352,7 @@ try {
 ```
 
 **Parameters**:
+
 - `pool: WorkerPool` — Worker pool instance to close
 
 **Returns**: `Promise<void>`
@@ -354,6 +392,31 @@ interface ExtractionConfig {
   resultFormat?: 'unified' | 'element_based';  // Default: 'unified'
 }
 ```
+
+### `FileExtractionConfig`
+
+Per-file overrides for batch operations. All fields optional (omitted = use batch default).
+
+```typescript
+interface FileExtractionConfig {
+  enableQualityProcessing?: boolean;
+  ocr?: OcrConfig;
+  forceOcr?: boolean;
+  chunking?: ChunkingConfig;
+  images?: ImageExtractionConfig;
+  pdfOptions?: PdfConfig;
+  tokenReduction?: TokenReductionConfig;
+  languageDetection?: LanguageDetectionConfig;
+  pages?: PageExtractionConfig;
+  keywords?: KeywordConfig;
+  postprocessor?: PostProcessorConfig;
+  outputFormat?: 'plain' | 'markdown' | 'djot' | 'html';
+  resultFormat?: 'unified' | 'element_based';
+  includeDocumentStructure?: boolean;
+}
+```
+
+Excluded (batch-level only): `maxConcurrentExtractions`, `useCache`, `securityLimits`.
 
 ### `ChunkingConfig`
 
@@ -734,6 +797,7 @@ import {
 ```
 
 **Error Hierarchy**:
+
 - `KreuzbergError` — Base class for all Kreuzberg errors
   - `ParsingError` — Document format invalid or corrupted
   - `OcrError` — OCR processing failed

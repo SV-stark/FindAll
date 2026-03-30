@@ -264,6 +264,44 @@ Implement custom OCR engines by registering an OCR backend. This allows integrat
     const result = await extractFile("scanned.pdf", null, config);
     ```
 
+## Per-File Configuration in Batch Operations
+
+Use `FileExtractionConfig` to override extraction settings for individual files within a batch. This is useful for mixed-format batches where different documents need different OCR, output, or processing settings.
+
+=== "Python"
+
+    ```python
+    from kreuzberg import (
+        batch_extract_files_sync,
+        ExtractionConfig, FileExtractionConfig, OcrConfig,
+    )
+
+    config = ExtractionConfig(output_format="markdown")
+    paths = ["report.pdf", "scan.tiff"]
+    file_configs = [
+        None,  # use batch defaults
+        FileExtractionConfig(
+            force_ocr=True,
+            ocr=OcrConfig(backend="tesseract", language="deu"),
+        ),
+    ]
+    results = batch_extract_files_sync(paths, config, file_configs=file_configs)
+    ```
+
+=== "TypeScript"
+
+    ```typescript
+    import { batchExtractFilesSync } from '@kreuzberg/node';
+
+    const results = batchExtractFilesSync(
+      ['report.pdf', 'scan.tiff'],
+      { outputFormat: 'markdown' },
+      [null, { forceOcr: true, ocr: { backend: 'tesseract', language: 'deu' } }],
+    );
+    ```
+
+All `ExtractionConfig` fields except batch-level concerns (`max_concurrent_extractions`, `use_cache`, `acceleration`, `security_limits`) can be overridden. `None`/`null` fields inherit from the batch default.
+
 ## Embeddings
 
 Generate vector embeddings for text chunks using ONNX-based models. Embeddings enable semantic search, clustering, and similarity operations on extracted content.
@@ -628,6 +666,7 @@ Reduce the number of tokens in extracted content for cost optimization when work
     ```
 
 **Token Reduction Modes:**
+
 - `off`: No reduction (default)
 - `light`: Remove extra whitespace and redundant punctuation
 - `moderate`: Also remove common filler words and some formatting
@@ -742,6 +781,7 @@ Extract semantic elements instead of unified content. This format is compatible 
     ```
 
 **Element Types:**
+
 - `title`: Document or section title
 - `heading`: Section headings
 - `narrative_text`: Regular paragraph text
@@ -883,6 +923,7 @@ Set resource limits to prevent abuse and control memory/file size consumption.
     ```
 
 **Common Limits:**
+
 - `max_file_size`: Maximum input file size in bytes
 - `max_archive_files`: Maximum files in archives (zip, tar, etc.)
 - `max_text_length`: Maximum extracted text length

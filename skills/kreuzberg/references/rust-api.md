@@ -235,6 +235,31 @@ fn main() -> kreuzberg::Result<()> {
 }
 ```
 
+### `FileExtractionConfig`
+
+Per-file overrides for batch operations, passed as an optional parameter to `batch_extract_file` / `batch_extract_bytes` (and their sync variants). All fields `Option<T>` — `None` = use batch default.
+
+> **Note (v4.5.0):** The separate `batch_extract_file_with_configs` / `batch_extract_bytes_with_configs` functions have been removed. Per-file configs are now an optional parameter on the unified batch functions.
+
+```rust
+pub struct FileExtractionConfig {
+    pub enable_quality_processing: Option<bool>,
+    pub ocr: Option<OcrConfig>,
+    pub force_ocr: Option<bool>,
+    pub chunking: Option<ChunkingConfig>,
+    pub images: Option<ImageExtractionConfig>,
+    pub pdf_options: Option<PdfConfig>,
+    pub token_reduction: Option<TokenReductionConfig>,
+    pub language_detection: Option<LanguageDetectionConfig>,
+    pub pages: Option<PageConfig>,
+    pub postprocessor: Option<PostProcessorConfig>,
+    pub output_format: Option<OutputFormat>,
+    pub include_document_structure: Option<bool>,
+}
+```
+
+Excluded batch-level fields: `max_concurrent_extractions`, `use_cache`, `acceleration`, `security_limits`.
+
 ---
 
 ## Configuration

@@ -37,6 +37,9 @@
 - **🔄 Live Indexing**: Automatic file watching and incremental updates
 - **🎯 Smart Filtering**: .gitignore support, custom exclude patterns
 - **🌙 Native UI**: Beautiful dark/light themes using Iced's high-performance renderer.
+- **🔄 Auto-Update**: Seamlessly checks for and installs new updates in the background.
+- **🚀 Auto-Launch**: Configurable to launch quietly on system startup so search is always ready.
+
 
 <h2 align="center">📥 Installation</h2>
 
@@ -46,9 +49,21 @@
 - **macOS**: macOS 10.15+
 - **Linux**: Vulkan-compatible drivers & development tools (pkg-config, libfontconfig1-dev)
 
-<h3 align="center">Download</h3>
+<h3 align="center">Install via Terminal</h3>
 
-Download the latest release for your platform from the [Releases](https://github.com/SV-stark/FindAll/releases) page.
+**Windows (PowerShell):**
+```powershell
+irm https://github.com/SV-stark/FindAll/releases/latest/download/flash-search-installer.ps1 | iex
+```
+
+**macOS & Linux:**
+```bash
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/SV-stark/FindAll/releases/latest/download/flash-search-installer.sh | sh
+```
+
+Or manually download the pre-built binaries for your platform from the [Releases](https://github.com/SV-stark/FindAll/releases) page.
+
+*Note: The installed application binary is called `flash-search`.*
 
 <h3 align="center">Build from Source</h3>
 
@@ -94,6 +109,24 @@ cargo run
 | `Ctrl+C` | Copy file path |
 | `Esc` | Close search window |
 | `↑/↓` | Navigate results |
+
+<h3 align="center">Command-Line Interface</h3>
+
+Flash Search includes a CLI mode for terminal-based querying and scripting:
+
+```bash
+# Basic terminal text search
+flash-search --cli "query"
+
+# Output as JSON 
+flash-search --cli "query" --json
+```
+
+<h3 align="center">App Data & Logs</h3>
+
+Flash Search automatically manages its index database and rolling background logs (retained up to 30 days) locally in the `com.flashsearch` data directory:
+- **Windows**: `%AppData%\com.flashsearch` or `%LocalAppData%\com.flashsearch`
+- **macOS/Linux**: `~/.local/share/com.flashsearch` or `~/.config/com.flashsearch`
 
 <h2 align="center">🏗️ Tech Stack</h2>
 
