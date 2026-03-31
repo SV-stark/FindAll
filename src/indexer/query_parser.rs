@@ -102,11 +102,11 @@ impl ParsedQuery {
                                 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
                                 let bytes = (num * f64::from(multiplier)).round() as u64;
                                 match op {
-                                    ">" => min_size = Some(bytes + 1),
-                                    "<" => max_size = Some(bytes.saturating_sub(1)),
+                                    ">" => min_size = Some(bytes),
+                                    "<" => max_size = Some(bytes),
                                     _ => {
                                         min_size = Some(bytes);
-                                        max_size = Some(bytes + 1);
+                                        max_size = Some(bytes);
                                     }
                                 }
                             }
