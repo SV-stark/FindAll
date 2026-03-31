@@ -7,20 +7,21 @@ pub fn get_settings_internal(state: &Arc<AppState>) -> Result<AppSettings, Strin
     Ok(state.settings_cache.load().as_ref().clone())
 }
 
-pub fn save_settings_internal(settings: AppSettings, state: &Arc<AppState>) -> Result<(), String> {
+pub fn save_settings_internal(settings: &AppSettings, state: &Arc<AppState>) -> Result<(), String> {
     state.settings_cache.store(Arc::new(settings.clone()));
 
     state
         .settings_manager
-        .save(&settings)
+        .save(settings)
         .map_err(|e| e.to_string())?;
 
     let mut watcher = state.watcher.lock();
 
     watcher
-        .update_watch_list(settings.index_dirs)
+        .update_watch_list(&settings.index_dirs)
         .map_err(|e| e.to_string())?;
 
+    drop(watcher);
     Ok(())
 }
 
@@ -129,10 +130,10 @@ pub fn pin_file_internal(path: String, state: &Arc<AppState>) -> Result<(), Stri
     Ok(())
 }
 
-pub fn unpin_file_internal(path: String, state: &Arc<AppState>) -> Result<(), String> {
+pub fn unpin_file_internal(path: &str, state: &Arc<AppState>) -> Result<(), String> {
     let mut cache = state.settings_cache.load().as_ref().clone();
 
-    cache.pinned_files.retain(|p| p != &path);
+    cache.pinned_files.retain(|p| p != path);
     state
         .settings_manager
         .save(&cache)

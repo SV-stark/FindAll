@@ -2,6 +2,7 @@ use crate::error::{FlashError, Result};
 use redb::{Database, ReadableTable, TableDefinition};
 use rkyv;
 use std::cmp::Reverse;
+use std::collections::BinaryHeap;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -102,26 +103,18 @@ impl MetadataDb {
 
         let path_str = path.to_str().unwrap_or("");
 
-        let result = match table
+        let result = table
             .get(path_str)
             .map_err(|e| FlashError::database("database_operation", "files_table", e.to_string()))?
-        {
-            Some(metadata) => {
+            .map_or(true, |metadata| {
                 let bytes = metadata.value();
                 // Zero-copy read and validate with byte alignment
                 let mut aligned_bytes = rkyv::util::AlignedVec::<16>::new();
                 aligned_bytes.extend_from_slice(bytes);
 
-                if let Ok(meta) = rkyv::access::<rkyv::Archived<FileMetadata>, rkyv::rancor::Error>(
-                    &aligned_bytes,
-                ) {
-                    meta.modified != modified || meta.size != size
-                } else {
-                    true // Reindex if validation fails
-                }
-            }
-            None => true, // File not indexed yet
-        };
+                rkyv::access::<rkyv::Archived<FileMetadata>, rkyv::rancor::Error>(&aligned_bytes)
+                    .map_or(true, |meta| meta.modified != modified || meta.size != size)
+            });
 
         Ok(result)
     }
@@ -237,22 +230,16 @@ impl MetadataDb {
             FlashError::database("database_operation", "files_table", e.to_string())
         })?;
 
-        let result = match table
+        let result = table
             .get(path.to_str().unwrap_or(""))
             .map_err(|e| FlashError::database("database_operation", "files_table", e.to_string()))?
-        {
-            Some(metadata) => {
+            .and_then(|metadata| {
                 let bytes = metadata.value();
-                if let Ok(meta) =
-                    rkyv::access::<rkyv::Archived<FileMetadata>, rkyv::rancor::Error>(bytes)
-                {
-                    rkyv::deserialize::<FileMetadata, rkyv::rancor::Error>(meta).ok()
-                } else {
-                    None
-                }
-            }
-            None => None,
-        };
+                rkyv::access::<rkyv::Archived<FileMetadata>, rkyv::rancor::Error>(bytes)
+                    .map_or(None, |meta| {
+                        rkyv::deserialize::<FileMetadata, rkyv::rancor::Error>(meta).ok()
+                    })
+            });
 
         Ok(result)
     }
@@ -332,24 +319,15 @@ impl MetadataDb {
         let results: Vec<bool> = entries
             .iter()
             .map(|(path, modified, size)| {
-                match table.get(path.as_str()) {
-                    Ok(Some(metadata)) => {
+                table.get(path.as_str()).map_or(true, |opt_metadata| {
+                    opt_metadata.map_or(true, |metadata| {
                         let bytes = metadata.value();
-                        if let Ok(meta) =
-                            rkyv::access::<rkyv::Archived<FileMetadata>, rkyv::rancor::Error>(bytes)
-                        {
-                            meta.modified != *modified || meta.size != *size
-                        } else {
-                            true
-                        }
-                    }
-                    Ok(None) => true, // File not indexed yet
-                    Err(e) => {
-                        // Log error but assume safe to reindex rather than silently reindexing
-                        tracing::warn!("Error reading metadata for '{}': {}", path, e);
-                        true
-                    }
-                }
+                        rkyv::access::<rkyv::Archived<FileMetadata>, rkyv::rancor::Error>(bytes)
+                            .map_or(true, |meta| {
+                                meta.modified != *modified || meta.size != *size
+                            })
+                    })
+                })
             })
             .collect();
 
@@ -369,7 +347,6 @@ impl MetadataDb {
 
         // Use a min-heap to keep the top `limit` most recent files.
         // We store (modified, path, size) and the heap is ordered by modified (smallest at top).
-        use std::collections::BinaryHeap;
         // We define a wrapper struct to have a min-heap based on modified time.
         // Since BinaryHeap is a max-heap, we invert the order by using Reverse.
         let mut heap: BinaryHeap<Reverse<(u64, String, u64)>> = BinaryHeap::new();
@@ -382,13 +359,11 @@ impl MetadataDb {
                 FlashError::database("database_operation", "files_table", e.to_string())
             })?;
             let bytes = v.value();
-            let (modified, size) = if let Ok(meta) =
+            let (modified, size) =
                 rkyv::access::<rkyv::Archived<FileMetadata>, rkyv::rancor::Error>(bytes)
-            {
-                (meta.modified.to_native(), meta.size.to_native())
-            } else {
-                (0, 0)
-            };
+                    .map_or((0, 0), |meta| {
+                        (meta.modified.to_native(), meta.size.to_native())
+                    });
             let path = k.value().to_string();
 
             // Push the entry into the heap

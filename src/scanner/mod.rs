@@ -53,6 +53,11 @@ pub struct Scanner {
 }
 
 impl Scanner {
+    /// Creates a new Scanner instance
+    ///
+    /// # Panics
+    ///
+    /// Panics if the Rayon thread pool cannot be initialized.
     pub fn new(
         indexer: Arc<IndexManager>,
         metadata_db: Arc<MetadataDb>,
@@ -82,7 +87,7 @@ impl Scanner {
         }
     }
 
-    fn get_scanner(&self) -> Box<dyn DriveScanner> {
+    fn get_scanner() -> Box<dyn DriveScanner> {
         #[cfg(target_os = "windows")]
         {
             Box::new(drive_scanner::WindowsDriveScanner)
@@ -107,8 +112,118 @@ impl Scanner {
         root: PathBuf,
         tx: mpsc::Sender<(PathBuf, crate::watcher::WatcherAction)>,
     ) -> Result<()> {
-        let scanner = self.get_scanner();
+        let scanner = Self::get_scanner();
         scanner.watch(root, tx)
+    }
+
+    fn process_writer_loop(
+        task_rx: &crossbeam_channel::Receiver<IndexTask>,
+        filename_index: Option<&Arc<crate::indexer::filename_index::FilenameIndex>>,
+        indexer: &Arc<IndexManager>,
+        metadata_db: &Arc<MetadataDb>,
+        progress_tx: Option<&mpsc::Sender<ProgressEvent>>,
+        total_files: &Arc<AtomicUsize>,
+    ) {
+        info!("Stage 2b: Batch Writing");
+        let start = Instant::now();
+        let mut doc_batch: Vec<(crate::parsers::ParsedDocument, u64, u64)> =
+            Vec::with_capacity(BATCH_SIZE);
+        let mut meta_batch: Vec<(String, u64, u64, [u8; 32])> = Vec::with_capacity(BATCH_SIZE);
+        let mut processed: usize = 0;
+
+        for task in task_rx {
+            // Add to filename index
+            if let Some(f_index) = filename_index {
+                let path = std::path::Path::new(&task.doc.path);
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    let _ = f_index.add_file(&task.doc.path, name);
+                }
+            }
+
+            // Clone path before moving doc
+            let doc_path = task.doc.path.clone();
+            doc_batch.push((task.doc, task.modified, task.size));
+            meta_batch.push((doc_path, task.modified, task.size, task.content_hash));
+            processed += 1;
+
+            // Flush batch when full
+            if doc_batch.len() >= BATCH_SIZE {
+                let _ = indexer.add_documents_batch(&doc_batch);
+                let _ = indexer.commit();
+                indexer.invalidate_cache();
+                let _ = metadata_db.batch_update_metadata(&meta_batch);
+                doc_batch.clear();
+                meta_batch.clear();
+            }
+
+            // Progress update
+            if processed % 10 == 0 {
+                let current_total = total_files.load(Ordering::Relaxed);
+                let elapsed = start.elapsed().as_secs_f64();
+                let rate = if elapsed > 0.0 {
+                    processed as f64 / elapsed
+                } else {
+                    0.0
+                };
+
+                // Batch summary every 1000 files
+                if processed % 1000 == 0 {
+                    info!(
+                        "Indexed {} / {} files ({:.1} files/s)",
+                        processed, current_total, rate
+                    );
+                }
+
+                if let Some(tx) = progress_tx {
+                    let _ = tx.try_send(ProgressEvent {
+                        ptype: ProgressType::Content,
+                        current_file: String::new(),
+                        current_folder: String::new(),
+                        processed,
+                        total: current_total,
+                        status: "Indexing contents...".to_string(),
+                        eta_seconds: if rate > 0.0 {
+                            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                            {
+                                (current_total.saturating_sub(processed) as f64 / rate).round()
+                                    as u64
+                            }
+                        } else {
+                            0
+                        },
+                        files_per_second: rate,
+                    });
+                }
+            }
+        }
+
+        // Flush remaining items (B1: always commit at end)
+        if !doc_batch.is_empty() {
+            let _ = indexer.add_documents_batch(&doc_batch);
+            let _ = indexer.commit();
+            indexer.invalidate_cache();
+            let _ = metadata_db.batch_update_metadata(&meta_batch);
+        }
+
+        // Final progress
+        if let Some(tx) = progress_tx {
+            let _ = tx.try_send(ProgressEvent {
+                ptype: ProgressType::Content,
+                current_file: String::new(),
+                current_folder: String::new(),
+                processed,
+                total: processed,
+                status: "All files indexed".to_string(),
+                eta_seconds: 0,
+                files_per_second: 0.0,
+            });
+        }
+
+        info!(
+            "Indexed {} files in {:.2}s",
+            processed,
+            start.elapsed().as_secs_f64()
+        );
     }
 
     #[instrument(skip(self, exclude_patterns), fields(root = %root.display()))]
@@ -119,7 +234,7 @@ impl Scanner {
 
         let root_clone = root.clone();
         let tx_clone = self.progress_tx.clone();
-        let scanner = self.get_scanner();
+        let scanner = Self::get_scanner();
         let total = Arc::new(AtomicUsize::new(0));
         let total_for_scan = total.clone();
 
@@ -134,8 +249,6 @@ impl Scanner {
         });
 
         // --- Stage 2: Content Indexing (Batched) ---
-        // Parse files in parallel via Rayon, collect results via mpsc,
-        // then batch-write to the index and metadata DB.
         let (task_tx, task_rx) = crossbeam_channel::bounded::<IndexTask>(BATCH_SIZE * 8);
         let metadata_db_for_parser = self.metadata_db.clone();
         let metadata_db_for_writer = self.metadata_db.clone();
@@ -154,7 +267,7 @@ impl Scanner {
         );
         let allowed_extensions_clone = allowed_extensions.clone();
 
-        // --- Stage 2a: Parallel parsing (Rayon) → sends IndexTask into channel ---
+        // --- Stage 2a: Parallel parsing (Rayon) ---
         let pool = self.pool.clone();
         let parser_handle = tokio::task::spawn_blocking(move || {
             info!("Stage 2a: Parallel Parsing");
@@ -184,113 +297,25 @@ impl Scanner {
                     );
                 }
             });
-            // task_tx is dropped here, closing the channel
         });
 
-        // --- Stage 2b: Sequential batch writer (single thread) ---
+        // --- Stage 2b: Sequential batch writer ---
         let writer_handle = tokio::task::spawn_blocking(move || {
-            info!("Stage 2b: Batch Writing");
-            let start = Instant::now();
-            let mut doc_batch: Vec<(crate::parsers::ParsedDocument, u64, u64)> =
-                Vec::with_capacity(BATCH_SIZE);
-            let mut meta_batch: Vec<(String, u64, u64, [u8; 32])> = Vec::with_capacity(BATCH_SIZE);
-            let mut processed: usize = 0;
-
-            for task in &task_rx {
-                // Add to filename index
-                if let Some(f_index) = &filename_index_clone {
-                    let path = std::path::Path::new(&task.doc.path);
-                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                        let _ = f_index.add_file(&task.doc.path, name);
-                    }
-                }
-
-                // Clone path before moving doc
-                let doc_path = task.doc.path.clone();
-                doc_batch.push((task.doc, task.modified, task.size));
-                meta_batch.push((doc_path, task.modified, task.size, task.content_hash));
-                processed += 1;
-
-                // Flush batch when full
-                if doc_batch.len() >= BATCH_SIZE {
-                    let _ = indexer_clone.add_documents_batch(&doc_batch);
-                    let _ = indexer_clone.commit();
-                    indexer_clone.invalidate_cache();
-                    let _ = metadata_db_for_writer.batch_update_metadata(&meta_batch);
-                    doc_batch.clear();
-                    meta_batch.clear();
-                }
-
-                // Progress update
-                if processed % 10 == 0 {
-                    let current_total = total_files.load(Ordering::Relaxed);
-                    let elapsed = start.elapsed().as_secs_f64();
-                    let rate = if elapsed > 0.0 {
-                        processed as f64 / elapsed
-                    } else {
-                        0.0
-                    };
-
-                    // Batch summary every 1000 files
-                    if processed % 1000 == 0 {
-                        info!(
-                            "Indexed {} / {} files ({:.1} files/s)",
-                            processed, current_total, rate
-                        );
-                    }
-
-                    if let Some(tx) = &progress_tx_clone {
-                        let _ = tx.try_send(ProgressEvent {
-                            ptype: ProgressType::Content,
-                            current_file: String::new(),
-                            current_folder: String::new(),
-                            processed,
-                            total: current_total,
-                            status: "Indexing contents...".to_string(),
-                            eta_seconds: if rate > 0.0 {
-                                (current_total.saturating_sub(processed) as f64 / rate) as u64
-                            } else {
-                                0
-                            },
-                            files_per_second: rate,
-                        });
-                    }
-                }
-            }
-
-            // Flush remaining items (B1: always commit at end)
-            if !doc_batch.is_empty() {
-                let _ = indexer_clone.add_documents_batch(&doc_batch);
-                let _ = indexer_clone.commit();
-                indexer_clone.invalidate_cache();
-                let _ = metadata_db_for_writer.batch_update_metadata(&meta_batch);
-            }
-
-            // Final progress
-            if let Some(tx) = &progress_tx_clone {
-                let _ = tx.try_send(ProgressEvent {
-                    ptype: ProgressType::Content,
-                    current_file: String::new(),
-                    current_folder: String::new(),
-                    processed,
-                    total: processed,
-                    status: "All files indexed".to_string(),
-                    eta_seconds: 0,
-                    files_per_second: 0.0,
-                });
-            }
-
-            info!(
-                "Indexed {} files in {:.2}s",
-                processed,
-                start.elapsed().as_secs_f64()
+            Self::process_writer_loop(
+                &task_rx,
+                filename_index_clone.as_ref(),
+                &indexer_clone,
+                &metadata_db_for_writer,
+                progress_tx_clone.as_ref(),
+                &total_files,
             );
         });
 
         // Wait for all stages to complete
-        let _ = walker_handle
+        walker_handle
             .await
-            .map_err(|e| crate::error::FlashError::index(format!("Walk task failed: {e}")))?;
+            .map_err(|e| crate::error::FlashError::index(format!("Walk task failed: {e}")))?
+            .map_err(|e| crate::error::FlashError::index(format!("Walk logic failed: {e}")))?;
         parser_handle
             .await
             .map_err(|e| crate::error::FlashError::index(format!("Parse task failed: {e}")))?;
@@ -327,9 +352,8 @@ impl Scanner {
                 // If the file doesn't have an extension, we skip it by default
                 continue;
             }
-            let metadata = match std::fs::metadata(path) {
-                Ok(m) => m,
-                Err(_) => continue,
+            let Ok(metadata) = std::fs::metadata(path) else {
+                continue;
             };
 
             let size = metadata.len();
@@ -372,7 +396,7 @@ impl Scanner {
         let just_paths: Vec<PathBuf> = paths_to_parse.iter().map(|(p, _, _)| p.clone()).collect();
 
         // Stage 1: Attempt native batch computation
-        if let Ok(results) = crate::parsers::parse_files_batch(just_paths) {
+        if let Ok(results) = crate::parsers::parse_files_batch(&just_paths) {
             for (parsed_res, (path, modified, size)) in
                 results.into_iter().zip(paths_to_parse.into_iter())
             {

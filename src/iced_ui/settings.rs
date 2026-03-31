@@ -3,185 +3,15 @@ use iced::widget::{button, checkbox, column, container, row, text, Scrollable, S
 use iced::{Alignment, Element, Length, Padding};
 
 pub fn settings_view(app: &App) -> Element<'_, Message> {
-    let title = text("Settings").size(28);
-
-    let search_tab_style = theme::tab_button(matches!(app.active_tab, Tab::Search));
-    let settings_tab_style = theme::tab_button(matches!(app.active_tab, Tab::Settings));
-
-    let search_tab = button(text("Search").size(16))
-        .on_press(Message::TabChanged(Tab::Search))
-        .padding(Padding::new(12.0))
-        .style(search_tab_style);
-
-    let settings_tab = button(text("Settings").size(16))
-        .on_press(Message::TabChanged(Tab::Settings))
-        .padding(Padding::new(12.0))
-        .style(settings_tab_style);
-
-    let tabs = row![search_tab, settings_tab].spacing(8);
-
-    let max_results_label = text("Max Results").size(14);
-
-    let max_results_val = app.settings.max_results.to_string();
-    let max_results_input = TextInput::new("100", &max_results_val)
-        .padding(Padding::new(10.0))
-        .size(14)
-        .width(Length::Fixed(120.0))
-        .on_input(Message::MaxResultsChanged)
-        .style(theme::small_input());
-
-    let exclude_label = text("Exclude Patterns").size(14);
-    let exclude_val = app.settings.exclude_patterns.join(", ");
-    let exclude_placeholder = "*.git, target, node_modules";
-    let exclude_input = TextInput::new(exclude_placeholder, &exclude_val)
-        .padding(Padding::new(10.0))
-        .size(14)
-        .width(Length::Fill)
-        .on_input(Message::ExcludePatternsChanged)
-        .style(theme::search_input());
-
-    let custom_ext_label = text("Custom Extensions").size(14);
-    let custom_ext_val = &app.settings.custom_extensions;
-    let custom_ext_placeholder = "e.g. mp4, exe, custom";
-    let custom_ext_input = TextInput::new(custom_ext_placeholder, custom_ext_val)
-        .padding(Padding::new(10.0))
-        .size(14)
-        .width(Length::Fill)
-        .on_input(Message::CustomExtensionsChanged)
-        .style(theme::search_input());
-
-    let hotkey_label = text("Global Hotkey").size(14);
-    let hotkey_input = TextInput::new("Alt+Space / Control+Shift+F", &app.settings.global_hotkey)
-        .padding(Padding::new(10.0))
-        .size(14)
-        .width(Length::Fixed(200.0))
-        .on_input(Message::GlobalHotkeyChanged)
-        .style(theme::small_input());
-
-    let dirs_section = column![text("Index Directories").size(18)].spacing(12);
-    let mut dirs_col = column!().spacing(8);
-    for (i, dir) in app.settings.index_dirs.iter().enumerate() {
-        let row_item = container(
-            row![
-                text(dir).size(14).width(Length::Fill),
-                button("Remove")
-                    .on_press(Message::RemoveFolder(i))
-                    .padding(Padding::new(8.0))
-                    .style(theme::secondary_button())
-            ]
-            .spacing(12)
-            .align_y(Alignment::Center),
-        )
-        .style(theme::padded_card_container)
-        .padding(Padding::new(12.0))
-        .width(Length::Fill);
-
-        dirs_col = dirs_col.push(row_item);
-    }
-
-    let add_btn = button(text("+ Add Folder").size(14))
-        .on_press(Message::AddFolder)
-        .padding(Padding::new(12.0))
-        .style(theme::secondary_button());
-
-    let save_btn = button(text("Save Settings").size(15))
-        .on_press(Message::SaveSettings)
-        .padding(Padding::new(12.0))
-        .style(theme::primary_button());
-
-    let sys_int_section = column![text("System Integration").size(18)].spacing(12);
-
-    let tray_toggle = row![
-        checkbox(app.settings.minimize_to_tray).on_toggle(Message::ToggleMinimizeToTray),
-        text("Minimize to system tray").size(14),
-    ]
-    .spacing(8);
-
-    let autostart_toggle = row![
-        checkbox(app.settings.auto_start_on_boot).on_toggle(Message::ToggleAutoStart),
-        text("Start automatically on boot").size(14),
-    ]
-    .spacing(8);
-
-    let context_toggle = row![
-        checkbox(app.settings.context_menu_enabled).on_toggle(Message::ToggleContextMenu),
-        text("Add to context menu (right-click)").size(14),
-    ]
-    .spacing(8);
-
-    let sys_toggles = column![tray_toggle, autostart_toggle, context_toggle].spacing(12);
-
-    let appearance_section = column![text("Appearance").size(18)].spacing(12);
-    let theme_toggle = row![
-        checkbox(app.is_dark).on_toggle(|_| Message::ToggleTheme),
-        text("Dark Mode").size(14),
-    ]
-    .spacing(8);
-
-    let rebuild_btn = button(text("Force Rebuild Index").size(14))
-        .on_press(Message::RebuildIndex)
-        .padding(Padding::new(12.0))
-        .style(theme::secondary_button());
-
-    let data_mgmt_section = column![
-        text("Data Management").size(18),
-        Space::new().height(Length::Fixed(8.0)),
-        text("Clear the current index and rescan all configured directories.").size(14),
-        Space::new().height(Length::Fixed(12.0)),
-        rebuild_btn
-    ]
-    .spacing(4);
-
-    let settings_form = column![
-        text("Search").size(18),
-        Space::new().height(Length::Fixed(8.0)),
-        row![max_results_label, max_results_input]
-            .spacing(12)
-            .align_y(Alignment::Center),
-        Space::new().height(Length::Fixed(16.0)),
-        exclude_label,
-        Space::new().height(Length::Fixed(6.0)),
-        exclude_input,
-        Space::new().height(Length::Fixed(16.0)),
-        custom_ext_label,
-        Space::new().height(Length::Fixed(6.0)),
-        custom_ext_input,
-        Space::new().height(Length::Fixed(16.0)),
-        row![hotkey_label, hotkey_input]
-            .spacing(12)
-            .align_y(Alignment::Center),
-        Space::new().height(Length::Fixed(24.0)),
-        dirs_section,
-        dirs_col,
-        Space::new().height(Length::Fixed(4.0)),
-        add_btn,
-        Space::new().height(Length::Fixed(32.0)),
-        sys_int_section,
-        Space::new().height(Length::Fixed(8.0)),
-        sys_toggles,
-        Space::new().height(Length::Fixed(32.0)),
-        appearance_section,
-        Space::new().height(Length::Fixed(8.0)),
-        theme_toggle,
-        Space::new().height(Length::Fixed(32.0)),
-        data_mgmt_section,
-        Space::new().height(Length::Fixed(40.0)),
-        save_btn,
-    ]
-    .spacing(8)
-    .width(Length::Fill);
-
-    let center_content = container(settings_form)
-        .width(Length::Fixed(700.0))
-        .align_x(Alignment::Center);
-
     let scroll = Scrollable::new(
         column![
-            tabs,
+            settings_tabs(app),
             Space::new().height(Length::Fixed(24.0)),
-            title,
+            text("Settings").size(28),
             Space::new().height(Length::Fixed(32.0)),
-            center_content
+            container(settings_form(app))
+                .width(Length::Fixed(700.0))
+                .align_x(Alignment::Center)
         ]
         .width(Length::Fill)
         .align_x(Alignment::Center),
@@ -192,5 +22,191 @@ pub fn settings_view(app: &App) -> Element<'_, Message> {
         .padding(Padding::new(32.0))
         .width(Length::Fill)
         .height(Length::Fill)
+        .into()
+}
+
+fn settings_tabs(app: &App) -> Element<'_, Message> {
+    let search_tab_style = theme::tab_button(matches!(app.active_tab, Tab::Search));
+    let settings_tab_style = theme::tab_button(matches!(app.active_tab, Tab::Settings));
+
+    row![
+        button(text("Search").size(16))
+            .on_press(Message::TabChanged(Tab::Search))
+            .padding(Padding::new(12.0))
+            .style(search_tab_style),
+        button(text("Settings").size(16))
+            .on_press(Message::TabChanged(Tab::Settings))
+            .padding(Padding::new(12.0))
+            .style(settings_tab_style),
+    ]
+    .spacing(8)
+    .into()
+}
+
+fn settings_form(app: &App) -> Element<'_, Message> {
+    column![
+        text("Search").size(18),
+        Space::new().height(Length::Fixed(8.0)),
+        search_settings_fields(app),
+        Space::new().height(Length::Fixed(24.0)),
+        index_directories_section(app),
+        Space::new().height(Length::Fixed(32.0)),
+        system_integration_section(app),
+        Space::new().height(Length::Fixed(32.0)),
+        appearance_section(app),
+        Space::new().height(Length::Fixed(32.0)),
+        data_management_section(app),
+        Space::new().height(Length::Fixed(40.0)),
+        save_button(),
+    ]
+    .spacing(8)
+    .width(Length::Fill)
+    .into()
+}
+
+fn search_settings_fields(app: &App) -> Element<'_, Message> {
+    column![
+        row![
+            text("Max Results").size(14),
+            TextInput::new("100", &app.settings.max_results.to_string())
+                .padding(Padding::new(10.0))
+                .size(14)
+                .width(Length::Fixed(120.0))
+                .on_input(Message::MaxResultsChanged)
+                .style(theme::small_input())
+        ]
+        .spacing(12)
+        .align_y(Alignment::Center),
+        Space::new().height(Length::Fixed(16.0)),
+        text("Exclude Patterns").size(14),
+        Space::new().height(Length::Fixed(6.0)),
+        TextInput::new(
+            "*.git, target, node_modules",
+            &app.settings.exclude_patterns.join(", ")
+        )
+        .padding(Padding::new(10.0))
+        .size(14)
+        .width(Length::Fill)
+        .on_input(Message::ExcludePatternsChanged)
+        .style(theme::search_input()),
+        Space::new().height(Length::Fixed(16.0)),
+        text("Custom Extensions").size(14),
+        Space::new().height(Length::Fixed(6.0)),
+        TextInput::new("e.g. mp4, exe, custom", &app.settings.custom_extensions)
+            .padding(Padding::new(10.0))
+            .size(14)
+            .width(Length::Fill)
+            .on_input(Message::CustomExtensionsChanged)
+            .style(theme::search_input()),
+        Space::new().height(Length::Fixed(16.0)),
+        row![
+            text("Global Hotkey").size(14),
+            TextInput::new("Alt+Space / Control+Shift+F", &app.settings.global_hotkey)
+                .padding(Padding::new(10.0))
+                .size(14)
+                .width(Length::Fixed(200.0))
+                .on_input(Message::GlobalHotkeyChanged)
+                .style(theme::small_input())
+        ]
+        .spacing(12)
+        .align_y(Alignment::Center),
+    ]
+    .into()
+}
+
+fn index_directories_section(app: &App) -> Element<'_, Message> {
+    let mut dirs_col = column!().spacing(8);
+    for (i, dir) in app.settings.index_dirs.iter().enumerate() {
+        dirs_col = dirs_col.push(
+            container(
+                row![
+                    text(dir).size(14).width(Length::Fill),
+                    button("Remove")
+                        .on_press(Message::RemoveFolder(i))
+                        .padding(Padding::new(8.0))
+                        .style(theme::secondary_button())
+                ]
+                .spacing(12)
+                .align_y(Alignment::Center),
+            )
+            .style(theme::padded_card_container)
+            .padding(Padding::new(12.0))
+            .width(Length::Fill),
+        );
+    }
+
+    column![
+        text("Index Directories").size(18),
+        Space::new().height(Length::Fixed(12.0)),
+        dirs_col,
+        Space::new().height(Length::Fixed(4.0)),
+        button(text("+ Add Folder").size(14))
+            .on_press(Message::AddFolder)
+            .padding(Padding::new(12.0))
+            .style(theme::secondary_button())
+    ]
+    .spacing(8)
+    .into()
+}
+
+fn system_integration_section(app: &App) -> Element<'_, Message> {
+    column![
+        text("System Integration").size(18),
+        Space::new().height(Length::Fixed(12.0)),
+        column![
+            row![
+                checkbox(app.settings.minimize_to_tray).on_toggle(Message::ToggleMinimizeToTray),
+                text("Minimize to system tray").size(14),
+            ]
+            .spacing(8),
+            row![
+                checkbox(app.settings.auto_start_on_boot).on_toggle(Message::ToggleAutoStart),
+                text("Start automatically on boot").size(14),
+            ]
+            .spacing(8),
+            row![
+                checkbox(app.settings.context_menu_enabled).on_toggle(Message::ToggleContextMenu),
+                text("Add to context menu (right-click)").size(14),
+            ]
+            .spacing(8),
+        ]
+        .spacing(12)
+    ]
+    .into()
+}
+
+fn appearance_section(app: &App) -> Element<'_, Message> {
+    column![
+        text("Appearance").size(18),
+        Space::new().height(Length::Fixed(12.0)),
+        row![
+            checkbox(app.is_dark).on_toggle(|_| Message::ToggleTheme),
+            text("Dark Mode").size(14),
+        ]
+        .spacing(8)
+    ]
+    .into()
+}
+
+fn data_management_section(_app: &App) -> Element<'_, Message> {
+    column![
+        text("Data Management").size(18),
+        Space::new().height(Length::Fixed(8.0)),
+        text("Clear the current index and rescan all configured directories.").size(14),
+        Space::new().height(Length::Fixed(12.0)),
+        button(text("Force Rebuild Index").size(14))
+            .on_press(Message::RebuildIndex)
+            .padding(Padding::new(12.0))
+            .style(theme::secondary_button())
+    ]
+    .spacing(4)
+    .into()
+}
+
+fn save_button() -> Element<'static, Message> {
+    button(text("Save Settings").size(15))
+        .on_press(Message::SaveSettings)
+        .padding(Padding::new(12.0))
+        .style(theme::primary_button())
         .into()
 }

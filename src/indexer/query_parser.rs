@@ -28,6 +28,7 @@ impl ParsedQuery {
         Self::parse(query, case_sensitive)
     }
 
+    #[allow(clippy::too_many_lines)]
     fn parse(input: &str, case_sensitive: bool) -> Self {
         let mut extension = None;
         let mut path_filter = None;
@@ -98,7 +99,8 @@ impl ParsedQuery {
                                     }
                                 });
 
-                                let bytes = (num * f64::from(multiplier)) as u64;
+                                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                                let bytes = (num * f64::from(multiplier)).round() as u64;
                                 match op {
                                     ">" => min_size = Some(bytes + 1),
                                     "<" => max_size = Some(bytes.saturating_sub(1)),
@@ -145,44 +147,36 @@ impl ParsedQuery {
     /// Check if a path matches the extension filter
     #[must_use]
     pub fn matches_extension(&self, path: &str) -> bool {
-        if let Some(ref ext) = self.extension {
+        self.extension.as_ref().map_or(true, |ext| {
             let path_lower = path.to_lowercase();
             path_lower.ends_with(&format!(".{ext}"))
-        } else {
-            true
-        }
+        })
     }
 
     /// Check if a path matches the path filter
     #[must_use]
     pub fn matches_path(&self, path: &str) -> bool {
-        if let Some(ref filter) = self.path_filter {
+        self.path_filter.as_ref().map_or(true, |filter| {
             if self.case_sensitive {
                 path.contains(filter)
             } else {
                 path.to_lowercase().contains(filter)
             }
-        } else {
-            true
-        }
+        })
     }
 
     /// Check if a title matches the title filter
     #[must_use]
     pub fn matches_title(&self, title: Option<&str>) -> bool {
-        if let Some(ref filter) = self.title_filter {
-            if let Some(t) = title {
+        self.title_filter.as_ref().map_or(true, |filter| {
+            title.is_some_and(|t| {
                 if self.case_sensitive {
                     t.contains(filter)
                 } else {
                     t.to_lowercase().contains(filter)
                 }
-            } else {
-                false
-            }
-        } else {
-            true
-        }
+            })
+        })
     }
 }
 

@@ -243,7 +243,43 @@ fn left_sidebar(app: &App) -> Element<'_, Message> {
     ]
     .align_y(Alignment::Center);
 
-    let extension_section = column![
+    let filter_content = row![
+        extension_filter_section(app).width(Length::FillPortion(1)),
+        column![
+            size_filter_section(app),
+            date_filter_section(app),
+            match_options_section(app)
+        ]
+        .width(Length::FillPortion(1))
+        .spacing(12),
+    ]
+    .spacing(16);
+
+    let clear_button = button(text("Clear Filters").size(12))
+        .on_press(Message::ClearFilters)
+        .style(theme::clear_filter_button())
+        .width(Length::Fill)
+        .padding(Padding::new(8.0));
+
+    let filter_panel = column![
+        filter_header,
+        Space::new().height(Length::Fixed(4.0)),
+        filter_content,
+        Space::new().height(Length::Fixed(8.0)),
+        clear_button,
+    ]
+    .spacing(12)
+    .padding(Padding::new(12.0));
+
+    container(filter_panel)
+        .style(theme::sidebar_container)
+        .width(Length::Fixed(260.0))
+        .height(Length::Fill)
+        .into()
+}
+
+fn extension_filter_section(app: &App) -> iced::widget::Column<'_, Message> {
+    column![
         text("File Extension")
             .size(12)
             .style(theme::dim_text_style()),
@@ -263,9 +299,11 @@ fn left_sidebar(app: &App) -> Element<'_, Message> {
             .spacing(12),
         ])
     ]
-    .spacing(8);
+    .spacing(8)
+}
 
-    let size_section = column![
+fn size_filter_section(app: &App) -> iced::widget::Column<'_, Message> {
+    column![
         text("Size Range").size(12).style(theme::dim_text_style()),
         row![
             TextInput::new("min", &app.min_size)
@@ -289,9 +327,11 @@ fn left_sidebar(app: &App) -> Element<'_, Message> {
         .spacing(8)
         .align_y(Alignment::Center),
     ]
-    .spacing(8);
+    .spacing(8)
+}
 
-    let date_section = column![
+fn date_filter_section(app: &App) -> iced::widget::Column<'_, Message> {
+    column![
         text("Date Modified")
             .size(12)
             .style(theme::dim_text_style()),
@@ -303,9 +343,11 @@ fn left_sidebar(app: &App) -> Element<'_, Message> {
         ]
         .spacing(4)
     ]
-    .spacing(8);
+    .spacing(8)
+}
 
-    let match_options = column![
+fn match_options_section(app: &App) -> iced::widget::Column<'_, Message> {
+    column![
         text("Match Options")
             .size(12)
             .style(theme::dim_text_style()),
@@ -320,149 +362,27 @@ fn left_sidebar(app: &App) -> Element<'_, Message> {
             .size(14)
             .text_size(11),
     ]
-    .spacing(6);
-
-    let clear_button = button(text("Clear Filters").size(12))
-        .on_press(Message::ClearFilters)
-        .style(theme::clear_filter_button())
-        .width(Length::Fill)
-        .padding(Padding::new(8.0));
-
-    let filter_panel = column![
-        filter_header,
-        Space::new().height(Length::Fixed(4.0)),
-        row![
-            extension_section.width(Length::FillPortion(1)),
-            column![size_section, date_section, match_options]
-                .width(Length::FillPortion(1))
-                .spacing(12),
-        ]
-        .spacing(16),
-        Space::new().height(Length::Fixed(8.0)),
-        clear_button,
-    ]
-    .spacing(12)
-    .padding(Padding::new(12.0));
-
-    container(filter_panel)
-        .style(theme::sidebar_container)
-        .width(Length::Fixed(260.0))
-        .height(Length::Fill)
-        .into()
+    .spacing(6)
 }
 
 fn results_panel(app: &App) -> Element<'_, Message> {
     if app.results.is_empty() {
-        return container(
-            text(if app.search_query.is_empty() {
-                "Enter search keywords to begin..."
-            } else {
-                "No files found matching criteria."
-            })
-            .style(theme::dim_text_style()),
-        )
-        .center_x(Length::Fill)
-        .center_y(Length::Fill)
-        .into();
+        let msg = if app.search_query.is_empty() {
+            "Enter search keywords to begin..."
+        } else {
+            "No files found matching criteria."
+        };
+        return container(text(msg).style(theme::dim_text_style()))
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .into();
     }
 
     let results = scrollable(column(
         app.results
             .iter()
             .enumerate()
-            .map(|(i, res)| {
-                let is_selected = app.selected_index == Some(i);
-                let is_hovered = app.hovered_item_index == Some(i);
-
-                let mut actions_row = row![].spacing(6);
-                if is_hovered {
-                    actions_row = actions_row.push(row![
-                        button(load_icon_size("external-link", 14.0))
-                            .on_press(Message::OpenFile(res.path.clone()))
-                            .style(theme::ghost_button())
-                            .padding(Padding::new(4.0)),
-                        button(load_icon_size("folder-open", 14.0))
-                            .on_press(Message::OpenFolder(res.path.clone()))
-                            .style(theme::ghost_button())
-                            .padding(Padding::new(4.0)),
-                        button(load_icon_size("copy", 14.0))
-                            .on_press(Message::CopyPath(res.path.clone()))
-                            .style(theme::ghost_button())
-                            .padding(Padding::new(4.0)),
-                    ]);
-                }
-
-                let card_content = column![
-                    row![
-                        load_icon("file"),
-                        text(&*res.title).size(14).font(Font {
-                            weight: font::Weight::Bold,
-                            ..Font::default()
-                        }),
-                        Space::new().width(Length::Fill),
-                        actions_row,
-                    ]
-                    .spacing(8)
-                    .align_y(Alignment::Center),
-                    text(&res.path).size(11).style(theme::dim_text_style()),
-                    row![
-                        text(res.extension.as_deref().unwrap_or("File"))
-                            .size(11)
-                            .style(theme::muted_text_style()),
-                        text("|").size(11).style(theme::dim_text_style()),
-                        text(res.size.map_or_else(
-                            || "Unknown size".to_string(),
-                            crate::iced_ui::format_size
-                        ))
-                        .size(11)
-                        .style(theme::muted_text_style()),
-                        text("|").size(11).style(theme::dim_text_style()),
-                        text(res.modified.map_or_else(
-                            || "Unknown date".to_string(),
-                            crate::iced_ui::format_date
-                        ))
-                        .size(11)
-                        .style(theme::muted_text_style()),
-                    ]
-                    .spacing(8),
-                    if let Some(snippet) = res.snippets.first() {
-                        container(parse_snippet(snippet))
-                            .padding(Padding::new(4.0))
-                            .style(theme::hit_highlight_container)
-                    } else {
-                        container(Space::new().height(0))
-                    },
-                ]
-                .spacing(4);
-
-                let mut item_area = container(card_content)
-                    .padding(Padding::new(12.0))
-                    .style(if is_selected {
-                        theme::result_card_selected
-                    } else {
-                        theme::result_card_normal
-                    })
-                    .width(Length::Fill);
-
-                if is_hovered && !is_selected {
-                    item_area = item_area.style(theme::result_card_hover);
-                }
-
-                let mouse_wrapper = mouse_area(item_area)
-                    .on_press(Message::ResultSelected(i))
-                    .on_right_press(Message::ShowContextMenu(i))
-                    .on_enter(Message::ItemHovered(Some(i)))
-                    .on_exit(Message::ItemHovered(None));
-
-                container(mouse_wrapper)
-                    .padding(Padding {
-                        top: 4.0,
-                        bottom: 4.0,
-                        left: 8.0,
-                        right: 8.0,
-                    })
-                    .into()
-            })
+            .map(|(i, res)| result_item_view(app, i, res))
             .collect::<Vec<Element<Message>>>(),
     ))
     .height(Length::Fill);
@@ -470,6 +390,103 @@ fn results_panel(app: &App) -> Element<'_, Message> {
     container(results)
         .width(Length::Fill)
         .height(Length::Fill)
+        .into()
+}
+
+fn result_item_view<'a>(app: &App, i: usize, res: &'a super::FileItem) -> Element<'a, Message> {
+    let is_selected = app.selected_index == Some(i);
+    let is_hovered = app.hovered_item_index == Some(i);
+
+    let mut actions_row = row![].spacing(6);
+    if is_hovered {
+        actions_row = actions_row.push(row![
+            button(load_icon_size("external-link", 14.0))
+                .on_press(Message::OpenFile(res.path.clone()))
+                .style(theme::ghost_button())
+                .padding(Padding::new(4.0)),
+            button(load_icon_size("folder-open", 14.0))
+                .on_press(Message::OpenFolder(res.path.clone()))
+                .style(theme::ghost_button())
+                .padding(Padding::new(4.0)),
+            button(load_icon_size("copy", 14.0))
+                .on_press(Message::CopyPath(res.path.clone()))
+                .style(theme::ghost_button())
+                .padding(Padding::new(4.0)),
+        ]);
+    }
+
+    let card_content = column![
+        row![
+            load_icon("file"),
+            text(&*res.title).size(14).font(Font {
+                weight: font::Weight::Bold,
+                ..Font::default()
+            }),
+            Space::new().width(Length::Fill),
+            actions_row,
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center),
+        text(&res.path).size(11).style(theme::dim_text_style()),
+        row![
+            text(res.extension.as_deref().unwrap_or("File"))
+                .size(11)
+                .style(theme::muted_text_style()),
+            text("|").size(11).style(theme::dim_text_style()),
+            text(
+                res.size
+                    .map_or_else(|| "Unknown size".to_string(), crate::iced_ui::format_size)
+            )
+            .size(11)
+            .style(theme::muted_text_style()),
+            text("|").size(11).style(theme::dim_text_style()),
+            text(
+                res.modified
+                    .map_or_else(|| "Unknown date".to_string(), crate::iced_ui::format_date)
+            )
+            .size(11)
+            .style(theme::muted_text_style()),
+        ]
+        .spacing(8),
+        res.snippets.first().map_or_else(
+            || Element::from(container(Space::new().height(0))),
+            |snippet| {
+                Element::from(
+                    container(parse_snippet(snippet))
+                        .padding(Padding::new(4.0))
+                        .style(theme::hit_highlight_container),
+                )
+            },
+        ),
+    ]
+    .spacing(4);
+
+    let mut item_area = container(card_content)
+        .padding(Padding::new(12.0))
+        .style(if is_selected {
+            theme::result_card_selected
+        } else {
+            theme::result_card_normal
+        })
+        .width(Length::Fill);
+
+    if is_hovered && !is_selected {
+        item_area = item_area.style(theme::result_card_hover);
+    }
+
+    let mouse_wrapper = mouse_area(item_area)
+        .on_press(Message::ResultSelected(i))
+        .on_right_press(Message::ShowContextMenu(i))
+        .on_enter(Message::ItemHovered(Some(i)))
+        .on_exit(Message::ItemHovered(None));
+
+    container(mouse_wrapper)
+        .padding(Padding {
+            top: 4.0,
+            bottom: 4.0,
+            left: 8.0,
+            right: 8.0,
+        })
         .into()
 }
 
@@ -640,45 +657,49 @@ fn right_panel(app: &App) -> Element<'_, Message> {
 fn hits_panel(app: &App) -> Element<'_, Message> {
     let result = app.selected_index.and_then(|i| app.results.get(i));
 
-    let hits_content: Element<'_, Message> = if let Some(res) = result {
-        if res.snippets.is_empty() || res.snippets.iter().all(std::string::String::is_empty) {
-            container(text("No preview context available").style(theme::muted_text_style()))
+    let hits_content: Element<'_, Message> = result.map_or_else(
+        || {
+            container(text("Select a file to see context hits").style(theme::muted_text_style()))
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .center_x(Length::Fill)
                 .center_y(Length::Fill)
                 .into()
-        } else {
-            scrollable(
-                column(
-                    res.snippets
-                        .iter()
-                        .enumerate()
-                        .map(|(i, s)| hit_row(i + 1, s)),
+        },
+        |res| {
+            if res.snippets.is_empty() || res.snippets.iter().all(std::string::String::is_empty) {
+                container(text("No preview context available").style(theme::muted_text_style()))
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .center_x(Length::Fill)
+                    .center_y(Length::Fill)
+                    .into()
+            } else {
+                scrollable(
+                    column(
+                        res.snippets
+                            .iter()
+                            .enumerate()
+                            .map(|(i, s)| hit_row(i + 1, s)),
+                    )
+                    .spacing(8)
+                    .padding(8),
                 )
-                .spacing(8)
-                .padding(8),
-            )
-            .height(Length::Fill)
-            .into()
-        }
-    } else {
-        container(text("Select a file to see context hits").style(theme::muted_text_style()))
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .center_x(Length::Fill)
-            .center_y(Length::Fill)
-            .into()
-    };
+                .height(Length::Fill)
+                .into()
+            }
+        },
+    );
 
-    let header_text = if let Some(res) = result {
-        format!(
-            "Context Highlights for '{}' in {}",
-            app.search_query, res.title
-        )
-    } else {
-        "Search Hits".to_string()
-    };
+    let header_text = result.map_or_else(
+        || "Search Hits".to_string(),
+        |res| {
+            format!(
+                "Context Highlights for '{}' in {}",
+                app.search_query, res.title
+            )
+        },
+    );
 
     container(column![
         container(
@@ -705,10 +726,10 @@ fn hits_panel(app: &App) -> Element<'_, Message> {
     .into()
 }
 
-fn hit_row(_idx: usize, content: &str) -> Element<'_, Message> {
+fn hit_row(idx: usize, content: &str) -> Element<'_, Message> {
     container(
         row![
-            text(format!("{_idx}."))
+            text(format!("{idx}."))
                 .size(12)
                 .font(Font {
                     weight: font::Weight::Bold,

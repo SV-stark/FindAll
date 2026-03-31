@@ -27,137 +27,27 @@ pub struct WatcherManager {
 }
 
 impl WatcherManager {
+    /// Creates a new `WatcherManager`
+    ///
+    /// # Panics
+    ///
+    /// Panics if the background processor task fails to spawn.
     pub fn new(
         indexer: Arc<IndexManager>,
         metadata_db: Arc<MetadataDb>,
         allowed_extensions: std::collections::HashSet<String>,
     ) -> Self {
-        let indexer_for_task = indexer.clone();
-        let metadata_db_for_task = metadata_db.clone();
-        let (external_tx, mut external_rx) = mpsc::channel::<(PathBuf, WatcherAction)>(1000);
+        let (external_tx, external_rx) = mpsc::channel::<(PathBuf, WatcherAction)>(1000);
         let runtime_handle = tokio::runtime::Handle::current();
 
         // Spawn background processor for debounced events
-        runtime_handle.spawn(async move {
-            let mut buffer = HashMap::new();
-            let mut first_event_time: Option<std::time::Instant> = None;
-            const MAX_DEBOUNCE_WAIT: Duration = Duration::from_secs(5);
-            const DEBOUNCE_GAP: Duration = Duration::from_millis(500);
-
-            loop {
-                let timeout_duration = if let Some(first_time) = first_event_time {
-                    let elapsed = first_time.elapsed();
-                    if elapsed >= MAX_DEBOUNCE_WAIT {
-                        Duration::from_millis(0) // Force flush immediately
-                    } else {
-                        DEBOUNCE_GAP.min(MAX_DEBOUNCE_WAIT.checked_sub(elapsed).unwrap())
-                    }
-                } else {
-                    Duration::from_secs(3600) // Sleep until next event
-                };
-
-                tokio::select! {
-                    res = external_rx.recv() => {
-                        if let Some((path, action)) = res {
-                            if buffer.is_empty() {
-                                first_event_time = Some(std::time::Instant::now());
-                            }
-                            buffer.insert(path, action);
-                        } else {
-                            // Channel closed
-                            break;
-                        }
-                    }
-                    () = tokio::time::sleep(timeout_duration) => {
-                        if buffer.is_empty() {
-                            continue;
-                        }
-
-                        // Reset debounce timer
-                        first_event_time = None;
-
-                        // Take all events
-                        let events = std::mem::take(&mut buffer);
-
-                        let mut needs_commit = false;
-
-                        // First pass: collect all paths that need to be removed
-                        let remove_paths: Vec<PathBuf> = events
-                            .iter()
-                            .filter(|(_, action)| matches!(action, WatcherAction::Remove))
-                            .map(|(path, _)| path.clone())
-                            .collect();
-
-                        // Second pass: collect all paths that need to be indexed
-                        let index_paths: Vec<PathBuf> = events
-                            .iter()
-                            .filter(|(_, action)| matches!(action, WatcherAction::Index))
-                            .map(|(path, _)| path.clone())
-                            .collect();
-
-                        // Process removes first
-                        for path in remove_paths {
-                            let path_str = path.to_string_lossy();
-                            let _ = indexer_for_task.remove_document(&path_str);
-                            match metadata_db_for_task.remove_file(&path) {
-                                Ok(true) => {
-                                    needs_commit = true;
-                                    info!("Removed file (watcher): {:?}", path);
-                                }
-                                Err(e) => error!("Watcher error removing {:?}: {}", path, e),
-                                _ => {}
-                            }
-                        }
-
-                        // Then process indexes
-                        let mut docs_to_add = Vec::new();
-                        let mut meta_to_update = Vec::new();
-
-                        for path in index_paths {
-                            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                                if !allowed_extensions.contains(&ext.to_lowercase()) {
-                                    continue;
-                                }
-                            } else {
-                                continue;
-                            }
-
-                            match Self::reindex_single_file(&path, &metadata_db_for_task).await {
-                                Ok(Some((doc, modified, size, hash))) => {
-                                    meta_to_update.push((doc.path.clone(), modified, size, hash));
-                                    docs_to_add.push((doc, modified, size));
-                                }
-                                Ok(None) => {} // Skipped or does not exist
-                                Err(e) => {
-                                    error!("Watcher error indexing {:?}: {}", path, e);
-                                }
-                            }
-                        }
-
-                        if !docs_to_add.is_empty() {
-                            if let Err(e) = indexer_for_task.add_documents_batch(&docs_to_add) {
-                                error!("Watcher error batch adding to index: {}", e);
-                            }
-                            if let Err(e) = metadata_db_for_task.batch_update_metadata(&meta_to_update) {
-                                error!("Watcher error batch updating DB: {}", e);
-                            } else {
-                                info!("Re-indexed {} files (watcher)", docs_to_add.len());
-                            }
-                            needs_commit = true;
-                        }
-
-                        if needs_commit {
-                            if let Err(e) = indexer_for_task.commit() {
-                                error!("Watcher failed to commit index: {}", e);
-                            } else {
-                                indexer_for_task.invalidate_cache();
-                                info!("Watcher committed changes");
-                            }
-                        }
-                    }
-                }
-            }
-        });
+        Self::spawn_processor_task(
+            &runtime_handle,
+            external_rx,
+            indexer.clone(),
+            metadata_db.clone(),
+            allowed_extensions,
+        );
 
         Self {
             watchers: HashMap::new(),
@@ -168,6 +58,127 @@ impl WatcherManager {
         }
     }
 
+    fn spawn_processor_task(
+        runtime_handle: &tokio::runtime::Handle,
+        mut external_rx: mpsc::Receiver<(PathBuf, WatcherAction)>,
+        indexer: Arc<IndexManager>,
+        metadata_db: Arc<MetadataDb>,
+        allowed_extensions: std::collections::HashSet<String>,
+    ) {
+        const MAX_DEBOUNCE_WAIT: Duration = Duration::from_secs(5);
+        const DEBOUNCE_GAP: Duration = Duration::from_millis(500);
+
+        runtime_handle.spawn(async move {
+            let mut buffer = HashMap::new();
+            let mut first_event_time: Option<std::time::Instant> = None;
+
+            loop {
+                let timeout_duration = first_event_time.map_or_else(
+                    || Duration::from_secs(3600),
+                    |first_time| {
+                        let elapsed = first_time.elapsed();
+                        if elapsed >= MAX_DEBOUNCE_WAIT {
+                            Duration::from_millis(0) // Force flush immediately
+                        } else {
+                            DEBOUNCE_GAP.min(MAX_DEBOUNCE_WAIT.checked_sub(elapsed).unwrap())
+                        }
+                    },
+                );
+
+                tokio::select! {
+                    res = external_rx.recv() => {
+                        if let Some((path, action)) = res {
+                            if buffer.is_empty() {
+                                first_event_time = Some(std::time::Instant::now());
+                            }
+                            buffer.insert(path, action);
+                        } else {
+                            break;
+                        }
+                    }
+                    () = tokio::time::sleep(timeout_duration) => {
+                        if buffer.is_empty() {
+                            continue;
+                        }
+                        first_event_time = None;
+                        let events = std::mem::take(&mut buffer);
+                        Self::process_events(events, &indexer, &metadata_db, &allowed_extensions).await;
+                    }
+                }
+            }
+        });
+    }
+
+    async fn process_events(
+        events: HashMap<PathBuf, WatcherAction>,
+        indexer: &Arc<IndexManager>,
+        metadata_db: &Arc<MetadataDb>,
+        allowed_extensions: &std::collections::HashSet<String>,
+    ) {
+        let mut needs_commit = false;
+
+        // First pass: collect all paths that need to be removed
+        let remove_paths: Vec<PathBuf> = events
+            .iter()
+            .filter(|(_, action)| matches!(action, WatcherAction::Remove))
+            .map(|(path, _)| path.clone())
+            .collect();
+
+        // Second pass: collect all paths that need to be indexed
+        let index_paths: Vec<PathBuf> = events
+            .iter()
+            .filter(|(_, action)| matches!(action, WatcherAction::Index))
+            .map(|(path, _)| path.clone())
+            .collect();
+
+        // Process removes first
+        for path in remove_paths {
+            let path_str = path.to_string_lossy();
+            let _ = indexer.remove_document(&path_str);
+            if matches!(metadata_db.remove_file(&path), Ok(true)) {
+                needs_commit = true;
+                info!("Removed file (watcher): {:?}", path);
+            }
+        }
+
+        // Then process indexes
+        let mut docs_to_add = Vec::new();
+        let mut meta_to_update = Vec::new();
+
+        for path in index_paths {
+            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                if !allowed_extensions.contains(&ext.to_lowercase()) {
+                    continue;
+                }
+            } else {
+                continue;
+            }
+
+            match Self::reindex_single_file(&path, metadata_db).await {
+                Ok(Some((doc, modified, size, hash))) => {
+                    meta_to_update.push((doc.path.clone(), modified, size, hash));
+                    docs_to_add.push((doc, modified, size));
+                }
+                Ok(None) => {} // Skipped
+                Err(e) => error!("Watcher error indexing {:?}: {}", path, e),
+            }
+        }
+
+        if !docs_to_add.is_empty() {
+            let _ = indexer.add_documents_batch(&docs_to_add);
+            let _ = metadata_db.batch_update_metadata(&meta_to_update);
+            needs_commit = true;
+        }
+
+        if needs_commit {
+            if let Err(e) = indexer.commit() {
+                error!("Watcher failed to commit index: {}", e);
+            } else {
+                indexer.invalidate_cache();
+            }
+        }
+    }
+
     /// Get a sender to push external events (like USN Journal) into the watcher
     #[must_use]
     pub fn event_tx(&self) -> mpsc::Sender<(PathBuf, WatcherAction)> {
@@ -175,7 +186,7 @@ impl WatcherManager {
     }
 
     /// Update the list of watched directories
-    pub fn update_watch_list(&mut self, dirs: Vec<String>) -> Result<()> {
+    pub fn update_watch_list(&mut self, dirs: &[String]) -> Result<()> {
         let current_dirs: std::collections::HashSet<String> = dirs.iter().cloned().collect();
         let existing_dirs: std::collections::HashSet<String> =
             self.watchers.keys().cloned().collect();
@@ -227,9 +238,8 @@ impl WatcherManager {
             return Ok(None);
         }
 
-        let metadata = match std::fs::metadata(path) {
-            Ok(m) => m,
-            Err(_) => return Ok(None), // Ignore if cannot read metadata
+        let Ok(metadata) = std::fs::metadata(path) else {
+            return Ok(None); // Ignore if cannot read metadata
         };
 
         let modified = metadata
@@ -290,12 +300,12 @@ mod tests {
         fs::create_dir(&watch_dir).unwrap();
 
         assert!(watcher
-            .update_watch_list(vec![watch_dir.to_string_lossy().to_string()])
+            .update_watch_list(&[watch_dir.to_string_lossy().to_string()])
             .is_ok());
         assert!(!watcher.watchers.is_empty());
 
         // Empty list should remove watcher
-        assert!(watcher.update_watch_list(vec![]).is_ok());
+        assert!(watcher.update_watch_list(&[]).is_ok());
         assert!(watcher.watchers.is_empty());
     }
 

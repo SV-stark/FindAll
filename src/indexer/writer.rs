@@ -37,7 +37,7 @@ impl IndexWriterManager {
                             .with_memory(sysinfo::MemoryRefreshKind::everything()),
                     );
                     sys.refresh_memory();
-                    let system_memory = sys.total_memory() as usize;
+                    let system_memory = usize::try_from(sys.total_memory()).unwrap_or(usize::MAX);
 
                     (system_memory / 20).clamp(32_000_000, 256_000_000)
                 },
@@ -116,9 +116,8 @@ impl IndexWriterManager {
     pub fn add_document(&self, doc: &ParsedDocument, modified: u64, size: u64) -> Result<()> {
         let tantivy_doc = self.create_tantivy_document(doc, modified, size);
 
-        let writer = self.writer.lock();
-
-        writer
+        self.writer
+            .lock()
             .add_document(tantivy_doc)
             .map_err(|e| FlashError::index(format!("Failed to add document: {e}")))?;
 
@@ -140,6 +139,7 @@ impl IndexWriterManager {
                 .map_err(|e| FlashError::index(format!("Failed to add document: {e}")))?;
         }
 
+        drop(writer);
         Ok(())
     }
 
@@ -168,7 +168,8 @@ impl IndexWriterManager {
             document.add_text(self.keywords_field, keywords);
         }
 
-        let modified_date = tantivy::DateTime::from_timestamp_secs(modified as i64);
+        let modified_date =
+            tantivy::DateTime::from_timestamp_secs(i64::try_from(modified).unwrap_or(i64::MAX));
         document.add_date(self.modified_field, modified_date);
         document.add_u64(self.size_field, size);
 
@@ -185,19 +186,16 @@ impl IndexWriterManager {
 
     /// Remove a document from the index
     pub fn remove_document(&self, path: &str) -> Result<()> {
-        let writer = self.writer.lock();
-
         let term = tantivy::Term::from_field_text(self.path_field, path);
-        writer.delete_term(term);
+        self.writer.lock().delete_term(term);
 
         Ok(())
     }
 
     /// Delete all documents from the index
     pub fn delete_all_documents(&self) -> Result<()> {
-        let writer = self.writer.lock();
-
-        writer
+        self.writer
+            .lock()
             .delete_all_documents()
             .map_err(|e| FlashError::index(format!("Failed to delete all documents: {e}")))?;
 
@@ -206,9 +204,8 @@ impl IndexWriterManager {
 
     /// Commit pending changes to disk
     pub fn commit(&self) -> Result<()> {
-        let mut writer = self.writer.lock();
-
-        writer
+        self.writer
+            .lock()
             .commit()
             .map_err(|e| FlashError::index(format!("Failed to commit index: {e}")))?;
 

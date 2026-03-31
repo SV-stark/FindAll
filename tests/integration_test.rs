@@ -1,4 +1,5 @@
 use flash_search::error::Result;
+use flash_search::indexer::searcher::SearchParams;
 use flash_search::{indexer::IndexManager, metadata::MetadataDb};
 use std::fs;
 use std::sync::Arc;
@@ -52,20 +53,24 @@ async fn test_end_to_end_search() -> Result<()> {
     std::thread::sleep(std::time::Duration::from_millis(500));
 
     let results = indexer
-        .search("unique test string", 10, None, None, None, None, false)
+        .search(
+            SearchParams::builder()
+                .query("unique test string")
+                .limit(10)
+                .case_sensitive(false)
+                .build(),
+        )
         .await?;
     assert_eq!(results.len(), 1);
     assert!(results[0].file_path.contains("hello.txt"));
 
     let results = indexer
         .search(
-            "flashsearchintegrationtest",
-            10,
-            None,
-            None,
-            None,
-            None,
-            false,
+            SearchParams::builder()
+                .query("flashsearchintegrationtest")
+                .limit(10)
+                .case_sensitive(false)
+                .build(),
         )
         .await?;
     assert_eq!(results.len(), 1);

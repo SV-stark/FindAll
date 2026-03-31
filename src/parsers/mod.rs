@@ -61,7 +61,7 @@ pub fn parse_file(path: &Path) -> Result<ParsedDocument> {
 }
 
 /// Process a batch of files using Kreuzberg's native asynchronous batch extraction
-pub fn parse_files_batch(paths: Vec<PathBuf>) -> Result<Vec<Result<ParsedDocument>>> {
+pub fn parse_files_batch(paths: &[PathBuf]) -> Result<Vec<Result<ParsedDocument>>> {
     tracing::debug!("Batch parsing {} files natively", paths.len());
 
     let config = kreuzberg::ExtractionConfig {
@@ -71,7 +71,7 @@ pub fn parse_files_batch(paths: Vec<PathBuf>) -> Result<Vec<Result<ParsedDocumen
 
     // Dispatch to the native batching execution pool
     let batched_paths: Vec<(PathBuf, Option<kreuzberg::FileExtractionConfig>)> =
-        paths.clone().into_iter().map(|p| (p, None)).collect();
+        paths.iter().map(|p| (p.clone(), None)).collect();
 
     let batch_results =
         kreuzberg::batch_extract_file_sync(batched_paths, &config).map_err(|e| {

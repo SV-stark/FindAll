@@ -1,92 +1,62 @@
+use super::query_parser::{extract_highlight_terms, ParsedQuery};
 use crate::error::{FlashError, Result};
 use compact_str::CompactString;
-use itertools::Itertools;
 use moka::sync::Cache;
 use serde::{Deserialize, Serialize};
 use std::ops::Bound;
 use std::time::Duration;
 use tantivy::collector::TopDocs;
-use tantivy::query::{BooleanQuery, FuzzyTermQuery, Occur, QueryParser, RangeQuery};
-use tantivy::schema::{Field, IndexRecordOption, Value};
-use tantivy::snippet::SnippetGenerator;
-use tantivy::Term;
-use tantivy::{Index, IndexReader, ReloadPolicy, TantivyDocument};
+use tantivy::query::{Occur, RangeQuery};
+use tantivy::schema::{Field, IndexRecordOption, Term, Value};
+use tantivy::{Index, IndexReader};
 
-/// Maximum number of cached query results
-const MAX_CACHE_SIZE: usize = 100;
-/// Cache TTL in seconds
-const CACHE_TTL_SECS: u64 = 30;
-
-static PHRASE_REGEX: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-
-#[derive(Serialize, Deserialize, Debug, Clone, bon::Builder)]
+/// Search result containing file metadata and score
+#[derive(Debug, Clone, Serialize, Deserialize, bon::Builder)]
 pub struct SearchResult {
     pub file_path: String,
-    pub title: Option<CompactString>,
     pub score: f32,
+    pub title: Option<CompactString>,
+    pub extension: Option<CompactString>,
     pub modified: Option<u64>,
     pub size: Option<u64>,
-    pub extension: Option<CompactString>,
-    /// Terms that matched for highlighting
     pub matched_terms: Vec<String>,
-    /// Context snippets with highlighting
     pub snippets: Vec<String>,
 }
 
-/// Statistics about the search index
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+/// Statistics about the index
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct IndexStatistics {
     pub total_documents: usize,
     pub total_size_bytes: u64,
-    pub last_updated: Option<String>,
-}
-
-/// Cached search result with timestamp
-#[derive(Clone)]
-struct CachedResult {
-    results: Vec<SearchResult>,
 }
 
 /// Cache key for search queries
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
 pub(crate) struct CacheKey {
-    query: String,
-    limit: usize,
-    min_size: Option<u64>,
-    max_size: Option<u64>,
-    min_modified: Option<u64>,
-    extensions: Option<smallvec::SmallVec<[CompactString; 8]>>,
-    case_sensitive: bool,
+    pub(crate) query: String,
+    pub(crate) limit: usize,
+    pub(crate) min_size: Option<u64>,
+    pub(crate) max_size: Option<u64>,
+    pub(crate) min_modified: Option<u64>,
+    pub(crate) extensions: Option<smallvec::SmallVec<[CompactString; 8]>>,
+    pub(crate) case_sensitive: bool,
+}
+
+#[derive(Debug, Clone, bon::Builder)]
+pub struct SearchParams<'a> {
+    pub query: &'a str,
+    pub limit: usize,
+    pub min_size: Option<u64>,
+    pub max_size: Option<u64>,
+    pub min_modified: Option<u64>,
+    pub file_extensions: Option<&'a [String]>,
+    pub case_sensitive: bool,
 }
 
 /// LRU-style query result cache using moka + ahash
 #[derive(Clone)]
 pub struct QueryCache {
-    cache: Cache<CacheKey, CachedResult>,
-}
-
-impl QueryCache {
-    #[must_use]
-    pub fn new() -> Self {
-        Self {
-            cache: Cache::builder()
-                .max_capacity(MAX_CACHE_SIZE as u64)
-                .time_to_live(Duration::from_secs(CACHE_TTL_SECS))
-                .build(),
-        }
-    }
-
-    pub(crate) fn get(&self, key: &CacheKey) -> Option<Vec<SearchResult>> {
-        self.cache.get(key).map(|cached| cached.results)
-    }
-
-    pub(crate) fn insert(&self, key: CacheKey, results: Vec<SearchResult>) {
-        self.cache.insert(key, CachedResult { results });
-    }
-
-    pub fn invalidate(&self) {
-        self.cache.invalidate_all();
-    }
+    cache: Cache<CacheKey, Vec<SearchResult>>,
 }
 
 impl Default for QueryCache {
@@ -95,138 +65,136 @@ impl Default for QueryCache {
     }
 }
 
-/// Manages searching the Tantivy index
+impl QueryCache {
+    pub fn new() -> Self {
+        Self {
+            cache: Cache::builder()
+                .max_capacity(1000)
+                .time_to_live(Duration::from_secs(300)) // 5 minutes TTL
+                .build(),
+        }
+    }
+
+    pub(crate) fn get(&self, key: &CacheKey) -> Option<Vec<SearchResult>> {
+        self.cache.get(key)
+    }
+
+    pub(crate) fn insert(&self, key: CacheKey, results: Vec<SearchResult>) {
+        self.cache.insert(key, results);
+    }
+
+    pub fn invalidate(&self) {
+        self.cache.invalidate_all();
+    }
+}
+
+/// Handles search operations on the index
 pub struct IndexSearcher {
     reader: IndexReader,
-    query_parser: QueryParser,
-    path_field: Field,
-    title_field: Field,
-    size_field: Field,
-    content_field: Field,
-    modified_field: Field,
-    extension_field: Field,
-    cache: QueryCache,
     index_path: std::path::PathBuf,
+    cache: QueryCache,
+    path_field: Field,
+    content_field: Field,
+    title_field: Field,
+    modified_field: Field,
+    size_field: Field,
+    extension_field: Field,
 }
 
 impl IndexSearcher {
     pub fn new(index: &Index, index_path: std::path::PathBuf) -> Result<Self> {
-        let schema = index.schema();
-
-        // Pre-warm the reader by loading index into memory on startup
-        // This ensures first search is fast (no initial load latency)
         let reader = index
             .reader_builder()
-            .reload_policy(ReloadPolicy::OnCommitWithDelay)
+            .reload_policy(tantivy::ReloadPolicy::OnCommitWithDelay)
             .try_into()
-            .map_err(|e| FlashError::search("create_index_reader", e.to_string()))?;
+            .map_err(|e| FlashError::index(format!("Failed to create index reader: {e}")))?;
 
-        // Pre-warm: load the index reader
-        if let Err(e) = reader.reload() {
-            tracing::warn!("Failed to pre-warm index reader: {}", e);
-        }
-
-        // Get field references once to avoid repeated lookups
+        let schema = index.schema();
         let path_field = schema
             .get_field("file_path")
-            .map_err(|_| FlashError::index_field("file_path", "Field not found in schema"))?;
-        let title_field = schema
-            .get_field("title")
-            .map_err(|_| FlashError::index_field("title", "Field not found in schema"))?;
-        let size_field = schema
-            .get_field("size")
-            .map_err(|_| FlashError::index_field("size", "Field not found in schema"))?;
-        let modified_field = schema
-            .get_field("modified")
-            .map_err(|_| FlashError::index_field("modified", "Field not found in schema"))?;
+            .map_err(|_| FlashError::index_field("file_path", "Field not found"))?;
         let content_field = schema
             .get_field("content")
-            .map_err(|_| FlashError::index_field("content", "Field not found in schema"))?;
+            .map_err(|_| FlashError::index_field("content", "Field not found"))?;
+        let title_field = schema
+            .get_field("title")
+            .map_err(|_| FlashError::index_field("title", "Field not found"))?;
+        let modified_field = schema
+            .get_field("modified")
+            .map_err(|_| FlashError::index_field("modified", "Field not found"))?;
+        let size_field = schema
+            .get_field("size")
+            .map_err(|_| FlashError::index_field("size", "Field not found"))?;
         let extension_field = schema
             .get_field("extension")
-            .map_err(|_| FlashError::index_field("extension", "Field not found in schema"))?;
-
-        // Search across content, title, and file_path fields
-        let default_fields: Vec<Field> = ["content", "title", "file_path"]
-            .iter()
-            .filter_map(|field_name| schema.get_field(field_name).ok())
-            .collect();
-
-        let mut query_parser = QueryParser::for_index(index, default_fields);
-        query_parser.set_conjunction_by_default();
+            .map_err(|_| FlashError::index_field("extension", "Field not found"))?;
 
         Ok(Self {
             reader,
-            query_parser,
-            path_field,
-            title_field,
-            size_field,
-            content_field,
-            modified_field,
-            extension_field,
-            cache: QueryCache::new(),
             index_path,
+            cache: QueryCache::new(),
+            path_field,
+            content_field,
+            title_field,
+            modified_field,
+            size_field,
+            extension_field,
         })
     }
 
     /// Search the index and return top results with optional filters
     pub async fn search(
         self: &std::sync::Arc<Self>,
-        query: &str,
-        limit: usize,
-        min_size: Option<u64>,
-        max_size: Option<u64>,
-        min_modified: Option<u64>,
-        file_extensions: Option<&[String]>,
-        case_sensitive: bool,
+        params: SearchParams<'_>,
     ) -> Result<Vec<SearchResult>> {
-        let query_owned = query.to_string();
-        let extensions_owned: Option<smallvec::SmallVec<[CompactString; 8]>> =
-            file_extensions.map(|e| e.iter().map(|s| CompactString::from(s.as_str())).collect());
-        // Arc::clone is O(1) — no heap allocation, just an atomic refcount bump
         let this = std::sync::Arc::clone(self);
 
+        let query_owned = params.query.to_string();
+        let extensions_owned: Option<Vec<String>> = params.file_extensions.map(<[String]>::to_vec);
+        let limit = params.limit;
+        let min_size = params.min_size;
+        let max_size = params.max_size;
+        let min_modified = params.min_modified;
+        let case_sensitive = params.case_sensitive;
+
         tokio::task::spawn_blocking(move || {
-            this.search_sync(
-                &query_owned,
+            let params = SearchParams {
+                query: &query_owned,
                 limit,
                 min_size,
                 max_size,
                 min_modified,
-                extensions_owned.as_deref(),
+                file_extensions: extensions_owned.as_deref(),
                 case_sensitive,
-            )
+            };
+            this.search_sync(&params)
         })
         .await
-        .map_err(|e| FlashError::search(query, format!("Search task failed: {e}")))?
+        .map_err(|e| FlashError::search(params.query, format!("Search task failed: {e}")))?
     }
 
     /// Synchronous search implementation
-    pub fn search_sync(
-        &self,
-        query: &str,
-        limit: usize,
-        min_size: Option<u64>,
-        max_size: Option<u64>,
-        min_modified: Option<u64>,
-        file_extensions: Option<&[CompactString]>,
-        case_sensitive: bool,
-    ) -> Result<Vec<SearchResult>> {
-        use super::query_parser::{extract_highlight_terms, ParsedQuery};
+    ///
+    /// # Panics
+    ///
+    /// Panics if the phrase search regex fails to compile.
+    #[allow(clippy::too_many_lines)]
+    pub fn search_sync(&self, params: &SearchParams<'_>) -> Result<Vec<SearchResult>> {
+        let file_extensions = params.file_extensions.map(|e| {
+            e.iter()
+                .map(|s| CompactString::from(s.as_str()))
+                .collect::<smallvec::SmallVec<[CompactString; 8]>>()
+        });
 
         // Create cache key
         let cache_key = CacheKey {
-            query: query.to_string(),
-            limit,
-            min_size,
-            max_size,
-            min_modified,
-            extensions: file_extensions.map(|e| {
-                e.iter()
-                    .map(compact_str::CompactString::to_lowercase)
-                    .collect()
-            }),
-            case_sensitive,
+            query: params.query.to_string(),
+            limit: params.limit,
+            min_size: params.min_size,
+            max_size: params.max_size,
+            min_modified: params.min_modified,
+            extensions: file_extensions.clone(),
+            case_sensitive: params.case_sensitive,
         };
 
         // Check cache first
@@ -234,41 +202,47 @@ impl IndexSearcher {
             return Ok(cached);
         }
 
-        let parsed = ParsedQuery::new(query, case_sensitive);
-        let highlight_terms = extract_highlight_terms(query, case_sensitive);
+        let parsed = ParsedQuery::new(params.query, params.case_sensitive);
+        let highlight_terms = extract_highlight_terms(params.query, params.case_sensitive);
 
         let searcher = self.reader.searcher();
 
         // Helper to run query with all filters
         #[allow(clippy::type_complexity)]
-        let run_query = |text_query: Box<dyn tantivy::query::Query>| -> Result<(
+        let run_query = |text_query: Box<dyn tantivy::query::Query>,
+                         limit: usize,
+                         query_str: &str|
+         -> Result<(
             Box<dyn tantivy::query::Query>,
             Vec<(f32, tantivy::DocAddress)>,
         )> {
             let mut combine: Vec<(Occur, Box<dyn tantivy::query::Query>)> =
                 vec![(Occur::Must, text_query)];
 
-            if min_size.is_some() || max_size.is_some() {
-                let lower = Term::from_field_u64(self.size_field, min_size.unwrap_or(0));
-                let upper = Term::from_field_u64(self.size_field, max_size.unwrap_or(u64::MAX));
+            if params.min_size.is_some() || params.max_size.is_some() {
+                let lower = Term::from_field_u64(self.size_field, params.min_size.unwrap_or(0));
+                let upper =
+                    Term::from_field_u64(self.size_field, params.max_size.unwrap_or(u64::MAX));
                 let range = RangeQuery::new(Bound::Included(lower), Bound::Included(upper));
                 combine.push((Occur::Must, Box::new(range)));
             }
 
-            if let Some(min_mod) = min_modified {
+            if let Some(min_mod) = params.min_modified {
                 let lower = Term::from_field_date(
                     self.modified_field,
-                    tantivy::DateTime::from_timestamp_secs(min_mod as i64),
+                    tantivy::DateTime::from_timestamp_secs(
+                        i64::try_from(min_mod).unwrap_or(i64::MAX),
+                    ),
                 );
                 let upper = Term::from_field_date(
                     self.modified_field,
                     tantivy::DateTime::from_timestamp_secs(i64::MAX / 1000),
-                ); // Use a very large date
+                );
                 let range = RangeQuery::new(Bound::Included(lower), Bound::Included(upper));
                 combine.push((Occur::Must, Box::new(range)));
             }
 
-            if let Some(extensions) = file_extensions {
+            if let Some(ref extensions) = file_extensions {
                 if !extensions.is_empty() {
                     let extension_queries: Vec<_> = extensions
                         .iter()
@@ -294,174 +268,186 @@ impl IndexSearcher {
                 }
             }
 
-            let final_query: Box<dyn tantivy::query::Query> = if combine.len() == 1 {
-                combine.remove(0).1
-            } else {
-                Box::new(BooleanQuery::new(combine))
-            };
-
+            let final_query = tantivy::query::BooleanQuery::new(combine);
             let top_docs = searcher
-                .search(&*final_query, &TopDocs::with_limit(limit))
-                .map_err(|e| FlashError::search(query, e.to_string()))?;
+                .search(&final_query, &TopDocs::with_limit(limit))
+                .map_err(|e| FlashError::search(query_str, e.to_string()))?;
 
-            Ok((final_query, top_docs))
+            Ok((Box::new(final_query), top_docs))
         };
 
-        // TIER 1: Exact search
-        let exact_query = self
-            .query_parser
-            .parse_query(&parsed.text_query)
-            .unwrap_or_else(|_| Box::new(tantivy::query::AllQuery));
-        let (mut final_query, mut top_docs) = run_query(exact_query)?;
+        let (final_query, top_docs) = if parsed.text_query == "*" {
+            run_query(
+                Box::new(tantivy::query::AllQuery),
+                params.limit,
+                params.query,
+            )?
+        } else {
+            let mut query_parser =
+                tantivy::query::QueryParser::for_index(searcher.index(), vec![self.content_field]);
+            query_parser.set_conjunction_by_default();
 
-        // TIER 2: Fuzzy Fallback
-        let phrase_regex = PHRASE_REGEX.get_or_init(|| {
-            regex::Regex::new(r#""([^"]+)""#).expect("Invalid regex for phrase search")
-        });
+            let query_result = query_parser.parse_query(&parsed.text_query);
 
-        if top_docs.len() < limit
-            && !phrase_regex.is_match(&parsed.text_query)
-            && !parsed.text_query.trim().is_empty()
+            if let Ok(q) = query_result {
+                run_query(q, params.limit, params.query)?
+            } else {
+                let fuzzy_query = tantivy::query::FuzzyTermQuery::new(
+                    Term::from_field_text(self.content_field, &parsed.text_query),
+                    1,
+                    true,
+                );
+                run_query(Box::new(fuzzy_query), params.limit, params.query)?
+            }
+        };
+
+        if top_docs.len() < params.limit
+            && !parsed.text_query.contains(' ')
+            && parsed.text_query != "*"
         {
-            let fuzzy_query = self.build_fuzzy_query(&parsed.text_query)?;
-            let (fuzzy_final_query, fuzzy_docs) = run_query(fuzzy_query)?;
+            let phrase_regex =
+                regex::Regex::new(r#""([^"]+)""#).expect("Invalid regex for phrase search");
+            if !phrase_regex.is_match(&parsed.text_query) {
+                let fuzzy_query = tantivy::query::FuzzyTermQuery::new(
+                    Term::from_field_text(self.content_field, &parsed.text_query),
+                    1,
+                    true,
+                );
+                if let Ok((_, fuzzy_docs)) =
+                    run_query(Box::new(fuzzy_query), params.limit, params.query)
+                {
+                    let mut combined = top_docs;
+                    let existing_ids: std::collections::HashSet<_> =
+                        combined.iter().map(|(_, addr)| *addr).collect();
 
-            // Prefer highlighting based on the more permissive fuzzy query
-            final_query = fuzzy_final_query;
-
-            let seen: std::collections::HashSet<tantivy::DocAddress> =
-                top_docs.iter().map(|(_, addr)| *addr).collect();
-
-            // Use itertools to chain and filter unique documents
-            top_docs = top_docs
-                .into_iter()
-                .chain(
-                    fuzzy_docs
-                        .into_iter()
-                        .filter(|(_, addr)| !seen.contains(addr)),
-                )
-                .take(limit)
-                .sorted_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal))
-                .collect();
+                    for (score, addr) in fuzzy_docs {
+                        if !existing_ids.contains(&addr) {
+                            combined.push((score * 0.8, addr));
+                        }
+                    }
+                    combined
+                        .sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+                    return self.process_top_docs(
+                        &searcher,
+                        combined.into_iter().take(params.limit).collect(),
+                        params.query,
+                        &highlight_terms,
+                        &*final_query,
+                        &cache_key,
+                    );
+                }
+            }
         }
 
-        let mut results = Vec::with_capacity(top_docs.len().min(limit));
+        self.process_top_docs(
+            &searcher,
+            top_docs,
+            params.query,
+            &highlight_terms,
+            &*final_query,
+            &cache_key,
+        )
+    }
 
-        let _snippet_generator =
-            SnippetGenerator::create(&searcher, &*final_query, self.content_field)?;
+    fn process_top_docs(
+        &self,
+        searcher: &tantivy::Searcher,
+        top_docs: Vec<(f32, tantivy::DocAddress)>,
+        query: &str,
+        highlight_terms: &[String],
+        final_query: &dyn tantivy::query::Query,
+        cache_key: &CacheKey,
+    ) -> Result<Vec<SearchResult>> {
+        let mut results = Vec::with_capacity(top_docs.len().min(cache_key.limit));
 
         for (score, doc_address) in top_docs {
-            let result =
-                self.retrieve_result(&searcher, query, score, doc_address, &highlight_terms)?;
-            results.push(result);
+            match self.retrieve_result(searcher, query, score, doc_address, highlight_terms) {
+                Ok(mut result) => {
+                    if let Ok(snippet_generator) = tantivy::snippet::SnippetGenerator::create(
+                        searcher,
+                        final_query,
+                        self.content_field,
+                    ) {
+                        let doc: tantivy::TantivyDocument = searcher
+                            .doc(doc_address)
+                            .map_err(|e| FlashError::search(query, e.to_string()))?;
+                        let snippet = snippet_generator.snippet_from_doc(&doc);
+                        result.snippets = vec![snippet.to_html()];
+                    }
 
-            if results.len() >= limit {
+                    results.push(result);
+                }
+                Err(e) => {
+                    tracing::error!("Error retrieving result: {}", e);
+                }
+            }
+
+            if results.len() >= cache_key.limit {
                 break;
             }
         }
 
-        // Cache the results
-        self.cache.insert(cache_key, results.clone());
-
+        self.cache.insert(cache_key.clone(), results.clone());
         Ok(results)
     }
 
-    /// Build a fuzzy query for better typo tolerance
-    fn build_fuzzy_query(&self, text_query: &str) -> Result<Box<dyn tantivy::query::Query>> {
-        // Check if it's a phrase query (contains quoted strings)
-        let phrase_regex = PHRASE_REGEX.get_or_init(|| {
-            regex::Regex::new(r#""([^"]+)""#).expect("Invalid regex for phrase search")
-        });
+    fn retrieve_result(
+        &self,
+        searcher: &tantivy::Searcher,
+        query: &str,
+        score: f32,
+        doc_address: tantivy::DocAddress,
+        highlight_terms: &[String],
+    ) -> Result<SearchResult> {
+        let tantivy_doc: tantivy::TantivyDocument = searcher
+            .doc(doc_address)
+            .map_err(|e| FlashError::search(query, e.to_string()))?;
 
-        if phrase_regex.is_match(text_query) {
-            // For phrase queries, use the query parser with phrase support
-            return Ok(Box::new(
-                self.query_parser
-                    .parse_query(text_query)
-                    .map_err(|e| FlashError::search(text_query, e.to_string()))?,
-            ));
-        }
+        let file_path = tantivy_doc
+            .get_first(self.path_field)
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
 
-        // For regular queries, build a fuzzy query with OR for each term
-        let terms: Vec<&str> = text_query.split_whitespace().collect();
+        let title = tantivy_doc
+            .get_first(self.title_field)
+            .and_then(|v| v.as_str())
+            .map(CompactString::from);
 
-        if terms.is_empty() || (terms.len() == 1 && terms[0] == "*") {
-            // Match all
-            return Ok(Box::new(tantivy::query::AllQuery));
-        }
+        let extension = tantivy_doc
+            .get_first(self.extension_field)
+            .and_then(|v| v.as_str())
+            .map(CompactString::from);
 
-        if terms.len() == 1 {
-            // Single term - try exact first, then fuzzy across all relevant fields
-            let term_text = terms[0];
-            let mut subqueries: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::new();
+        let size = tantivy_doc
+            .get_first(self.size_field)
+            .and_then(|v| v.as_u64());
 
-            for field in [self.content_field, self.title_field, self.path_field] {
-                let term = Term::from_field_text(field, term_text);
-                let exact = tantivy::query::TermQuery::new(
-                    term.clone(),
-                    tantivy::schema::IndexRecordOption::Basic,
-                );
-                let fuzzy = FuzzyTermQuery::new(term, 2, true);
-                subqueries.push((Occur::Should, Box::new(exact)));
-                subqueries.push((Occur::Should, Box::new(fuzzy)));
-            }
+        let modified = searcher
+            .segment_reader(doc_address.segment_ord)
+            .fast_fields()
+            .date("modified")
+            .ok()
+            .map(|f| {
+                let date = f.values.get_val(doc_address.doc_id);
+                u64::try_from(date.into_timestamp_secs()).unwrap_or(0)
+            });
 
-            Ok(Box::new(BooleanQuery::new(subqueries)))
-        } else {
-            // Multiple terms - build fuzzy query for each with AND logic
-            let mut and_subqueries: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::new();
-
-            for term_text in terms {
-                let mut term_subqueries: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::new();
-                for field in [self.content_field, self.title_field, self.path_field] {
-                    let term = Term::from_field_text(field, term_text);
-                    let exact = tantivy::query::TermQuery::new(
-                        term.clone(),
-                        tantivy::schema::IndexRecordOption::Basic,
-                    );
-                    let fuzzy = FuzzyTermQuery::new(term, 2, true);
-                    term_subqueries.push((Occur::Should, Box::new(exact)));
-                    term_subqueries.push((Occur::Should, Box::new(fuzzy)));
-                }
-                and_subqueries.push((Occur::Must, Box::new(BooleanQuery::new(term_subqueries))));
-            }
-
-            Ok(Box::new(BooleanQuery::new(and_subqueries)))
-        }
+        Ok(SearchResult {
+            file_path,
+            score,
+            title,
+            extension,
+            modified,
+            size,
+            matched_terms: highlight_terms.to_vec(),
+            snippets: Vec::new(),
+        })
     }
 
-    /// Invalidate the search cache (call after index updates)
-    pub fn invalidate_cache(&self) {
-        self.cache.invalidate();
-    }
-
-    /// Get recent files using Tantivy's fast fields
-    pub fn get_recent_files(&self, limit: usize) -> Result<Vec<SearchResult>> {
-        let searcher = self.reader.searcher();
-        let top_docs = searcher
-            .search(
-                &tantivy::query::AllQuery,
-                &TopDocs::with_limit(limit)
-                    .order_by_fast_field::<u64>("modified", tantivy::Order::Desc),
-            )
-            .map_err(|e| FlashError::search("recent files", e.to_string()))?;
-
-        let mut results = Vec::with_capacity(top_docs.len().min(limit));
-
-        for (_date, doc_address) in top_docs {
-            let result = self.retrieve_result(&searcher, "recent files", 1.0, doc_address, &[])?;
-            results.push(result);
-        }
-
-        // Tantivy sorts in ascending order by default, but we specified Order::Desc in order_by_fast_field.
-
-        Ok(results)
-    }
-
-    /// Get statistics about the index
     pub fn get_statistics(&self) -> Result<IndexStatistics> {
         let searcher = self.reader.searcher();
-        let total_docs = searcher.num_docs() as usize;
+        let total_docs = usize::try_from(searcher.num_docs()).unwrap_or(usize::MAX);
 
         let mut total_size = 0;
         if let Ok(entries) = std::fs::read_dir(&self.index_path) {
@@ -477,89 +463,33 @@ impl IndexSearcher {
         Ok(IndexStatistics {
             total_documents: total_docs,
             total_size_bytes: total_size,
-            last_updated: Some(jiff::Zoned::now().strftime("%Y-%m-%d %H:%M:%S").to_string()),
         })
     }
 
-    /// Internal helper to retrieve a search result from a document address
-    fn retrieve_result(
-        &self,
-        searcher: &tantivy::Searcher,
-        query: &str,
-        score: f32,
-        doc_address: tantivy::DocAddress,
-        highlight_terms: &[String],
-    ) -> Result<SearchResult> {
-        let retrieved_doc: TantivyDocument = searcher
-            .doc(doc_address)
-            .map_err(|e| FlashError::search(query, format!("Failed to retrieve document: {e}")))?;
+    pub fn get_recent_files(&self, limit: usize) -> Result<Vec<SearchResult>> {
+        let searcher = self.reader.searcher();
+        let query = tantivy::query::AllQuery;
 
-        let file_path = retrieved_doc
-            .get_first(self.path_field)
-            .and_then(|f| f.as_str())
-            .map(|s: &str| s.to_string())
-            .unwrap_or_default();
+        let top_docs = searcher
+            .search(
+                &query,
+                &TopDocs::with_limit(limit)
+                    .order_by_fast_field::<i64>("modified", tantivy::Order::Desc),
+            )
+            .map_err(|e| FlashError::index(format!("Failed to get recent files: {e}")))?;
 
-        let title = retrieved_doc
-            .get_first(self.title_field)
-            .and_then(|f| f.as_str())
-            .map(|s: &str| CompactString::from(s));
-
-        let extension = retrieved_doc
-            .get_first(self.extension_field)
-            .and_then(|f| f.as_str())
-            .map(|s: &str| CompactString::from(s));
-
-        // Get fast fields for size and modified
-        let size = searcher
-            .segment_reader(doc_address.segment_ord)
-            .fast_fields()
-            .u64("size")
-            .ok()
-            .map(|f| f.values.get_val(doc_address.doc_id));
-
-        let modified = searcher
-            .segment_reader(doc_address.segment_ord)
-            .fast_fields()
-            .date("modified")
-            .ok()
-            .map(|f| {
-                let date = f.values.get_val(doc_address.doc_id);
-                date.into_timestamp_secs() as u64
-            });
-
-        let mut snippets = Vec::new();
-
-        // Only generate snippets if highlight terms are provided (meaning we are in search_sync)
-        if !highlight_terms.is_empty() {
-            if let Ok(query_obj) = self.query_parser.parse_query(query) {
-                if let Ok(snippet_generator) =
-                    SnippetGenerator::create(searcher, &*query_obj, self.content_field)
-                {
-                    let snippet = snippet_generator.snippet_from_doc(&retrieved_doc);
-                    let snippet_text = snippet
-                        .to_html()
-                        .replace("&lt;", "<")
-                        .replace("&gt;", ">")
-                        .replace("&amp;", "&");
-
-                    if !snippet_text.is_empty() {
-                        snippets.push(snippet_text);
-                    }
-                }
+        let mut results = Vec::new();
+        for (_score, doc_address) in top_docs {
+            if let Ok(res) = self.retrieve_result(&searcher, "", 0.0, doc_address, &[]) {
+                results.push(res);
             }
         }
 
-        Ok(SearchResult::builder()
-            .file_path(file_path)
-            .maybe_title(title)
-            .score(score)
-            .maybe_modified(modified)
-            .maybe_size(size)
-            .maybe_extension(extension)
-            .matched_terms(highlight_terms.to_vec())
-            .snippets(snippets)
-            .build())
+        Ok(results)
+    }
+
+    pub fn invalidate_cache(&self) {
+        self.cache.invalidate();
     }
 }
 
@@ -588,52 +518,5 @@ mod tests {
             case_sensitive: false,
         };
         assert_eq!(key1, key2);
-
-        let key3 = CacheKey {
-            query: "diff".to_string(),
-            ..key1.clone()
-        };
-        assert_ne!(key1, key3);
-    }
-
-    #[test]
-    fn test_query_cache_insert_get() {
-        let cache = QueryCache::new();
-        let key = CacheKey {
-            query: "test".to_string(),
-            limit: 10,
-            min_size: None,
-            max_size: None,
-            min_modified: None,
-            extensions: None,
-            case_sensitive: false,
-        };
-        let results = vec![SearchResult::builder()
-            .file_path("path".to_string())
-            .score(1.0)
-            .matched_terms(vec!["test".to_string()])
-            .snippets(vec!["snippet".to_string()])
-            .build()];
-        cache.insert(key.clone(), results);
-        let cached = cache.get(&key);
-        assert!(cached.is_some());
-        assert_eq!(cached.unwrap().len(), 1);
-    }
-
-    #[test]
-    fn test_query_cache_invalidate() {
-        let cache = QueryCache::new();
-        let key = CacheKey {
-            query: "test".to_string(),
-            limit: 10,
-            min_size: None,
-            max_size: None,
-            min_modified: None,
-            extensions: None,
-            case_sensitive: false,
-        };
-        cache.insert(key.clone(), vec![]);
-        cache.invalidate();
-        assert!(cache.get(&key).is_none());
     }
 }

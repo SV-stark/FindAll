@@ -6,7 +6,7 @@ pub fn get_home_dir_internal() -> Result<String, String> {
         .ok_or_else(|| "Could not determine home directory".to_string())
 }
 
-pub fn open_folder_internal(path: String) -> Result<(), String> {
+pub fn open_folder_internal(path: &str) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         use std::process::Command;
@@ -34,10 +34,12 @@ pub async fn select_folder_internal() -> Result<Option<String>, String> {
     Ok(handle.map(|h| h.path().to_string_lossy().to_string()))
 }
 
-pub fn copy_to_clipboard_internal(text: String) -> Result<(), String> {
+pub fn copy_to_clipboard_internal(text: &str) -> Result<(), String> {
     use arboard::Clipboard;
     let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
-    clipboard.set_text(text).map_err(|e| e.to_string())?;
+    clipboard
+        .set_text(text.to_string())
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 

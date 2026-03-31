@@ -5,6 +5,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::error;
 
+/// Starts the indexing process.
+///
+/// # Errors
+///
+/// Returns an error if the indexing task cannot be spawned or fails.
 pub async fn start_indexing_internal(path: String, state: Arc<AppState>) -> Result<(), String> {
     let path = PathBuf::from(path);
     let mut handle_guard = state.indexing_handle.lock();
@@ -32,21 +37,26 @@ pub async fn start_indexing_internal(path: String, state: Arc<AppState>) -> Resu
     });
 
     *handle_guard = Some(handle);
+    drop(handle_guard);
     Ok(())
 }
 
+/// Gets the current status of the indexer.
+///
+/// # Errors
+///
+/// Returns an error if the index statistics cannot be retrieved.
 pub async fn get_index_status_internal(state: &Arc<AppState>) -> Result<IndexStatus, String> {
     let is_running = {
         let mut handle_guard = state.indexing_handle.lock();
-        if let Some(handle) = &*handle_guard {
-            if handle.is_finished() {
-                *handle_guard = None;
-                false
-            } else {
-                true
-            }
-        } else {
+        let finished = handle_guard
+            .as_ref()
+            .is_some_and(tokio::task::JoinHandle::is_finished);
+        if finished {
+            *handle_guard = None;
             false
+        } else {
+            handle_guard.is_some()
         }
     };
 
@@ -64,12 +74,22 @@ pub async fn get_index_status_internal(state: &Arc<AppState>) -> Result<IndexSta
     })
 }
 
+/// Gets the current index statistics.
+///
+/// # Errors
+///
+/// Returns an error if the indexer statistics are unavailable.
 pub async fn get_index_statistics_internal(
     state: &Arc<AppState>,
 ) -> Result<IndexStatistics, String> {
     state.indexer.get_statistics().map_err(|e| e.to_string())
 }
 
+/// Gets a list of recently indexed files.
+///
+/// # Errors
+///
+/// Returns an error if the database query fails.
 pub async fn get_recent_files_internal(
     limit: usize,
     state: &Arc<AppState>,

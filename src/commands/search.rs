@@ -1,5 +1,5 @@
 use crate::commands::AppState;
-use crate::indexer::searcher::SearchResult;
+use crate::indexer::searcher::{SearchParams, SearchResult};
 use crate::models::{FilenameIndexStats, FilenameSearchResult, PreviewResult};
 use crate::parsers::parse_file;
 use moka::sync::Cache;
@@ -17,31 +17,27 @@ fn get_preview_cache() -> &'static Cache<(String, u64), String> {
     })
 }
 
+/// Performs a search query against the index.
+///
+/// # Errors
+///
+/// Returns an error if the search query fails.
 pub async fn search_query_internal(
-    query: String,
-    limit: usize,
+    params: SearchParams<'_>,
     state: &Arc<AppState>,
-    min_size: Option<u64>,
-    max_size: Option<u64>,
-    min_modified: Option<u64>,
-    file_extensions: Option<Vec<String>>,
-    case_sensitive: bool,
 ) -> Result<Vec<SearchResult>, String> {
     state
         .indexer
-        .search(
-            &query,
-            limit,
-            min_size,
-            max_size,
-            min_modified,
-            file_extensions.as_deref(),
-            case_sensitive,
-        )
+        .search(params)
         .await
         .map_err(|e| e.to_string())
 }
 
+/// Gets a preview of the file content.
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be read or parsed.
 pub async fn get_file_preview_internal(path: String) -> Result<String, String> {
     let path_buf = std::path::PathBuf::from(&path);
     let modified = std::fs::metadata(&path_buf)
@@ -74,6 +70,11 @@ pub async fn get_file_preview_internal(path: String) -> Result<String, String> {
     }
 }
 
+/// Gets a highlighted preview of the file content.
+///
+/// # Errors
+///
+/// Returns an error if the preview generation fails.
 pub async fn get_file_preview_highlighted_internal(
     path: String,
     query: String,
@@ -90,29 +91,40 @@ pub async fn get_file_preview_highlighted_internal(
     })
 }
 
+/// Searches for filenames in the filename index.
+///
+/// # Errors
+///
+/// Returns an error if the filename index is not initialized or the search fails.
 pub async fn search_filenames_internal(
     query: String,
     limit: usize,
     state: &Arc<AppState>,
 ) -> Result<Vec<FilenameSearchResult>, String> {
-    if let Some(ref filename_index) = state.filename_index {
-        filename_index
-            .search(&query, limit)
-            .map(|results| {
-                results
-                    .into_iter()
-                    .map(|r| FilenameSearchResult {
-                        file_path: r.file_path,
-                        file_name: r.file_name,
-                    })
-                    .collect()
-            })
-            .map_err(|e| e.to_string())
-    } else {
-        Err("Filename index not initialized".to_string())
-    }
+    state.filename_index.as_ref().map_or_else(
+        || Err("Filename index not initialized".to_string()),
+        |filename_index| {
+            filename_index
+                .search(&query, limit)
+                .map(|results| {
+                    results
+                        .into_iter()
+                        .map(|r| FilenameSearchResult {
+                            file_path: r.file_path,
+                            file_name: r.file_name,
+                        })
+                        .collect()
+                })
+                .map_err(|e| e.to_string())
+        },
+    )
 }
 
+/// Gets statistics for the filename index.
+///
+/// # Errors
+///
+/// Returns an error if the filename index is not initialized or stats cannot be retrieved.
 pub async fn get_filename_index_stats_internal(
     state: &Arc<AppState>,
 ) -> Result<FilenameIndexStats, String> {

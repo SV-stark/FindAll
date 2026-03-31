@@ -21,6 +21,8 @@ mod windows_usn {
     };
     use windows::Win32::System::IO::DeviceIoControl;
 
+    const USN_REASON_FILE_DELETE: u32 = 0x0000_0200;
+
     #[derive(Debug)]
     struct DirInfo {
         name: CompactString,
@@ -29,9 +31,9 @@ mod windows_usn {
 
     pub fn scan_volume(
         root: &Path,
-        path_tx: crossbeam_channel::Sender<PathBuf>,
-        progress_tx: Option<mpsc::Sender<ProgressEvent>>,
-        total_count: Arc<AtomicUsize>,
+        path_tx: &crossbeam_channel::Sender<PathBuf>,
+        progress_tx: Option<&mpsc::Sender<ProgressEvent>>,
+        total_count: &Arc<AtomicUsize>,
     ) -> Result<()> {
         let drive_letter = root.to_string_lossy();
         let volume_path = format!("\\\\.\\{}", &drive_letter[..2]);
@@ -65,9 +67,9 @@ mod windows_usn {
     unsafe fn iterate_mft(
         handle: HANDLE,
         drive_root: &str,
-        path_tx: crossbeam_channel::Sender<PathBuf>,
-        progress_tx: Option<mpsc::Sender<ProgressEvent>>,
-        total_count: Arc<AtomicUsize>,
+        path_tx: &crossbeam_channel::Sender<PathBuf>,
+        progress_tx: Option<&mpsc::Sender<ProgressEvent>>,
+        total_count: &Arc<AtomicUsize>,
     ) -> Result<()> {
         let mut journal_data = USN_JOURNAL_DATA_V0::default();
         let mut bytes_returned = 0u32;
@@ -78,7 +80,7 @@ mod windows_usn {
             None,
             0,
             Some(std::ptr::addr_of_mut!(journal_data).cast()),
-            std::mem::size_of::<USN_JOURNAL_DATA_V0>() as u32,
+            u32::try_from(std::mem::size_of::<USN_JOURNAL_DATA_V0>()).unwrap_or(u32::MAX),
             Some(&mut bytes_returned),
             None,
         )
@@ -92,7 +94,10 @@ mod windows_usn {
 
         let mut dir_map: HashMap<u64, DirInfo> = HashMap::with_capacity(100_000);
         let mut files: Vec<(CompactString, u64)> = Vec::with_capacity(500_000);
-        let mut buffer = [0u8; 65536];
+        // Use a Vec<u64> to ensure 8-byte alignment for USN records and avoid large stack allocation
+        let mut buffer = vec![0u64; 8192]; // 8192 * 8 = 65536 bytes
+        let buffer_ptr = buffer.as_mut_ptr().cast::<u8>();
+        let buffer_len = u32::try_from(buffer.len() * 8).unwrap_or(u32::MAX);
 
         info!("Enumerating MFT records...");
 
@@ -102,9 +107,9 @@ mod windows_usn {
                 handle,
                 FSCTL_ENUM_USN_DATA,
                 Some(std::ptr::addr_of!(mft_enum_data).cast()),
-                std::mem::size_of::<MFT_ENUM_DATA_V0>() as u32,
-                Some(buffer.as_mut_ptr().cast()),
-                buffer.len() as u32,
+                u32::try_from(std::mem::size_of::<MFT_ENUM_DATA_V0>()).unwrap_or(u32::MAX),
+                Some(buffer_ptr.cast()),
+                buffer_len,
                 Some(&mut bytes_returned),
                 None,
             );
@@ -113,23 +118,24 @@ mod windows_usn {
                 break;
             }
 
-            let next_usn = *buffer.as_ptr().cast::<i64>();
-            mft_enum_data.StartFileReferenceNumber = next_usn as u64;
+            let next_usn = unsafe { buffer_ptr.cast::<i64>().read_unaligned() };
+            mft_enum_data.StartFileReferenceNumber = u64::try_from(next_usn).unwrap_or(0);
 
             let mut offset = 8;
             while offset < bytes_returned as usize {
-                let record = &*buffer.as_ptr().add(offset).cast::<USN_RECORD_V2>();
+                let record_ptr = buffer_ptr.add(offset);
+                #[allow(clippy::cast_ptr_alignment)]
+                let record = unsafe { &*record_ptr.cast::<USN_RECORD_V2>() };
 
                 // Skip system files to clean up the output and increase performance
                 if (record.FileAttributes & FILE_ATTRIBUTE_SYSTEM.0) == 0 {
-                    let name_ptr = buffer
-                        .as_ptr()
-                        .add(offset + record.FileNameOffset as usize)
-                        .cast::<u16>();
+                    #[allow(clippy::cast_ptr_alignment)]
+                    let name_ptr =
+                        unsafe { record_ptr.add(record.FileNameOffset as usize).cast::<u16>() };
                     let name_len = (record.FileNameLength / 2) as usize;
-                    let name = CompactString::from_utf16_lossy(std::slice::from_raw_parts(
-                        name_ptr, name_len,
-                    ));
+                    let name = CompactString::from_utf16_lossy(unsafe {
+                        std::slice::from_raw_parts(name_ptr, name_len)
+                    });
 
                     let frn = record.FileReferenceNumber;
                     let parent_frn = record.ParentFileReferenceNumber;
@@ -146,6 +152,25 @@ mod windows_usn {
             }
         }
 
+        reconstruct_paths(
+            drive_root,
+            path_tx,
+            progress_tx,
+            total_count,
+            &dir_map,
+            files,
+        );
+        Ok(())
+    }
+
+    fn reconstruct_paths(
+        drive_root: &str,
+        path_tx: &crossbeam_channel::Sender<PathBuf>,
+        progress_tx: Option<&mpsc::Sender<ProgressEvent>>,
+        total_count: &Arc<AtomicUsize>,
+        dir_map: &HashMap<u64, DirInfo>,
+        files: Vec<(CompactString, u64)>,
+    ) {
         info!(
             "MFT Enumeration finished. Reconstructing paths for {} files...",
             files.len()
@@ -190,7 +215,7 @@ mod windows_usn {
 
                 if count % 2000 == 0 {
                     total_count.store(count, Ordering::Relaxed);
-                    if let Some(tx) = &progress_tx {
+                    if let Some(tx) = progress_tx {
                         let _ = tx.try_send(ProgressEvent {
                             ptype: ProgressType::Filename,
                             current_file: name.to_string(),
@@ -207,13 +232,12 @@ mod windows_usn {
         }
 
         total_count.store(count, Ordering::Relaxed);
-        Ok(())
     }
 
     pub fn watch_volume(
         root: &Path,
         tx: tokio::sync::mpsc::Sender<(PathBuf, crate::watcher::WatcherAction)>,
-    ) -> Result<()> {
+    ) {
         let drive_letter = root.to_string_lossy();
         let volume_path = format!("\\\\.\\{}", &drive_letter[..2]);
         let mut volume_wide: Vec<u16> = volume_path.encode_utf16().collect();
@@ -248,7 +272,7 @@ mod windows_usn {
                     None,
                     0,
                     Some(std::ptr::addr_of_mut!(journal_data).cast()),
-                    std::mem::size_of::<USN_JOURNAL_DATA_V0>() as u32,
+                    u32::try_from(std::mem::size_of::<USN_JOURNAL_DATA_V0>()).unwrap_or(u32::MAX),
                     Some(&mut bytes_returned),
                     None,
                 );
@@ -257,8 +281,6 @@ mod windows_usn {
                     let _ = CloseHandle(handle);
                     return;
                 }
-
-                const USN_REASON_FILE_DELETE: u32 = 0x0000_0200;
 
                 let mut read_data = READ_USN_JOURNAL_DATA_V0 {
                     StartUsn: journal_data.NextUsn,
@@ -269,7 +291,10 @@ mod windows_usn {
                     UsnJournalID: journal_data.UsnJournalID,
                 };
 
-                let mut buffer = [0u8; 8192];
+                // Use a Vec<u64> to ensure 8-byte alignment for USN records and avoid large stack allocation
+                let mut buffer = vec![0u64; 1024]; // 1024 * 8 = 8192 bytes
+                let buffer_ptr = buffer.as_mut_ptr().cast::<u8>();
+                let buffer_len = u32::try_from(buffer.len() * 8).unwrap_or(u32::MAX);
 
                 loop {
                     let mut bytes_returned = 0u32;
@@ -277,26 +302,28 @@ mod windows_usn {
                         handle,
                         FSCTL_READ_USN_JOURNAL,
                         Some(std::ptr::addr_of!(read_data).cast()),
-                        std::mem::size_of::<READ_USN_JOURNAL_DATA_V0>() as u32,
-                        Some(buffer.as_mut_ptr().cast()),
-                        buffer.len() as u32,
+                        u32::try_from(std::mem::size_of::<READ_USN_JOURNAL_DATA_V0>())
+                            .unwrap_or(u32::MAX),
+                        Some(buffer_ptr.cast()),
+                        buffer_len,
                         Some(&mut bytes_returned),
                         None,
                     );
 
                     if success.is_ok() && bytes_returned >= 8 {
-                        let next_usn = *buffer.as_ptr().cast::<i64>();
+                        let next_usn = buffer_ptr.cast::<i64>().read_unaligned();
                         read_data.StartUsn = next_usn;
 
                         let mut offset = 8;
                         while offset < bytes_returned as usize {
-                            let record = &*buffer.as_ptr().add(offset).cast::<USN_RECORD_V2>();
+                            let record_ptr = buffer_ptr.add(offset);
+                            #[allow(clippy::cast_ptr_alignment)]
+                            let record = &*record_ptr.cast::<USN_RECORD_V2>();
 
                             if (record.FileAttributes & FILE_ATTRIBUTE_SYSTEM.0) == 0 {
-                                let name_ptr = buffer
-                                    .as_ptr()
-                                    .add(offset + record.FileNameOffset as usize)
-                                    .cast::<u16>();
+                                #[allow(clippy::cast_ptr_alignment)]
+                                let name_ptr =
+                                    record_ptr.add(record.FileNameOffset as usize).cast::<u16>();
                                 let name_len = (record.FileNameLength / 2) as usize;
                                 let name = String::from_utf16_lossy(std::slice::from_raw_parts(
                                     name_ptr, name_len,
@@ -327,8 +354,6 @@ mod windows_usn {
                 }
             }
         });
-
-        Ok(())
     }
 }
 
@@ -515,12 +540,9 @@ impl DriveScanner for WindowsDriveScanner {
                 "Whole local drive detected, attempting MFT scan for {:?}",
                 root
             );
-            if let Err(e) = windows_usn::scan_volume(
-                &root,
-                path_tx.clone(),
-                progress_tx.clone(),
-                total_count.clone(),
-            ) {
+            if let Err(e) =
+                windows_usn::scan_volume(&root, &path_tx, progress_tx.as_ref(), &total_count)
+            {
                 warn!("MFT scan failed, falling back to parallel walk: {}", e);
             } else {
                 return Ok(());
@@ -564,11 +586,10 @@ impl DriveScanner for WindowsDriveScanner {
         }
 
         if is_root && !is_unc && is_local_drive && root.exists() {
-            windows_usn::watch_volume(&root, tx)
-        } else {
-            // For network drives and subdirectories, watcher.rs handles standard notify events
-            Ok(())
+            windows_usn::watch_volume(&root, tx);
         }
+
+        Ok(())
     }
 }
 

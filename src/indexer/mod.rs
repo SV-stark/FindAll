@@ -41,6 +41,37 @@ pub struct IndexManager {
 }
 
 impl IndexManager {
+    fn rebuild_index_internal(index_path: &Path) -> Result<()> {
+        // Try to backup the index before destroying it
+        let backup_path = index_path.with_extension("backup");
+        if let Err(e) = std::fs::remove_dir_all(&backup_path) {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                warn!("Failed to remove old backup at {:?}: {}", backup_path, e);
+            }
+        }
+        if let Err(e) = copy_dir(index_path, &backup_path) {
+            warn!("Failed to backup index to {:?}: {}", backup_path, e);
+        }
+
+        if let Err(e) = std::fs::remove_dir_all(index_path) {
+            error!(
+                "Failed to remove corrupted index at {:?}: {}",
+                index_path, e
+            );
+            return Err(FlashError::Io(std::sync::Arc::new(e)));
+        }
+
+        if let Err(e) = std::fs::create_dir_all(index_path) {
+            error!(
+                "Failed to re-create index directory at {:?}: {}",
+                index_path, e
+            );
+            return Err(FlashError::Io(std::sync::Arc::new(e)));
+        }
+        write_schema_version(index_path, SCHEMA_VERSION)?;
+        Ok(())
+    }
+
     /// Open or create index at the specified path
     pub fn open(index_path: &Path, memory_limit_mb: u32) -> Result<Self> {
         let schema = create_schema();
@@ -59,60 +90,12 @@ impl IndexManager {
                     "Schema version mismatch: stored={}, current={}. Rebuilding index...",
                     ver, SCHEMA_VERSION
                 );
-                // Try to backup the index before destroying it
-                let backup_path = index_path.with_extension("backup");
-                if let Err(e) = std::fs::remove_dir_all(&backup_path) {
-                    if e.kind() != std::io::ErrorKind::NotFound {
-                        warn!("Failed to remove old backup at {:?}: {}", backup_path, e);
-                    }
-                }
-                if let Err(e) = copy_dir(index_path, &backup_path) {
-                    warn!("Failed to backup index to {:?}: {}", backup_path, e);
-                }
-
-                if let Err(e) = std::fs::remove_dir_all(index_path) {
-                    error!(
-                        "Failed to remove corrupted index at {:?}: {}",
-                        index_path, e
-                    );
-                    return Err(FlashError::Io(std::sync::Arc::new(e)));
-                }
-
-                if let Err(e) = std::fs::create_dir_all(index_path) {
-                    error!(
-                        "Failed to re-create index directory at {:?}: {}",
-                        index_path, e
-                    );
-                    return Err(FlashError::Io(std::sync::Arc::new(e)));
-                }
-                write_schema_version(index_path, SCHEMA_VERSION)?;
+                Self::rebuild_index_internal(index_path)?;
             }
         } else if index_path.join("meta.json").exists() {
             // Old index without version - rebuild
             warn!("No schema version found. Rebuilding index...");
-            // Try to backup the index before destroying it
-            let backup_path = index_path.with_extension("backup");
-            if let Err(e) = std::fs::remove_dir_all(&backup_path) {
-                if e.kind() != std::io::ErrorKind::NotFound {
-                    warn!("Failed to remove old backup at {:?}: {}", backup_path, e);
-                }
-            }
-            if let Err(e) = copy_dir(index_path, &backup_path) {
-                warn!("Failed to backup index to {:?}: {}", backup_path, e);
-            }
-
-            if let Err(e) = std::fs::remove_dir_all(index_path) {
-                error!("Failed to remove old index at {:?}: {}", index_path, e);
-                return Err(FlashError::Io(std::sync::Arc::new(e)));
-            }
-            if let Err(e) = std::fs::create_dir_all(index_path) {
-                error!(
-                    "Failed to re-create index directory at {:?}: {}",
-                    index_path, e
-                );
-                return Err(FlashError::Io(std::sync::Arc::new(e)));
-            }
-            write_schema_version(index_path, SCHEMA_VERSION)?;
+            Self::rebuild_index_internal(index_path)?;
         } else {
             // New index - write version
             write_schema_version(index_path, SCHEMA_VERSION)?;
@@ -132,18 +115,7 @@ impl IndexManager {
                         err_str
                     );
 
-                    // Try to backup the index before destroying it
-                    let backup_path = index_path.with_extension("backup");
-                    let _ = std::fs::remove_dir_all(&backup_path); // Remove old backup if exists
-                    let _ = copy_dir(index_path, &backup_path); // Try to backup
-
-                    // Close the directory/files if needed? MmapDirectory handles it.
-                    // Wipe and start over
-                    std::fs::remove_dir_all(index_path)
-                        .map_err(|e| FlashError::Io(std::sync::Arc::new(e)))?;
-                    std::fs::create_dir_all(index_path)
-                        .map_err(|e| FlashError::Io(std::sync::Arc::new(e)))?;
-                    write_schema_version(index_path, SCHEMA_VERSION)?;
+                    Self::rebuild_index_internal(index_path)?;
 
                     let new_directory = MmapDirectory::open(index_path).map_err(|e| {
                         FlashError::index(format!("Failed to re-open index directory: {e}"))
@@ -203,25 +175,9 @@ impl IndexManager {
     /// Search the index (async with caching)
     pub async fn search(
         self: &Arc<Self>,
-        query: &str,
-        limit: usize,
-        min_size: Option<u64>,
-        max_size: Option<u64>,
-        min_modified: Option<u64>,
-        file_extensions: Option<&[String]>,
-        case_sensitive: bool,
+        params: searcher::SearchParams<'_>,
     ) -> Result<Vec<SearchResult>> {
-        self.searcher
-            .search(
-                query,
-                limit,
-                min_size,
-                max_size,
-                min_modified,
-                file_extensions,
-                case_sensitive,
-            )
-            .await
+        self.searcher.search(params).await
     }
 
     /// Get recent files

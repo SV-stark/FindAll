@@ -49,8 +49,9 @@ impl FilenameIndex {
             let json_path = data_path.join(LEGACY_INDEX_FILENAME);
 
             if bin_path.exists() {
-                match std::fs::read(&bin_path) {
-                    Ok(bytes) => {
+                std::fs::read(&bin_path).map_or_else(
+                    |_| Vec::new(),
+                    |bytes| {
                         // Ensure byte alignment for rkyv
                         let mut aligned_bytes = rkyv::util::AlignedVec::<16>::new();
                         aligned_bytes.extend_from_slice(&bytes);
@@ -75,13 +76,13 @@ impl FilenameIndex {
                                 Vec::new()
                             }
                         }
-                    }
-                    Err(_) => Vec::new(),
-                }
+                    },
+                )
             } else if json_path.exists() {
                 // Migrate from legacy JSON
-                match std::fs::read_to_string(&json_path) {
-                    Ok(content) => match serde_json::from_str::<Vec<FilenameEntry>>(&content) {
+                std::fs::read_to_string(&json_path).map_or_else(
+                    |_| Vec::new(),
+                    |content| match serde_json::from_str::<Vec<FilenameEntry>>(&content) {
                         Ok(entries) => {
                             tracing::info!(
                                 "Migrated {} filenames from legacy JSON index",
@@ -97,8 +98,7 @@ impl FilenameIndex {
                             Vec::new()
                         }
                     },
-                    Err(_) => Vec::new(),
-                }
+                )
             } else {
                 Vec::new()
             }
@@ -133,6 +133,7 @@ impl FilenameIndex {
         }
 
         let new_items = std::mem::take(&mut *staging);
+        drop(staging);
 
         // Update committed list
         let mut current = self.committed.load().as_ref().clone();
@@ -188,9 +189,8 @@ impl FilenameIndex {
         }
 
         // FST Map - use reference borrow from the guard
-        let map = match fst::Map::new(&**fst_guard) {
-            Ok(m) => m,
-            Err(_) => return Ok(Vec::new()),
+        let Ok(map) = fst::Map::new(&**fst_guard) else {
+            return Ok(Vec::new());
         };
 
         // Fuzzy / Subsequence matching
@@ -206,7 +206,7 @@ impl FilenameIndex {
             if results.len() >= limit {
                 break;
             }
-            if let Some(entry) = entries_lock.get(v as usize) {
+            if let Some(entry) = entries_lock.get(usize::try_from(v).unwrap_or(usize::MAX)) {
                 results.push(FilenameSearchResult {
                     file_path: entry.path.clone(),
                     file_name: entry.name.clone(),

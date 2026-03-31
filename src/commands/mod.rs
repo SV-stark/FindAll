@@ -63,7 +63,7 @@ impl AppState {
             AppSettings::default()
         });
         let mut watcher = watcher;
-        let _ = watcher.update_watch_list(cache.index_dirs.clone());
+        let _ = watcher.update_watch_list(&cache.index_dirs);
         Self {
             indexer,
             metadata_db,

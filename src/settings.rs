@@ -32,6 +32,7 @@ impl Clone for AllowedExtensionsCache {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct AppSettings {
     #[serde(default = "default_settings_version")]
     pub version: u32,

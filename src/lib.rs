@@ -1,3 +1,9 @@
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::must_use_candidate)]
+#![allow(clippy::cast_precision_loss)]
+#![allow(clippy::similar_names)]
+#![allow(clippy::module_name_repetitions)]
+
 pub mod commands;
 pub mod error;
 pub mod iced_ui;
@@ -18,6 +24,7 @@ pub fn is_shutting_down() -> bool {
 }
 
 use crate::error::FlashError;
+use crate::indexer::searcher::SearchParams;
 use commands::AppState;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -115,13 +122,18 @@ pub fn setup_app() -> std::result::Result<
     Ok((state, progress_rx))
 }
 
+/// Main entry point for the Iced GUI
+///
+/// # Errors
+///
+/// Returns a `FlashError` if the GUI fails to initialize or run.
 pub fn run_ui() -> std::result::Result<(), FlashError> {
     let (state_res, rx) = match setup_app() {
         Ok((state, rx)) => (Ok(state), rx),
         Err(e) => (Err(e.to_string()), tokio::sync::mpsc::channel(1).1),
     };
 
-    iced_ui::run_ui(state_res, rx);
+    iced_ui::run_ui(&state_res, rx);
     Ok(())
 }
 
@@ -134,7 +146,13 @@ pub async fn run_cli(
         let (state, _) = setup_app()?;
         let results = state
             .indexer
-            .search(&query_str, 20, None, None, None, None, false)
+            .search(
+                SearchParams::builder()
+                    .query(&query_str)
+                    .limit(20)
+                    .case_sensitive(false)
+                    .build(),
+            )
             .await?;
 
         if is_json {

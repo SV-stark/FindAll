@@ -18,10 +18,10 @@ fn init_logging(app_data_dir: &std::path::Path) {
     std::fs::create_dir_all(&log_dir).ok();
 
     let file_appender = rolling::daily(&log_dir, "flash-search.log");
-    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
     // Keep the guard alive for the lifetime of the program
-    let _ = LOG_GUARD.set(_guard);
+    let _ = LOG_GUARD.set(guard);
 
     let env_filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new("flash_search=info,kreuzberg=info"));
@@ -87,6 +87,7 @@ fn main() {
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join("com.flashsearch");
     std::fs::create_dir_all(&app_dir).ok();
+    let lock_path = app_dir.join("app.lock");
 
     let lock_file = match std::fs::OpenOptions::new()
         .write(true)
@@ -96,8 +97,11 @@ fn main() {
     {
         Ok(file) => file,
         Err(e) => {
-            eprintln!("Error: Failed to open lock file at {:?}.", lock_path);
-            eprintln!("Details: {}", e);
+            eprintln!(
+                "Error: Failed to open lock file at {}.",
+                lock_path.display()
+            );
+            eprintln!("Details: {e}");
             std::process::exit(1);
         }
     };
