@@ -12,6 +12,9 @@ pub struct ParsedDocument {
     pub title: Option<CompactString>,
     pub language: Option<CompactString>,
     pub keywords: Option<String>,
+    pub layout: Option<String>,
+    pub code_metadata: Option<String>,
+    pub embeddings: Option<Vec<f32>>,
 }
 
 /// Detect file type and route to appropriate parser using Kreuzberg
@@ -39,6 +42,43 @@ pub fn parse_file(path: &Path) -> Result<ParsedDocument> {
 
     tracing::debug!("Successfully parsed file: {}", path.display());
 
+    map_extraction_result(path, result)
+}
+
+/// Process a batch of files using Kreuzberg's native async concurrent batch extraction.
+///
+/// This is `async` — it must be called from within a Tokio async context. Kreuzberg
+/// manages its own semaphore-gated `JoinSet` internally, scaling concurrency to
+/// `(num_cpus * 1.5).ceil()` by default — no manual Rayon pools needed.
+pub async fn parse_files_batch(paths: &[PathBuf]) -> Result<Vec<Result<ParsedDocument>>> {
+    tracing::debug!("Async batch parsing {} files via kreuzberg", paths.len());
+
+    let config = kreuzberg::ExtractionConfig {
+        use_cache: false,
+        ..Default::default()
+    };
+
+    let batched_paths: Vec<(PathBuf, Option<kreuzberg::FileExtractionConfig>)> =
+        paths.iter().map(|p| (p.clone(), None)).collect();
+
+    let batch_results = kreuzberg::batch_extract_file(batched_paths, &config)
+        .await
+        .map_err(|e| {
+            tracing::error!("Kreuzberg async batch extraction failed entirely: {}", e);
+            FlashError::parse(Path::new("batch"), format!("Batch extraction crashed: {e}"))
+        })?;
+
+    let results = batch_results
+        .into_iter()
+        .zip(paths.iter())
+        .map(|(extraction_result, path)| map_extraction_result(path, extraction_result))
+        .collect();
+
+    Ok(results)
+}
+
+/// Maps a `kreuzberg::ExtractionResult` into a `ParsedDocument`.
+fn map_extraction_result(path: &Path, result: kreuzberg::ExtractionResult) -> Result<ParsedDocument> {
     let language = result
         .detected_languages
         .as_ref()
@@ -57,55 +97,10 @@ pub fn parse_file(path: &Path) -> Result<ParsedDocument> {
         title: result.metadata.title.map(CompactString::from),
         language,
         keywords,
+        layout: result.structured_output.map(|l| format!("{:?}", l)),
+        code_metadata: result.annotations.map(|c| format!("{:?}", c)),
+        embeddings: result.chunks.and_then(|c| c.into_iter().find_map(|chunk| chunk.embedding)),
     })
-}
-
-/// Process a batch of files using Kreuzberg's native asynchronous batch extraction
-pub fn parse_files_batch(paths: &[PathBuf]) -> Result<Vec<Result<ParsedDocument>>> {
-    tracing::debug!("Batch parsing {} files natively", paths.len());
-
-    let config = kreuzberg::ExtractionConfig {
-        use_cache: false,
-        ..Default::default()
-    };
-
-    // Dispatch to the native batching execution pool
-    let batched_paths: Vec<(PathBuf, Option<kreuzberg::FileExtractionConfig>)> =
-        paths.iter().map(|p| (p.clone(), None)).collect();
-
-    let batch_results =
-        kreuzberg::batch_extract_file_sync(batched_paths, &config).map_err(|e| {
-            tracing::error!("Kreuzberg batch extraction failed entirely: {}", e);
-            FlashError::parse(Path::new("batch"), format!("Batch extraction crashed: {e}"))
-        })?;
-
-    let mut final_results = Vec::with_capacity(batch_results.len());
-
-    for (i, result) in batch_results.into_iter().enumerate() {
-        if let Some(path) = paths.get(i) {
-            let language = result
-                .detected_languages
-                .as_ref()
-                .and_then(|langs| langs.first().map(CompactString::from));
-
-            let keywords = result.extracted_keywords.as_ref().map(|kws| {
-                kws.iter()
-                    .map(|k| k.text.as_str())
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            });
-
-            final_results.push(Ok(ParsedDocument {
-                path: path.to_string_lossy().to_string(),
-                content: result.content,
-                title: result.metadata.title.map(CompactString::from),
-                language,
-                keywords,
-            }));
-        }
-    }
-
-    Ok(final_results)
 }
 
 #[cfg(test)]

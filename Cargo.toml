@@ -11,7 +11,10 @@ name = "flash_search"
 
 [build-dependencies]
 winres = "0.1"
-image = { version = "0.25", default-features = false, features = ["png", "ico"] }
+image = { version = "0.25", default-features = false, features = [
+    "png",
+    "ico",
+] }
 
 [dependencies]
 # UI Framework
@@ -46,7 +49,15 @@ fd-lock = "4.0"
 
 # Document Parsing
 # Simplified with Kreuzberg
-kreuzberg = { version = "4.6.3", features = ["tokio-runtime", "pdf", "ocr", "language-detection", "keywords-yake"] }
+kreuzberg = { version = "4.8.0", features = [
+    "tokio-runtime",
+    "pdf",
+    "ocr",
+    "language-detection",
+    "keywords-yake",
+    "chunking",
+    "tree-sitter",
+] }
 
 
 # Performance Libraries
@@ -73,7 +84,10 @@ rfd = "0.17"
 ctrlc = "3.2"
 tray-icon = "0.21"
 auto-launch = "0.6"
-image = { version = "0.25", default-features = false, features = ["png", "ico"] }
+image = { version = "0.25", default-features = false, features = [
+    "png",
+    "ico",
+] }
 global-hotkey = "0.5.0"
 self_update = { version = "0.41", features = ["rustls"] }
 itertools = "0.13"
@@ -126,7 +140,12 @@ ci = ["github"]
 # The installers to generate for each app
 installers = ["powershell", "shell"]
 # Target platforms to build apps for (Rust target-triple syntax)
-targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin"]
+targets = [
+    "x86_64-pc-windows-msvc",
+    "x86_64-unknown-linux-gnu",
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+]
 # Whether to install an updater binary
 install-updater = true
 

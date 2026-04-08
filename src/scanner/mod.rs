@@ -6,7 +6,6 @@ use crate::metadata::MetadataDb;
 use crate::parsers::{parse_file, ParsedDocument};
 use blake3;
 use drive_scanner::DriveScanner;
-use rayon::prelude::*;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
@@ -49,15 +48,10 @@ pub struct Scanner {
     filename_index: Option<Arc<crate::indexer::filename_index::FilenameIndex>>,
     progress_tx: Option<mpsc::Sender<ProgressEvent>>,
     settings: crate::settings::AppSettings,
-    pool: Arc<rayon::ThreadPool>,
 }
 
 impl Scanner {
-    /// Creates a new Scanner instance
-    ///
-    /// # Panics
-    ///
-    /// Panics if the Rayon thread pool cannot be initialized.
+    /// Creates a new Scanner instance.
     pub fn new(
         indexer: Arc<IndexManager>,
         metadata_db: Arc<MetadataDb>,
@@ -65,25 +59,12 @@ impl Scanner {
         progress_tx: Option<mpsc::Sender<ProgressEvent>>,
         settings: crate::settings::AppSettings,
     ) -> Self {
-        let threads = settings.indexing_threads as usize;
-        let pool = rayon::ThreadPoolBuilder::new()
-            .num_threads(threads)
-            .stack_size(8 * 1024 * 1024)
-            .build()
-            .unwrap_or_else(|_| {
-                rayon::ThreadPoolBuilder::new()
-                    .stack_size(8 * 1024 * 1024)
-                    .build()
-                    .expect("Failed to initialize Rayon thread pool fallback")
-            });
-
         Self {
             indexer,
             metadata_db,
             filename_index,
             progress_tx,
             settings,
-            pool: Arc::new(pool),
         }
     }
 
@@ -248,9 +229,24 @@ impl Scanner {
             )
         });
 
-        // --- Stage 2: Content Indexing (Batched) ---
+        // --- Stage 2: Content Indexing (Async Batched) ---
+        //
+        // Architecture:
+        //   - path_rx (crossbeam, sync) is drained in a spawn_blocking task.
+        //   - Valid, filtered file paths are grouped into chunks of CHUNK_SIZE and
+        //     sent through an async mpsc channel (chunk_tx -> chunk_rx).
+        //   - An async Tokio task receives chunks and awaits parse_files_batch(),
+        //     which uses kreuzberg's native JoinSet-based concurrency internally —
+        //     no manual Rayon pool needed.
+        //   - Parsed IndexTasks are forwarded to a sync writer via crossbeam.
+        const CHUNK_SIZE: usize = 200;
+
         let (task_tx, task_rx) = crossbeam_channel::bounded::<IndexTask>(BATCH_SIZE * 8);
-        let metadata_db_for_parser = self.metadata_db.clone();
+        // Async channel for sending path-chunks from the blocking walker to the async parser.
+        let (chunk_tx, mut chunk_rx) =
+            tokio::sync::mpsc::channel::<Vec<(PathBuf, u64, u64)>>(32);
+
+        let metadata_db_for_filter = self.metadata_db.clone();
         let metadata_db_for_writer = self.metadata_db.clone();
         let indexer_clone = self.indexer.clone();
         let filename_index_clone = self.filename_index.clone();
@@ -265,41 +261,142 @@ impl Scanner {
                 .map(|e| e.to_lowercase())
                 .collect(),
         );
-        let allowed_extensions_clone = allowed_extensions.clone();
 
-        // --- Stage 2a: Parallel parsing (Rayon) ---
-        let pool = self.pool.clone();
-        let parser_handle = tokio::task::spawn_blocking(move || {
-            info!("Stage 2a: Parallel Parsing");
+        // --- Stage 2a: Blocking path receiver + filter ---
+        // Drains path_rx (crossbeam), applies extension/size/metadata filters,
+        // checks the metadata DB for staleness, then sends chunks over chunk_tx.
+        let filter_handle = tokio::task::spawn_blocking(move || {
+            info!("Stage 2a: Path filtering and chunking");
+            let limit_bytes = u64::from(file_size_limit_mb) * 1024 * 1024;
+            let mut chunk: Vec<(PathBuf, u64, u64)> = Vec::with_capacity(CHUNK_SIZE);
 
-            pool.install(|| {
-                let mut chunk = Vec::with_capacity(200);
-                for path in path_rx {
-                    chunk.push(path);
-                    if chunk.len() >= 200 {
-                        Self::process_chunk(
-                            &chunk,
-                            &metadata_db_for_parser,
-                            file_size_limit_mb,
-                            &allowed_extensions_clone,
-                            &task_tx,
-                        );
-                        chunk.clear();
-                    }
+            for path in path_rx {
+                // Extension filter
+                let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
+                    continue;
+                };
+                if !allowed_extensions.contains(&ext.to_ascii_lowercase()) {
+                    continue;
                 }
-                if !chunk.is_empty() {
-                    Self::process_chunk(
-                        &chunk,
-                        &metadata_db_for_parser,
-                        file_size_limit_mb,
-                        &allowed_extensions_clone,
-                        &task_tx,
+
+                // Stat the file
+                let Ok(meta) = std::fs::metadata(&path) else { continue };
+                let size = meta.len();
+                if size > limit_bytes {
+                    warn!(
+                        "Skipping large file: {} ({} bytes > {} bytes limit)",
+                        path.display(), size, limit_bytes
                     );
+                    continue;
                 }
-            });
+                let modified = meta
+                    .modified()
+                    .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+                    .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+
+                chunk.push((path, modified, size));
+
+                if chunk.len() >= CHUNK_SIZE {
+                    // Batch-check staleness against the metadata DB before sending.
+                    let entries: Vec<_> = chunk
+                        .iter()
+                        .map(|(p, m, s)| (p.to_string_lossy().to_string(), *m, *s))
+                        .collect();
+                    let needs: Vec<bool> = metadata_db_for_filter
+                        .batch_needs_reindex(&entries)
+                        .unwrap_or_else(|_| vec![true; entries.len()]);
+                    let stale: Vec<_> = chunk
+                        .drain(..)
+                        .zip(needs)
+                        .filter_map(|(item, need)| need.then_some(item))
+                        .collect();
+                    if !stale.is_empty() {
+                        let _ = chunk_tx.blocking_send(stale);
+                    }
+                    chunk.clear();
+                }
+            }
+
+            // Flush remainder
+            if !chunk.is_empty() {
+                let entries: Vec<_> = chunk
+                    .iter()
+                    .map(|(p, m, s)| (p.to_string_lossy().to_string(), *m, *s))
+                    .collect();
+                let needs: Vec<bool> = metadata_db_for_filter
+                    .batch_needs_reindex(&entries)
+                    .unwrap_or_else(|_| vec![true; entries.len()]);
+                let stale: Vec<_> = chunk
+                    .into_iter()
+                    .zip(needs)
+                    .filter_map(|(item, need)| need.then_some(item))
+                    .collect();
+                if !stale.is_empty() {
+                    let _ = chunk_tx.blocking_send(stale);
+                }
+            }
+            // chunk_tx drops here, closing chunk_rx.
         });
 
-        // --- Stage 2b: Sequential batch writer ---
+        // --- Stage 2b: Async Kreuzberg batch parser ---
+        // Receives chunks over the mpsc channel and awaits kreuzberg's native
+        // concurrent JoinSet-based batch extractor directly on the Tokio runtime.
+        let task_tx_for_parser = task_tx.clone();
+        let parser_handle = tokio::spawn(async move {
+            info!("Stage 2b: Async Kreuzberg batch parsing");
+            while let Some(chunk) = chunk_rx.recv().await {
+                let just_paths: Vec<PathBuf> = chunk.iter().map(|(p, _, _)| p.clone()).collect();
+
+                match crate::parsers::parse_files_batch(&just_paths).await {
+                    Ok(results) => {
+                        for (parsed_res, (path, modified, size)) in
+                            results.into_iter().zip(chunk.into_iter())
+                        {
+                            match parsed_res {
+                                Ok(parsed) => {
+                                    let content_hash =
+                                        blake3::hash(parsed.content.as_bytes()).into();
+                                    let _ = task_tx_for_parser.send(IndexTask {
+                                        doc: parsed,
+                                        modified,
+                                        size,
+                                        content_hash,
+                                    });
+                                }
+                                Err(e) => {
+                                    warn!("Failed to parse file {:?}: {}", path, e);
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        // Batch-level crash: fall back to individual sync parsing.
+                        warn!("Async batch crashed ({e}), falling back to per-file sync parsing");
+                        for (path, modified, size) in chunk {
+                            if let Ok(parsed) = parse_file(&path) {
+                                let content_hash =
+                                    blake3::hash(parsed.content.as_bytes()).into();
+                                let _ = task_tx_for_parser.send(IndexTask {
+                                    doc: parsed,
+                                    modified,
+                                    size,
+                                    content_hash,
+                                });
+                            } else {
+                                warn!("Failed to parse file {:?}", path);
+                            }
+                        }
+                    }
+                }
+            }
+            // Drop task_tx clone so the writer sees EOF once filter also drops.
+            drop(task_tx_for_parser);
+        });
+
+        // --- Stage 2c: Sequential batch writer (sync) ---
+        // Tantivy writes must be sequential; this separate thread drains task_rx.
         let writer_handle = tokio::task::spawn_blocking(move || {
             Self::process_writer_loop(
                 &task_rx,
@@ -316,9 +413,14 @@ impl Scanner {
             .await
             .map_err(|e| crate::error::FlashError::index(format!("Walk task failed: {e}")))?
             .map_err(|e| crate::error::FlashError::index(format!("Walk logic failed: {e}")))?;
+        filter_handle
+            .await
+            .map_err(|e| crate::error::FlashError::index(format!("Filter task failed: {e}")))?;
         parser_handle
             .await
             .map_err(|e| crate::error::FlashError::index(format!("Parse task failed: {e}")))?;
+        // Drop the original task_tx so the writer sees the channel close.
+        drop(task_tx);
         writer_handle
             .await
             .map_err(|e| crate::error::FlashError::index(format!("Write task failed: {e}")))?;
@@ -331,110 +433,6 @@ impl Scanner {
         Ok(())
     }
 
-    fn process_chunk(
-        chunk: &[PathBuf],
-        metadata_db: &Arc<MetadataDb>,
-        file_size_limit_mb: u32,
-        allowed_extensions: &std::collections::HashSet<String>,
-        task_tx: &crossbeam_channel::Sender<IndexTask>,
-    ) {
-        let limit_bytes = u64::from(file_size_limit_mb) * 1024 * 1024;
-        let mut batch_entries = Vec::with_capacity(chunk.len());
-        let mut valid_paths = Vec::with_capacity(chunk.len());
-
-        for path in chunk {
-            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                let ext_lower = ext.to_ascii_lowercase();
-                if !allowed_extensions.contains(&ext_lower) {
-                    continue;
-                }
-            } else {
-                // If the file doesn't have an extension, we skip it by default
-                continue;
-            }
-            let Ok(metadata) = std::fs::metadata(path) else {
-                continue;
-            };
-
-            let size = metadata.len();
-            if size > limit_bytes {
-                warn!(
-                    "Skipping large file: {} ({} bytes > limit of {} bytes)",
-                    path.display(),
-                    size,
-                    limit_bytes
-                );
-                continue;
-            }
-
-            let modified = metadata
-                .modified()
-                .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
-                .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs();
-
-            batch_entries.push((path.to_string_lossy().to_string(), modified, size));
-            valid_paths.push((path.clone(), modified, size));
-        }
-
-        if batch_entries.is_empty() {
-            return;
-        }
-
-        let needs_reindex = metadata_db
-            .batch_needs_reindex(&batch_entries)
-            .unwrap_or_else(|_| vec![true; batch_entries.len()]);
-
-        let paths_to_parse: Vec<_> = valid_paths
-            .into_iter()
-            .enumerate()
-            .filter(|(i, _)| needs_reindex[*i])
-            .map(|(_, data)| data)
-            .collect();
-
-        let just_paths: Vec<PathBuf> = paths_to_parse.iter().map(|(p, _, _)| p.clone()).collect();
-
-        // Stage 1: Attempt native batch computation
-        if let Ok(results) = crate::parsers::parse_files_batch(&just_paths) {
-            for (parsed_res, (path, modified, size)) in
-                results.into_iter().zip(paths_to_parse.into_iter())
-            {
-                match parsed_res {
-                    Ok(parsed) => {
-                        let content_hash = blake3::hash(parsed.content.as_bytes()).into();
-                        let _ = task_tx.send(IndexTask {
-                            doc: parsed,
-                            modified,
-                            size,
-                            content_hash,
-                        });
-                    }
-                    Err(e) => {
-                        warn!("Failed to parse file {:?}: {}", path, e);
-                    }
-                }
-            }
-        } else {
-            // Stage 2: Fallback to standalone parsing to isolate obscure file panic loops
-            warn!("Batch parsing crashed, dropping to discrete fallback loops");
-            paths_to_parse
-                .into_par_iter()
-                .for_each(|(path, modified, size)| {
-                    if let Ok(parsed) = parse_file(&path) {
-                        let content_hash = blake3::hash(parsed.content.as_bytes()).into();
-                        let _ = task_tx.send(IndexTask {
-                            doc: parsed,
-                            modified,
-                            size,
-                            content_hash,
-                        });
-                    } else {
-                        warn!("Failed to parse file {:?}", path);
-                    }
-                });
-        }
-    }
 }
 
 #[cfg(test)]
