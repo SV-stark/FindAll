@@ -5,6 +5,7 @@ description = "Ultrafast local text search"
 authors = ["Flash Search Team"]
 edition = "2024"
 rust-version = "1.94.1"
+resolver = "3"
 
 [lib]
 name = "flash_search"

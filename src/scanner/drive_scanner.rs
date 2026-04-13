@@ -70,7 +70,7 @@ mod windows_usn {
         path_tx: &crossbeam_channel::Sender<PathBuf>,
         progress_tx: Option<&mpsc::Sender<ProgressEvent>>,
         total_count: &Arc<AtomicUsize>,
-    ) -> Result<()> {
+    ) -> Result<()> { unsafe {
         let mut journal_data = USN_JOURNAL_DATA_V0::default();
         let mut bytes_returned = 0u32;
 
@@ -161,7 +161,7 @@ mod windows_usn {
             files,
         );
         Ok(())
-    }
+    }}
 
     fn reconstruct_paths(
         drive_root: &str,
