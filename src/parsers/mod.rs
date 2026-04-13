@@ -78,7 +78,10 @@ pub async fn parse_files_batch(paths: &[PathBuf]) -> Result<Vec<Result<ParsedDoc
 }
 
 /// Maps a `kreuzberg::ExtractionResult` into a `ParsedDocument`.
-fn map_extraction_result(path: &Path, result: kreuzberg::ExtractionResult) -> Result<ParsedDocument> {
+fn map_extraction_result(
+    path: &Path,
+    result: kreuzberg::ExtractionResult,
+) -> Result<ParsedDocument> {
     let language = result
         .detected_languages
         .as_ref()
@@ -99,7 +102,9 @@ fn map_extraction_result(path: &Path, result: kreuzberg::ExtractionResult) -> Re
         keywords,
         layout: result.structured_output.map(|l| format!("{:?}", l)),
         code_metadata: result.annotations.map(|c| format!("{:?}", c)),
-        embeddings: result.chunks.and_then(|c| c.into_iter().find_map(|chunk| chunk.embedding)),
+        embeddings: result
+            .chunks
+            .and_then(|c| c.into_iter().find_map(|chunk| chunk.embedding)),
     })
 }
 

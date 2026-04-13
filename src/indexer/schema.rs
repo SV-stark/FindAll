@@ -1,5 +1,5 @@
 use tantivy::schema::{
-    IndexRecordOption, Schema, TextFieldIndexing, TextOptions, FAST, INDEXED, STORED, STRING, TEXT,
+    FAST, INDEXED, IndexRecordOption, STORED, STRING, Schema, TEXT, TextFieldIndexing, TextOptions,
 };
 
 /// Create Tantivy schema optimized for file search

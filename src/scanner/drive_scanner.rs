@@ -6,8 +6,8 @@ mod windows_usn {
     use smallvec::SmallVec;
     use std::collections::HashMap;
     use std::path::{Path, PathBuf};
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use tokio::sync::mpsc;
     use tracing::{error, info};
     use windows::Win32::Foundation::{CloseHandle, GENERIC_READ, HANDLE};
@@ -15,11 +15,11 @@ mod windows_usn {
         CreateFileW, FILE_ATTRIBUTE_SYSTEM, FILE_FLAG_BACKUP_SEMANTICS, FILE_SHARE_READ,
         FILE_SHARE_WRITE, OPEN_EXISTING,
     };
+    use windows::Win32::System::IO::DeviceIoControl;
     use windows::Win32::System::Ioctl::{
         FSCTL_ENUM_USN_DATA, FSCTL_QUERY_USN_JOURNAL, FSCTL_READ_USN_JOURNAL, MFT_ENUM_DATA_V0,
         READ_USN_JOURNAL_DATA_V0, USN_JOURNAL_DATA_V0, USN_RECORD_V2,
     };
-    use windows::Win32::System::IO::DeviceIoControl;
 
     const USN_REASON_FILE_DELETE: u32 = 0x0000_0200;
 
@@ -70,98 +70,100 @@ mod windows_usn {
         path_tx: &crossbeam_channel::Sender<PathBuf>,
         progress_tx: Option<&mpsc::Sender<ProgressEvent>>,
         total_count: &Arc<AtomicUsize>,
-    ) -> Result<()> { unsafe {
-        let mut journal_data = USN_JOURNAL_DATA_V0::default();
-        let mut bytes_returned = 0u32;
-
-        DeviceIoControl(
-            handle,
-            FSCTL_QUERY_USN_JOURNAL,
-            None,
-            0,
-            Some(std::ptr::addr_of_mut!(journal_data).cast()),
-            u32::try_from(std::mem::size_of::<USN_JOURNAL_DATA_V0>()).unwrap_or(u32::MAX),
-            Some(&mut bytes_returned),
-            None,
-        )
-        .map_err(|e| FlashError::index(format!("Query USN Journal failed: {e}")))?;
-
-        let mut mft_enum_data = MFT_ENUM_DATA_V0 {
-            StartFileReferenceNumber: 0,
-            LowUsn: 0,
-            HighUsn: journal_data.NextUsn,
-        };
-
-        let mut dir_map: HashMap<u64, DirInfo> = HashMap::with_capacity(100_000);
-        let mut files: Vec<(CompactString, u64)> = Vec::with_capacity(500_000);
-        // Use a Vec<u64> to ensure 8-byte alignment for USN records and avoid large stack allocation
-        let mut buffer = vec![0u64; 8192]; // 8192 * 8 = 65536 bytes
-        let buffer_ptr = buffer.as_mut_ptr().cast::<u8>();
-        let buffer_len = u32::try_from(buffer.len() * 8).unwrap_or(u32::MAX);
-
-        info!("Enumerating MFT records...");
-
-        loop {
+    ) -> Result<()> {
+        unsafe {
+            let mut journal_data = USN_JOURNAL_DATA_V0::default();
             let mut bytes_returned = 0u32;
-            let success = DeviceIoControl(
+
+            DeviceIoControl(
                 handle,
-                FSCTL_ENUM_USN_DATA,
-                Some(std::ptr::addr_of!(mft_enum_data).cast()),
-                u32::try_from(std::mem::size_of::<MFT_ENUM_DATA_V0>()).unwrap_or(u32::MAX),
-                Some(buffer_ptr.cast()),
-                buffer_len,
+                FSCTL_QUERY_USN_JOURNAL,
+                None,
+                0,
+                Some(std::ptr::addr_of_mut!(journal_data).cast()),
+                u32::try_from(std::mem::size_of::<USN_JOURNAL_DATA_V0>()).unwrap_or(u32::MAX),
                 Some(&mut bytes_returned),
                 None,
-            );
+            )
+            .map_err(|e| FlashError::index(format!("Query USN Journal failed: {e}")))?;
 
-            if success.is_err() || bytes_returned < 8 {
-                break;
-            }
+            let mut mft_enum_data = MFT_ENUM_DATA_V0 {
+                StartFileReferenceNumber: 0,
+                LowUsn: 0,
+                HighUsn: journal_data.NextUsn,
+            };
 
-            let next_usn = unsafe { buffer_ptr.cast::<i64>().read_unaligned() };
-            mft_enum_data.StartFileReferenceNumber = u64::try_from(next_usn).unwrap_or(0);
+            let mut dir_map: HashMap<u64, DirInfo> = HashMap::with_capacity(100_000);
+            let mut files: Vec<(CompactString, u64)> = Vec::with_capacity(500_000);
+            // Use a Vec<u64> to ensure 8-byte alignment for USN records and avoid large stack allocation
+            let mut buffer = vec![0u64; 8192]; // 8192 * 8 = 65536 bytes
+            let buffer_ptr = buffer.as_mut_ptr().cast::<u8>();
+            let buffer_len = u32::try_from(buffer.len() * 8).unwrap_or(u32::MAX);
 
-            let mut offset = 8;
-            while offset < bytes_returned as usize {
-                let record_ptr = buffer_ptr.add(offset);
-                #[allow(clippy::cast_ptr_alignment)]
-                let record = unsafe { &*record_ptr.cast::<USN_RECORD_V2>() };
+            info!("Enumerating MFT records...");
 
-                // Skip system files to clean up the output and increase performance
-                if (record.FileAttributes & FILE_ATTRIBUTE_SYSTEM.0) == 0 {
-                    #[allow(clippy::cast_ptr_alignment)]
-                    let name_ptr =
-                        unsafe { record_ptr.add(record.FileNameOffset as usize).cast::<u16>() };
-                    let name_len = (record.FileNameLength / 2) as usize;
-                    let name = CompactString::from_utf16_lossy(unsafe {
-                        std::slice::from_raw_parts(name_ptr, name_len)
-                    });
+            loop {
+                let mut bytes_returned = 0u32;
+                let success = DeviceIoControl(
+                    handle,
+                    FSCTL_ENUM_USN_DATA,
+                    Some(std::ptr::addr_of!(mft_enum_data).cast()),
+                    u32::try_from(std::mem::size_of::<MFT_ENUM_DATA_V0>()).unwrap_or(u32::MAX),
+                    Some(buffer_ptr.cast()),
+                    buffer_len,
+                    Some(&mut bytes_returned),
+                    None,
+                );
 
-                    let frn = record.FileReferenceNumber;
-                    let parent_frn = record.ParentFileReferenceNumber;
-                    let is_dir = (record.FileAttributes & 0x0000_0010) != 0; // FILE_ATTRIBUTE_DIRECTORY
-
-                    if is_dir {
-                        dir_map.insert(frn, DirInfo { name, parent_frn });
-                    } else {
-                        files.push((name, parent_frn));
-                    }
+                if success.is_err() || bytes_returned < 8 {
+                    break;
                 }
 
-                offset += record.RecordLength as usize;
-            }
-        }
+                let next_usn = unsafe { buffer_ptr.cast::<i64>().read_unaligned() };
+                mft_enum_data.StartFileReferenceNumber = u64::try_from(next_usn).unwrap_or(0);
 
-        reconstruct_paths(
-            drive_root,
-            path_tx,
-            progress_tx,
-            total_count,
-            &dir_map,
-            files,
-        );
-        Ok(())
-    }}
+                let mut offset = 8;
+                while offset < bytes_returned as usize {
+                    let record_ptr = buffer_ptr.add(offset);
+                    #[allow(clippy::cast_ptr_alignment)]
+                    let record = unsafe { &*record_ptr.cast::<USN_RECORD_V2>() };
+
+                    // Skip system files to clean up the output and increase performance
+                    if (record.FileAttributes & FILE_ATTRIBUTE_SYSTEM.0) == 0 {
+                        #[allow(clippy::cast_ptr_alignment)]
+                        let name_ptr =
+                            unsafe { record_ptr.add(record.FileNameOffset as usize).cast::<u16>() };
+                        let name_len = (record.FileNameLength / 2) as usize;
+                        let name = CompactString::from_utf16_lossy(unsafe {
+                            std::slice::from_raw_parts(name_ptr, name_len)
+                        });
+
+                        let frn = record.FileReferenceNumber;
+                        let parent_frn = record.ParentFileReferenceNumber;
+                        let is_dir = (record.FileAttributes & 0x0000_0010) != 0; // FILE_ATTRIBUTE_DIRECTORY
+
+                        if is_dir {
+                            dir_map.insert(frn, DirInfo { name, parent_frn });
+                        } else {
+                            files.push((name, parent_frn));
+                        }
+                    }
+
+                    offset += record.RecordLength as usize;
+                }
+            }
+
+            reconstruct_paths(
+                drive_root,
+                path_tx,
+                progress_tx,
+                total_count,
+                &dir_map,
+                files,
+            );
+            Ok(())
+        }
+    }
 
     fn reconstruct_paths(
         drive_root: &str,
@@ -395,8 +397,8 @@ use crate::error::Result;
 use crate::scanner::{ProgressEvent, ProgressType};
 use ignore::WalkBuilder;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::mpsc;
 use tracing::{info, warn};
 
@@ -456,13 +458,15 @@ impl DriveScanner for DefaultDriveScanner {
             let progress_tx = progress_tx.clone();
             let total = total_count.clone();
             Box::new(move |entry| {
+                #[allow(clippy::collapsible_if)]
                 if let Ok(entry) = entry {
                     if entry.file_type().is_some_and(|ft| ft.is_file()) {
                         let path = entry.path().to_path_buf();
                         let _ = path_tx.send(path);
                         let count = total.fetch_add(1, Ordering::Relaxed);
 
-                        if count % 100 == 0 {
+                        #[allow(clippy::collapsible_if)]
+                        if count.is_multiple_of(100) {
                             if let Some(tx) = &progress_tx {
                                 let _ = tx.try_send(ProgressEvent {
                                     ptype: ProgressType::Filename,

@@ -1,5 +1,5 @@
-use super::{theme, App, Message, Tab};
-use iced::widget::{button, checkbox, column, container, row, text, Scrollable, Space, TextInput};
+use super::{App, Message, Tab, theme};
+use iced::widget::{Scrollable, Space, TextInput, button, checkbox, column, container, row, text};
 use iced::{Alignment, Element, Length, Padding};
 
 pub fn settings_view(app: &App) -> Element<'_, Message> {

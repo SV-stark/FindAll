@@ -1,7 +1,7 @@
 #[cfg(target_os = "windows")]
 pub fn set_auto_start(enable: bool, app_name: &str, exe_path: &str) -> Result<(), String> {
-    use winreg::enums::{HKEY_CURRENT_USER, KEY_ALL_ACCESS};
     use winreg::RegKey;
+    use winreg::enums::{HKEY_CURRENT_USER, KEY_ALL_ACCESS};
 
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
     let run_key = hkcu
@@ -23,8 +23,8 @@ pub fn set_auto_start(enable: bool, app_name: &str, exe_path: &str) -> Result<()
 
 #[cfg(target_os = "windows")]
 pub fn is_auto_start_enabled(app_name: &str) -> Result<bool, String> {
-    use winreg::enums::HKEY_CURRENT_USER;
     use winreg::RegKey;
+    use winreg::enums::HKEY_CURRENT_USER;
 
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
     let run_key = hkcu

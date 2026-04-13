@@ -299,9 +299,11 @@ mod tests {
         let watch_dir = temp.path().join("watch_me");
         fs::create_dir(&watch_dir).unwrap();
 
-        assert!(watcher
-            .update_watch_list(&[watch_dir.to_string_lossy().to_string()])
-            .is_ok());
+        assert!(
+            watcher
+                .update_watch_list(&[watch_dir.to_string_lossy().to_string()])
+                .is_ok()
+        );
         assert!(!watcher.watchers.is_empty());
 
         // Empty list should remove watcher

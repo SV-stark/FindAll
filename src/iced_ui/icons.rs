@@ -1,5 +1,5 @@
-use iced::widget::{text, Text};
 use iced::Element;
+use iced::widget::{Text, text};
 
 pub const FONT: iced::Font = iced::Font::with_name("lucide");
 

@@ -3,13 +3,13 @@ pub mod drive_scanner;
 use crate::error::Result;
 use crate::indexer::IndexManager;
 use crate::metadata::MetadataDb;
-use crate::parsers::{parse_file, ParsedDocument};
+use crate::parsers::{ParsedDocument, parse_file};
 use blake3;
 use drive_scanner::DriveScanner;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::mpsc;
 use tracing::{info, instrument, warn};
@@ -52,7 +52,7 @@ pub struct Scanner {
 
 impl Scanner {
     /// Creates a new Scanner instance.
-    pub fn new(
+    pub const fn new(
         indexer: Arc<IndexManager>,
         metadata_db: Arc<MetadataDb>,
         filename_index: Option<Arc<crate::indexer::filename_index::FilenameIndex>>,
@@ -138,7 +138,7 @@ impl Scanner {
             }
 
             // Progress update
-            if processed % 10 == 0 {
+            if processed.is_multiple_of(10) {
                 let current_total = total_files.load(Ordering::Relaxed);
                 let elapsed = start.elapsed().as_secs_f64();
                 let rate = if elapsed > 0.0 {
@@ -148,7 +148,7 @@ impl Scanner {
                 };
 
                 // Batch summary every 1000 files
-                if processed % 1000 == 0 {
+                if processed.is_multiple_of(1000) {
                     info!(
                         "Indexed {} / {} files ({:.1} files/s)",
                         processed, current_total, rate
@@ -207,6 +207,7 @@ impl Scanner {
         );
     }
 
+    #[allow(clippy::too_many_lines)]
     #[instrument(skip(self, exclude_patterns), fields(root = %root.display()))]
     pub async fn scan_directory(&self, root: PathBuf, exclude_patterns: Vec<String>) -> Result<()> {
         info!("Starting directory scan for {}", root.display());
@@ -243,8 +244,7 @@ impl Scanner {
 
         let (task_tx, task_rx) = crossbeam_channel::bounded::<IndexTask>(BATCH_SIZE * 8);
         // Async channel for sending path-chunks from the blocking walker to the async parser.
-        let (chunk_tx, mut chunk_rx) =
-            tokio::sync::mpsc::channel::<Vec<(PathBuf, u64, u64)>>(32);
+        let (chunk_tx, mut chunk_rx) = tokio::sync::mpsc::channel::<Vec<(PathBuf, u64, u64)>>(32);
 
         let metadata_db_for_filter = self.metadata_db.clone();
         let metadata_db_for_writer = self.metadata_db.clone();
@@ -280,12 +280,16 @@ impl Scanner {
                 }
 
                 // Stat the file
-                let Ok(meta) = std::fs::metadata(&path) else { continue };
+                let Ok(meta) = std::fs::metadata(&path) else {
+                    continue;
+                };
                 let size = meta.len();
                 if size > limit_bytes {
                     warn!(
                         "Skipping large file: {} ({} bytes > {} bytes limit)",
-                        path.display(), size, limit_bytes
+                        path.display(),
+                        size,
+                        limit_bytes
                     );
                     continue;
                 }
@@ -307,8 +311,9 @@ impl Scanner {
                     let needs: Vec<bool> = metadata_db_for_filter
                         .batch_needs_reindex(&entries)
                         .unwrap_or_else(|_| vec![true; entries.len()]);
-                    let stale: Vec<_> = chunk
-                        .drain(..)
+                    let current_chunk = std::mem::take(&mut chunk);
+                    let stale: Vec<_> = current_chunk
+                        .into_iter()
                         .zip(needs)
                         .filter_map(|(item, need)| need.then_some(item))
                         .collect();
@@ -376,8 +381,7 @@ impl Scanner {
                         warn!("Async batch crashed ({e}), falling back to per-file sync parsing");
                         for (path, modified, size) in chunk {
                             if let Ok(parsed) = parse_file(&path) {
-                                let content_hash =
-                                    blake3::hash(parsed.content.as_bytes()).into();
+                                let content_hash = blake3::hash(parsed.content.as_bytes()).into();
                                 let _ = task_tx_for_parser.send(IndexTask {
                                     doc: parsed,
                                     modified,
@@ -432,7 +436,6 @@ impl Scanner {
 
         Ok(())
     }
-
 }
 
 #[cfg(test)]

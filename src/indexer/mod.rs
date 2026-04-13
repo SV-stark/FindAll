@@ -11,7 +11,7 @@ use crate::error::{FlashError, Result};
 use crate::parsers::ParsedDocument;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tantivy::{directory::MmapDirectory, Index};
+use tantivy::{Index, directory::MmapDirectory};
 use tracing::{error, info, warn};
 
 /// Current schema version - bump this when schema changes

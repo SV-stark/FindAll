@@ -1,9 +1,9 @@
-use super::{theme, App, DateFilter, Message, Tab};
+use super::{App, DateFilter, Message, Tab, theme};
 use iced::widget::{
-    button, checkbox, column, container, mouse_area, rich_text, row, scrollable, span, text, Space,
-    TextInput,
+    Space, TextInput, button, checkbox, column, container, mouse_area, rich_text, row, scrollable,
+    span, text,
 };
-use iced::{font, Alignment, Element, Font, Length, Padding};
+use iced::{Alignment, Element, Font, Length, Padding, font};
 
 // --- Icons from TTF Font ---
 use crate::iced_ui::icons::{load_icon, load_icon_size};
@@ -215,10 +215,12 @@ fn filter_chips(app: &App) -> Element<'_, Message> {
 
 fn collapsed_sidebar(_app: &App) -> Element<'_, Message> {
     container(
-        column![button(load_icon_size("filter", 16.0))
-            .on_press(Message::ToggleSidebar)
-            .style(theme::ghost_button())
-            .padding(Padding::new(8.0)),]
+        column![
+            button(load_icon_size("filter", 16.0))
+                .on_press(Message::ToggleSidebar)
+                .style(theme::ghost_button())
+                .padding(Padding::new(8.0)),
+        ]
         .spacing(16)
         .padding(Padding::new(8.0))
         .align_x(Alignment::Center),

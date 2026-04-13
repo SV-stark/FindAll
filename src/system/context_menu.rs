@@ -10,8 +10,8 @@ pub fn register_context_menu(_enable: bool) -> crate::error::Result<()> {
 #[cfg(target_os = "windows")]
 pub fn register_context_menu(enable: bool) -> Result<()> {
     use std::env;
-    use winreg::enums::HKEY_CURRENT_USER;
     use winreg::RegKey;
+    use winreg::enums::HKEY_CURRENT_USER;
 
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
     let paths = [

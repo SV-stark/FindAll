@@ -25,7 +25,7 @@ pub use system::{
     open_folder_internal, select_folder_internal,
 };
 
-use crate::indexer::{filename_index::FilenameIndex, IndexManager};
+use crate::indexer::{IndexManager, filename_index::FilenameIndex};
 use crate::metadata::MetadataDb;
 use crate::settings::{AppSettings, SettingsManager};
 use crate::watcher::WatcherManager;
@@ -88,12 +88,14 @@ mod tests {
     fn test_export_csv() {
         let temp_dir = tempdir().unwrap();
         let csv_path = temp_dir.path().join("test.csv");
-        let results = vec![SearchResult::builder()
-            .file_path("test.txt".to_string())
-            .score(1.0)
-            .matched_terms(vec![])
-            .snippets(vec![])
-            .build()];
+        let results = vec![
+            SearchResult::builder()
+                .file_path("test.txt".to_string())
+                .score(1.0)
+                .matched_terms(vec![])
+                .snippets(vec![])
+                .build(),
+        ];
 
         export_results_csv(&results, csv_path.to_str().unwrap()).unwrap();
         let content = std::fs::read_to_string(csv_path).unwrap();

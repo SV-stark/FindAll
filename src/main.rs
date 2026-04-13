@@ -8,7 +8,7 @@ use tracing::{error, info};
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 use tracing_appender::rolling;
-use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 static LOG_GUARD: std::sync::OnceLock<tracing_appender::non_blocking::WorkerGuard> =
     std::sync::OnceLock::new();

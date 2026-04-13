@@ -1,4 +1,4 @@
-use super::query_parser::{extract_highlight_terms, ParsedQuery};
+use super::query_parser::{ParsedQuery, extract_highlight_terms};
 use crate::error::{FlashError, Result};
 use compact_str::CompactString;
 use moka::sync::Cache;
