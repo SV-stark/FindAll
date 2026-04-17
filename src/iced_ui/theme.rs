@@ -155,9 +155,13 @@ pub fn input_container(theme: &Theme) -> container::Style {
     container::Style {
         background: Some(Background::Color(surface_color(theme))),
         border: Border {
-            color: border_color(theme),
+            color: if is_dark_theme(theme) {
+                Color::from_rgb(0.2, 0.21, 0.24)
+            } else {
+                border_color(theme)
+            },
             width: 1.0,
-            radius: Radius::from(8.0),
+            radius: Radius::from(10.0),
         },
         ..Default::default()
     }
@@ -192,13 +196,17 @@ pub fn result_card_hover(theme: &Theme) -> container::Style {
 }
 
 #[must_use]
-pub fn result_card_selected(_theme: &Theme) -> container::Style {
+pub fn result_card_selected(theme: &Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(Color::from_rgba(0.23, 0.51, 0.96, 0.2))),
+        background: Some(Background::Color(if is_dark_theme(theme) {
+            Color::from_rgba(0.23, 0.51, 0.96, 0.12)
+        } else {
+            Color::from_rgba(0.23, 0.51, 0.96, 0.08)
+        })),
         border: Border {
             color: ACCENT_BLUE,
             width: 1.0,
-            radius: Radius::from(6.0),
+            radius: Radius::from(10.0),
         },
         ..Default::default()
     }
@@ -459,15 +467,47 @@ pub fn error_container(_theme: &Theme) -> container::Style {
     }
 }
 
+// --- Badge / Pill Styles ---
+#[must_use]
+pub fn badge_container(theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(if is_dark_theme(theme) {
+            Color::from_rgba(1.0, 1.0, 1.0, 0.05)
+        } else {
+            Color::from_rgba(0.0, 0.0, 0.0, 0.05)
+        })),
+        border: Border {
+            color: border_color(theme),
+            width: 1.0,
+            radius: Radius::from(6.0),
+        },
+        ..Default::default()
+    }
+}
+
+#[must_use]
+pub fn accent_badge_container(_theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(Color::from_rgba(0.23, 0.51, 0.96, 0.1))),
+        border: Border {
+            color: Color::from_rgba(0.23, 0.51, 0.96, 0.3),
+            width: 1.0,
+            radius: Radius::from(6.0),
+        },
+        text_color: Some(ACCENT_BLUE),
+        ..Default::default()
+    }
+}
+
 // --- Helper for Hit Highlights ---
 #[must_use]
 pub fn hit_tag_container(_theme: &Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(Color::from_rgba(0.96, 0.62, 0.04, 0.2))),
+        background: Some(Background::Color(Color::from_rgba(0.96, 0.62, 0.04, 0.15))),
         border: Border {
-            color: HIT_AMBER,
-            width: 0.0,
-            radius: Radius::from(2.0),
+            color: Color::from_rgba(0.96, 0.62, 0.04, 0.3),
+            width: 1.0,
+            radius: Radius::from(4.0),
         },
         text_color: Some(HIT_AMBER),
         ..Default::default()
