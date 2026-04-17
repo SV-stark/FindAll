@@ -476,7 +476,9 @@ pub fn hit_tag_container(_theme: &Theme) -> container::Style {
 
 // Compatibility shims if needed
 #[must_use]
-pub fn result_button(is_selected: bool) -> impl Fn(&Theme, button::Status) -> button::Style + use<> {
+pub fn result_button(
+    is_selected: bool,
+) -> impl Fn(&Theme, button::Status) -> button::Style + use<> {
     nav_button(is_selected)
 }
 
