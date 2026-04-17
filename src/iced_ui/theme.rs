@@ -250,7 +250,8 @@ pub fn hit_highlight_container(theme: &Theme) -> container::Style {
 
 // --- Button Styles ---
 
-pub fn primary_button() -> impl Fn(&Theme, button::Status) -> button::Style {
+#[must_use]
+pub fn primary_button() -> impl Fn(&Theme, button::Status) -> button::Style + use<> {
     move |_theme: &Theme, status: button::Status| {
         let base = button::Style {
             background: Some(Background::Color(ACCENT_BLUE)),
@@ -277,7 +278,8 @@ pub fn primary_button() -> impl Fn(&Theme, button::Status) -> button::Style {
     }
 }
 
-pub fn search_button() -> impl Fn(&Theme, button::Status) -> button::Style {
+#[must_use]
+pub fn search_button() -> impl Fn(&Theme, button::Status) -> button::Style + use<> {
     move |theme: &Theme, status: button::Status| {
         let mut style = primary_button()(theme, status);
         style.background = Some(Background::Color(Color::from_rgb(0.18, 0.55, 0.72))); // A bit more teal/blue like in image
@@ -286,7 +288,8 @@ pub fn search_button() -> impl Fn(&Theme, button::Status) -> button::Style {
     }
 }
 
-pub fn secondary_button() -> impl Fn(&Theme, button::Status) -> button::Style {
+#[must_use]
+pub fn secondary_button() -> impl Fn(&Theme, button::Status) -> button::Style + use<> {
     move |theme: &Theme, status: button::Status| {
         let bg_hover = if is_dark_theme(theme) {
             Color::from_rgb(0.2, 0.22, 0.25)
@@ -315,7 +318,8 @@ pub fn secondary_button() -> impl Fn(&Theme, button::Status) -> button::Style {
     }
 }
 
-pub fn clear_filter_button() -> impl Fn(&Theme, button::Status) -> button::Style {
+#[must_use]
+pub fn clear_filter_button() -> impl Fn(&Theme, button::Status) -> button::Style + use<> {
     move |theme: &Theme, status: button::Status| {
         let mut style = secondary_button()(theme, status);
         style.background = Some(Background::Color(if is_dark_theme(theme) {
@@ -328,7 +332,8 @@ pub fn clear_filter_button() -> impl Fn(&Theme, button::Status) -> button::Style
     }
 }
 
-pub fn ghost_button() -> impl Fn(&Theme, button::Status) -> button::Style {
+#[must_use]
+pub fn ghost_button() -> impl Fn(&Theme, button::Status) -> button::Style + use<> {
     move |theme: &Theme, status: button::Status| {
         let hover_bg = if is_dark_theme(theme) {
             Color::from_rgba(1.0, 1.0, 1.0, 0.05)
@@ -354,7 +359,8 @@ pub fn ghost_button() -> impl Fn(&Theme, button::Status) -> button::Style {
     }
 }
 
-pub fn nav_button(is_active: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
+#[must_use]
+pub fn nav_button(is_active: bool) -> impl Fn(&Theme, button::Status) -> button::Style + use<> {
     move |theme: &Theme, status: button::Status| {
         if is_active {
             button::Style {
@@ -373,7 +379,8 @@ pub fn nav_button(is_active: bool) -> impl Fn(&Theme, button::Status) -> button:
     }
 }
 
-pub fn top_menu_button() -> impl Fn(&Theme, button::Status) -> button::Style {
+#[must_use]
+pub fn top_menu_button() -> impl Fn(&Theme, button::Status) -> button::Style + use<> {
     move |theme: &Theme, status: button::Status| {
         let mut style = ghost_button()(theme, status);
         style.text_color = text_bright_color(theme);
@@ -381,13 +388,15 @@ pub fn top_menu_button() -> impl Fn(&Theme, button::Status) -> button::Style {
     }
 }
 
-pub fn icon_button() -> impl Fn(&Theme, button::Status) -> button::Style {
+#[must_use]
+pub fn icon_button() -> impl Fn(&Theme, button::Status) -> button::Style + use<> {
     ghost_button()
 }
 
 // --- Input Styles ---
 
-pub fn search_input() -> impl Fn(&Theme, text_input::Status) -> text_input::Style {
+#[must_use]
+pub fn search_input() -> impl Fn(&Theme, text_input::Status) -> text_input::Style + use<> {
     move |theme: &Theme, status: text_input::Status| {
         let is_focused = matches!(status, text_input::Status::Focused { .. });
         text_input::Style {
@@ -409,25 +418,29 @@ pub fn search_input() -> impl Fn(&Theme, text_input::Status) -> text_input::Styl
     }
 }
 
-pub fn small_input() -> impl Fn(&Theme, text_input::Status) -> text_input::Style {
+#[must_use]
+pub fn small_input() -> impl Fn(&Theme, text_input::Status) -> text_input::Style + use<> {
     search_input()
 }
 
 // --- Text Styles ---
 
-pub fn dim_text_style() -> impl Fn(&Theme) -> text::Style {
+#[must_use]
+pub fn dim_text_style() -> impl Fn(&Theme) -> text::Style + use<> {
     |theme| text::Style {
         color: Some(text_dim_color(theme)),
     }
 }
 
-pub fn muted_text_style() -> impl Fn(&Theme) -> text::Style {
+#[must_use]
+pub fn muted_text_style() -> impl Fn(&Theme) -> text::Style + use<> {
     |theme| text::Style {
         color: Some(text_muted_color(theme)),
     }
 }
 
-pub fn error_text_style() -> impl Fn(&Theme) -> text::Style {
+#[must_use]
+pub fn error_text_style() -> impl Fn(&Theme) -> text::Style + use<> {
     |_| text::Style {
         color: Some(Color::from_rgb(0.9, 0.2, 0.2)),
     }
@@ -462,11 +475,13 @@ pub fn hit_tag_container(_theme: &Theme) -> container::Style {
 }
 
 // Compatibility shims if needed
-pub fn result_button(is_selected: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
+#[must_use]
+pub fn result_button(is_selected: bool) -> impl Fn(&Theme, button::Status) -> button::Style + use<> {
     nav_button(is_selected)
 }
 
-pub fn tab_button(is_active: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
+#[must_use]
+pub fn tab_button(is_active: bool) -> impl Fn(&Theme, button::Status) -> button::Style + use<> {
     nav_button(is_active)
 }
 
