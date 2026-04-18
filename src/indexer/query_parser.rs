@@ -88,26 +88,26 @@ impl ParsedQuery {
                 "size" => {
                     if let Some(scap) = size_regex.captures(&value) {
                         let op = scap.get(1).map_or("", |m| m.as_str());
-                        if let Some(num_str) = scap.get(2) {
-                            if let Ok(num) = num_str.as_str().parse::<f64>() {
-                                let multiplier = scap.get(3).map_or(1, |m| {
-                                    match m.as_str().to_uppercase().as_str() {
-                                        "GB" => 1024 * 1024 * 1024,
-                                        "MB" => 1024 * 1024,
-                                        "KB" => 1024,
-                                        _ => 1,
-                                    }
-                                });
+                        if let Some(num_str) = scap.get(2)
+                            && let Ok(num) = num_str.as_str().parse::<f64>()
+                        {
+                            let multiplier = scap.get(3).map_or(1, |m| {
+                                match m.as_str().to_uppercase().as_str() {
+                                    "GB" => 1024 * 1024 * 1024,
+                                    "MB" => 1024 * 1024,
+                                    "KB" => 1024,
+                                    _ => 1,
+                                }
+                            });
 
-                                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-                                let bytes = (num * f64::from(multiplier)).round() as u64;
-                                match op {
-                                    ">" => min_size = Some(bytes),
-                                    "<" => max_size = Some(bytes),
-                                    _ => {
-                                        min_size = Some(bytes);
-                                        max_size = Some(bytes);
-                                    }
+                            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                            let bytes = (num * f64::from(multiplier)).round() as u64;
+                            match op {
+                                ">" => min_size = Some(bytes),
+                                "<" => max_size = Some(bytes),
+                                _ => {
+                                    min_size = Some(bytes);
+                                    max_size = Some(bytes);
                                 }
                             }
                         }
@@ -147,7 +147,7 @@ impl ParsedQuery {
     /// Check if a path matches the extension filter
     #[must_use]
     pub fn matches_extension(&self, path: &str) -> bool {
-        self.extension.as_ref().map_or(true, |ext| {
+        self.extension.as_ref().is_none_or(|ext| {
             let path_lower = path.to_lowercase();
             path_lower.ends_with(&format!(".{ext}"))
         })
@@ -156,7 +156,7 @@ impl ParsedQuery {
     /// Check if a path matches the path filter
     #[must_use]
     pub fn matches_path(&self, path: &str) -> bool {
-        self.path_filter.as_ref().map_or(true, |filter| {
+        self.path_filter.as_ref().is_none_or(|filter| {
             if self.case_sensitive {
                 path.contains(filter)
             } else {
@@ -168,7 +168,7 @@ impl ParsedQuery {
     /// Check if a title matches the title filter
     #[must_use]
     pub fn matches_title(&self, title: Option<&str>) -> bool {
-        self.title_filter.as_ref().map_or(true, |filter| {
+        self.title_filter.as_ref().is_none_or(|filter| {
             title.is_some_and(|t| {
                 if self.case_sensitive {
                     t.contains(filter)

@@ -837,7 +837,7 @@ pub fn view(app: &App) -> Element<'_, Message> {
 }
 
 pub fn subscription(app: &App) -> Subscription<Message> {
-    if let Some(rx) = &app.progress_rx {
+    app.progress_rx.as_ref().map_or_else(Subscription::none, |rx| {
         Subscription::run_with(SubscriptionData { rx: rx.clone() }, |data| {
             let rx = data.rx.clone();
             iced::stream::channel(
@@ -871,9 +871,7 @@ pub fn subscription(app: &App) -> Subscription<Message> {
                 },
             )
         })
-    } else {
-        Subscription::none()
-    }
+    })
 }
 
 pub const fn app_theme(app: &App) -> iced::Theme {
@@ -913,8 +911,8 @@ pub fn run_ui(
     .subscription(subscription)
     .run()
     {
-        tracing::error!("Iced application failed to run: {}", e);
-        panic!("Iced application failed to run: {}", e);
+        tracing::error!("Iced application failed to run: {e}");
+        panic!("Iced application failed to run: {e}");
     }
 }
 

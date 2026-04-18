@@ -106,14 +106,15 @@ impl MetadataDb {
         let result = table
             .get(path_str)
             .map_err(|e| FlashError::database("database_operation", "files_table", e.to_string()))?
-            .map_or(true, |metadata| {
+            .is_none_or(|metadata| {
                 let bytes = metadata.value();
                 // Zero-copy read and validate with byte alignment
                 let mut aligned_bytes = rkyv::util::AlignedVec::<16>::new();
                 aligned_bytes.extend_from_slice(bytes);
 
                 rkyv::access::<rkyv::Archived<FileMetadata>, rkyv::rancor::Error>(&aligned_bytes)
-                    .map_or(true, |meta| meta.modified != modified || meta.size != size)
+                    .ok()
+                    .is_none_or(|meta| meta.modified != modified || meta.size != size)
             });
 
         Ok(result)
@@ -319,15 +320,17 @@ impl MetadataDb {
         let results: Vec<bool> = entries
             .iter()
             .map(|(path, modified, size)| {
-                table.get(path.as_str()).map_or(true, |opt_metadata| {
-                    opt_metadata.map_or(true, |metadata| {
-                        let bytes = metadata.value();
-                        rkyv::access::<rkyv::Archived<FileMetadata>, rkyv::rancor::Error>(bytes)
-                            .map_or(true, |meta| {
-                                meta.modified != *modified || meta.size != *size
-                            })
+                table
+                    .get(path.as_str())
+                    .ok()
+                    .is_none_or(|opt_metadata| {
+                        opt_metadata.is_none_or(|metadata| {
+                            let bytes = metadata.value();
+                            rkyv::access::<rkyv::Archived<FileMetadata>, rkyv::rancor::Error>(bytes)
+                                .ok()
+                                .is_none_or(|meta| meta.modified != *modified || meta.size != *size)
+                        })
                     })
-                })
             })
             .collect();
 

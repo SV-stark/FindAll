@@ -398,6 +398,7 @@ fn results_panel(app: &App) -> iced::widget::Container<'_, Message> {
     container(results).width(Length::Fill).height(Length::Fill)
 }
 
+#[allow(clippy::too_many_lines)]
 fn result_item_view<'a>(app: &App, i: usize, res: &'a super::FileItem) -> Element<'a, Message> {
     let is_selected = app.selected_index == Some(i);
     let is_hovered = app.hovered_item_index == Some(i);
@@ -545,11 +546,11 @@ fn highlight_text<'a>(content: &'a str, terms: &[String]) -> Element<'a, Message
     matches.sort_by_key(|m| m.0);
     let mut merged: Vec<(usize, usize)> = Vec::new();
     for m in matches {
-        if let Some(last) = merged.last_mut() {
-            if m.0 <= last.1 {
-                last.1 = last.1.max(m.1);
-                continue;
-            }
+        if let Some(last) = merged.last_mut()
+            && m.0 <= last.1
+        {
+            last.1 = last.1.max(m.1);
+            continue;
         }
         merged.push(m);
     }
@@ -626,97 +627,104 @@ fn parse_snippet<'a>(content: &'a str) -> Element<'a, Message> {
     rich_text(spans).into()
 }
 
+#[allow(clippy::too_many_lines)]
 fn right_panel(app: &App) -> Element<'_, Message> {
-    if let Some(preview_result) = &app.preview_result {
-        let ext = app
-            .selected_index
-            .and_then(|i| app.results.get(i))
-            .and_then(|r| r.extension.as_deref())
-            .unwrap_or("txt");
+    app.preview_result.as_ref().map_or_else(
+        || {
+            container(
+                column![
+                    load_icon_size("file-text", 48.0),
+                    text(if app.is_loading_preview {
+                        "Loading document contents..."
+                    } else {
+                        "Select a file to preview"
+                    })
+                    .size(18)
+                    .style(theme::dim_text_style()),
+                ]
+                .spacing(16)
+                .align_x(Alignment::Center),
+            )
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .into()
+        },
+        |preview_result| {
+            let ext = app
+                .selected_index
+                .and_then(|i| app.results.get(i))
+                .and_then(|r| r.extension.as_deref())
+                .unwrap_or("txt");
 
-        let content = if preview_result.matched_terms.is_empty() {
-            render_code_preview(&preview_result.content, ext, app.is_dark)
-        } else {
-            highlight_text(&preview_result.content, &preview_result.matched_terms)
-        };
-
-        let snippets: Element<'_, Message> =
-            if let Some(res) = app.selected_index.and_then(|i| app.results.get(i)) {
-                if res.snippets.is_empty() {
-                    column![].into()
-                } else {
-                    column![
-                        text("Context Highlights")
-                            .size(14)
-                            .font(Font {
-                                weight: font::Weight::Bold,
-                                ..Font::default()
-                            })
-                            .style(theme::dim_text_style()),
-                        column(
-                            res.snippets
-                                .iter()
-                                .enumerate()
-                                .map(|(i, s)| hit_row(i + 1, s))
-                        )
-                        .spacing(8)
-                    ]
-                    .spacing(12)
-                    .into()
-                }
+            let content = if preview_result.matched_terms.is_empty() {
+                render_code_preview(&preview_result.content, ext, app.is_dark)
             } else {
-                column![].into()
+                highlight_text(&preview_result.content, &preview_result.matched_terms)
             };
 
-        container(scrollable(
-            column![
-                container(
-                    row![
-                        load_icon("file-text"),
-                        text(preview_result.content.len().to_string()).size(12)
-                    ]
-                    .spacing(8)
-                    .align_y(Alignment::Center)
-                )
-                .style(theme::badge_container)
-                .padding(8.0),
-                snippets,
-                Space::new().height(16.0),
-                text("Full File Preview")
-                    .size(14)
-                    .font(Font {
-                        weight: font::Weight::Bold,
-                        ..Font::default()
-                    })
-                    .style(theme::dim_text_style()),
-                container(content)
-                    .padding(Padding::new(20.0))
-                    .style(theme::main_content_container),
-            ]
-            .spacing(20)
-            .padding(Padding::new(24.0)),
-        ))
-        .height(Length::Fill)
-        .into()
-    } else {
-        container(
-            column![
-                load_icon_size("file-text", 48.0),
-                text(if app.is_loading_preview {
-                    "Loading document contents..."
-                } else {
-                    "Select a file to preview"
-                })
-                .size(18)
-                .style(theme::dim_text_style()),
-            ]
-            .spacing(16)
-            .align_x(Alignment::Center),
-        )
-        .center_x(Length::Fill)
-        .center_y(Length::Fill)
-        .into()
-    }
+            let snippets: Element<'_, Message> = app
+                .selected_index
+                .and_then(|i| app.results.get(i))
+                .map_or_else(
+                    || column![].into(),
+                    |res| {
+                        if res.snippets.is_empty() {
+                            column![].into()
+                        } else {
+                            column![
+                                text("Context Highlights")
+                                    .size(14)
+                                    .font(Font {
+                                        weight: font::Weight::Bold,
+                                        ..Font::default()
+                                    })
+                                    .style(theme::dim_text_style()),
+                                column(
+                                    res.snippets
+                                        .iter()
+                                        .enumerate()
+                                        .map(|(i, s)| hit_row(i + 1, s))
+                                )
+                                .spacing(8)
+                            ]
+                            .spacing(12)
+                            .into()
+                        }
+                    },
+                );
+
+            container(scrollable(
+                column![
+                    container(
+                        row![
+                            load_icon("file-text"),
+                            text(preview_result.content.len().to_string()).size(12)
+                        ]
+                        .spacing(8)
+                        .align_y(Alignment::Center)
+                    )
+                    .style(theme::badge_container)
+                    .padding(8.0),
+                    snippets,
+                    Space::new().height(16.0),
+                    text("Full File Preview")
+                        .size(14)
+                        .font(Font {
+                            weight: font::Weight::Bold,
+                            ..Font::default()
+                        })
+                        .style(theme::dim_text_style()),
+                    container(content)
+                        .padding(Padding::new(20.0))
+                        .style(theme::main_content_container),
+                ]
+                .spacing(20)
+                .padding(Padding::new(24.0)),
+            ))
+            .height(Length::Fill)
+            .into()
+        },
+    )
 }
 
 fn hit_row(idx: usize, content: &str) -> Element<'_, Message> {

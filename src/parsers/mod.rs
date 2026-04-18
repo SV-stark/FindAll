@@ -42,7 +42,7 @@ pub fn parse_file(path: &Path) -> Result<ParsedDocument> {
 
     tracing::debug!("Successfully parsed file: {}", path.display());
 
-    map_extraction_result(path, result)
+    Ok(map_extraction_result(path, result))
 }
 
 /// Process a batch of files using Kreuzberg's native async concurrent batch extraction.
@@ -71,17 +71,14 @@ pub async fn parse_files_batch(paths: &[PathBuf]) -> Result<Vec<Result<ParsedDoc
     let results = batch_results
         .into_iter()
         .zip(paths.iter())
-        .map(|(extraction_result, path)| map_extraction_result(path, extraction_result))
+        .map(|(extraction_result, path)| Ok(map_extraction_result(path, extraction_result)))
         .collect();
 
     Ok(results)
 }
 
 /// Maps a `kreuzberg::ExtractionResult` into a `ParsedDocument`.
-fn map_extraction_result(
-    path: &Path,
-    result: kreuzberg::ExtractionResult,
-) -> Result<ParsedDocument> {
+fn map_extraction_result(path: &Path, result: kreuzberg::ExtractionResult) -> ParsedDocument {
     let language = result
         .detected_languages
         .as_ref()
@@ -94,18 +91,18 @@ fn map_extraction_result(
             .join(" ")
     });
 
-    Ok(ParsedDocument {
+    ParsedDocument {
         path: path.to_string_lossy().to_string(),
         content: result.content,
         title: result.metadata.title.map(CompactString::from),
         language,
         keywords,
-        layout: result.structured_output.map(|l| format!("{:?}", l)),
-        code_metadata: result.annotations.map(|c| format!("{:?}", c)),
+        layout: result.structured_output.map(|l| format!("{l:?}")),
+        code_metadata: result.annotations.map(|c| format!("{c:?}")),
         embeddings: result
             .chunks
             .and_then(|c| c.into_iter().find_map(|chunk| chunk.embedding)),
-    })
+    }
 }
 
 #[cfg(test)]

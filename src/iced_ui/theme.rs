@@ -258,7 +258,7 @@ pub fn hit_highlight_container(theme: &Theme) -> container::Style {
 
 // --- Button Styles ---
 
-#[must_use]
+
 pub fn primary_button() -> impl Fn(&Theme, button::Status) -> button::Style + use<> {
     move |_theme: &Theme, status: button::Status| {
         let base = button::Style {
@@ -286,7 +286,7 @@ pub fn primary_button() -> impl Fn(&Theme, button::Status) -> button::Style + us
     }
 }
 
-#[must_use]
+
 pub fn search_button() -> impl Fn(&Theme, button::Status) -> button::Style + use<> {
     move |theme: &Theme, status: button::Status| {
         let mut style = primary_button()(theme, status);
@@ -296,7 +296,6 @@ pub fn search_button() -> impl Fn(&Theme, button::Status) -> button::Style + use
     }
 }
 
-#[must_use]
 pub fn secondary_button() -> impl Fn(&Theme, button::Status) -> button::Style + use<> {
     move |theme: &Theme, status: button::Status| {
         let bg_hover = if is_dark_theme(theme) {
@@ -326,7 +325,6 @@ pub fn secondary_button() -> impl Fn(&Theme, button::Status) -> button::Style + 
     }
 }
 
-#[must_use]
 pub fn clear_filter_button() -> impl Fn(&Theme, button::Status) -> button::Style + use<> {
     move |theme: &Theme, status: button::Status| {
         let mut style = secondary_button()(theme, status);
@@ -340,7 +338,6 @@ pub fn clear_filter_button() -> impl Fn(&Theme, button::Status) -> button::Style
     }
 }
 
-#[must_use]
 pub fn ghost_button() -> impl Fn(&Theme, button::Status) -> button::Style + use<> {
     move |theme: &Theme, status: button::Status| {
         let hover_bg = if is_dark_theme(theme) {
@@ -367,7 +364,6 @@ pub fn ghost_button() -> impl Fn(&Theme, button::Status) -> button::Style + use<
     }
 }
 
-#[must_use]
 pub fn nav_button(is_active: bool) -> impl Fn(&Theme, button::Status) -> button::Style + use<> {
     move |theme: &Theme, status: button::Status| {
         if is_active {
@@ -387,7 +383,6 @@ pub fn nav_button(is_active: bool) -> impl Fn(&Theme, button::Status) -> button:
     }
 }
 
-#[must_use]
 pub fn top_menu_button() -> impl Fn(&Theme, button::Status) -> button::Style + use<> {
     move |theme: &Theme, status: button::Status| {
         let mut style = ghost_button()(theme, status);
@@ -396,14 +391,12 @@ pub fn top_menu_button() -> impl Fn(&Theme, button::Status) -> button::Style + u
     }
 }
 
-#[must_use]
 pub fn icon_button() -> impl Fn(&Theme, button::Status) -> button::Style + use<> {
     ghost_button()
 }
 
 // --- Input Styles ---
 
-#[must_use]
 pub fn search_input() -> impl Fn(&Theme, text_input::Status) -> text_input::Style + use<> {
     move |theme: &Theme, status: text_input::Status| {
         let is_focused = matches!(status, text_input::Status::Focused { .. });
@@ -426,33 +419,30 @@ pub fn search_input() -> impl Fn(&Theme, text_input::Status) -> text_input::Styl
     }
 }
 
-#[must_use]
 pub fn small_input() -> impl Fn(&Theme, text_input::Status) -> text_input::Style + use<> {
     search_input()
 }
 
 // --- Text Styles ---
 
-#[must_use]
 pub fn dim_text_style() -> impl Fn(&Theme) -> text::Style + use<> {
     |theme| text::Style {
         color: Some(text_dim_color(theme)),
     }
 }
 
-#[must_use]
 pub fn muted_text_style() -> impl Fn(&Theme) -> text::Style + use<> {
     |theme| text::Style {
         color: Some(text_muted_color(theme)),
     }
 }
 
-#[must_use]
 pub fn error_text_style() -> impl Fn(&Theme) -> text::Style + use<> {
     |_| text::Style {
         color: Some(Color::from_rgb(0.9, 0.2, 0.2)),
     }
 }
+
 
 #[must_use]
 pub fn error_container(_theme: &Theme) -> container::Style {
@@ -515,14 +505,13 @@ pub fn hit_tag_container(_theme: &Theme) -> container::Style {
 }
 
 // Compatibility shims if needed
-#[must_use]
+
 pub fn result_button(
     is_selected: bool,
 ) -> impl Fn(&Theme, button::Status) -> button::Style + use<> {
     nav_button(is_selected)
 }
 
-#[must_use]
 pub fn tab_button(is_active: bool) -> impl Fn(&Theme, button::Status) -> button::Style + use<> {
     nav_button(is_active)
 }

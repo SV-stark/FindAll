@@ -46,12 +46,11 @@ fn prune_old_logs(log_dir: &std::path::Path) {
 
     if let Ok(entries) = std::fs::read_dir(log_dir) {
         for entry in entries.flatten() {
-            if let Ok(metadata) = entry.metadata() {
-                if let Ok(modified) = metadata.modified() {
-                    if modified < thirty_days_ago {
-                        let _ = std::fs::remove_file(entry.path());
-                    }
-                }
+            if let Ok(metadata) = entry.metadata()
+                && let Ok(modified) = metadata.modified()
+                && modified < thirty_days_ago
+            {
+                let _ = std::fs::remove_file(entry.path());
             }
         }
     }

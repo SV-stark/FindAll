@@ -82,10 +82,9 @@ mod windows_usn {
                 0,
                 Some(std::ptr::addr_of_mut!(journal_data).cast()),
                 u32::try_from(std::mem::size_of::<USN_JOURNAL_DATA_V0>()).unwrap_or(u32::MAX),
-                Some(&mut bytes_returned),
+                Some(&raw mut bytes_returned),
                 None,
-            )
-            .map_err(|e| FlashError::index(format!("Query USN Journal failed: {e}")))?;
+            )            .map_err(|e| FlashError::index(format!("Query USN Journal failed: {e}")))?;
 
             let mut mft_enum_data = MFT_ENUM_DATA_V0 {
                 StartFileReferenceNumber: 0,
@@ -111,7 +110,7 @@ mod windows_usn {
                     u32::try_from(std::mem::size_of::<MFT_ENUM_DATA_V0>()).unwrap_or(u32::MAX),
                     Some(buffer_ptr.cast()),
                     buffer_len,
-                    Some(&mut bytes_returned),
+                    Some(&raw mut bytes_returned),
                     None,
                 );
 
@@ -274,7 +273,7 @@ mod windows_usn {
                     0,
                     Some(std::ptr::addr_of_mut!(journal_data).cast()),
                     u32::try_from(std::mem::size_of::<USN_JOURNAL_DATA_V0>()).unwrap_or(u32::MAX),
-                    Some(&mut bytes_returned),
+                    Some(&raw mut bytes_returned),
                     None,
                 );
 
@@ -307,7 +306,7 @@ mod windows_usn {
                             .unwrap_or(u32::MAX),
                         Some(buffer_ptr.cast()),
                         buffer_len,
-                        Some(&mut bytes_returned),
+                        Some(&raw mut bytes_returned),
                         None,
                     );
 

@@ -242,29 +242,26 @@ impl IndexSearcher {
                 combine.push((Occur::Must, Box::new(range)));
             }
 
-            if let Some(ref extensions) = file_extensions {
-                if !extensions.is_empty() {
-                    let extension_queries: Vec<_> = extensions
-                        .iter()
-                        .map(|ext| {
-                            let ext_lower = ext.to_lowercase();
-                            let term =
-                                tantivy::Term::from_field_text(self.extension_field, &ext_lower);
-                            tantivy::query::TermQuery::new(term, IndexRecordOption::Basic)
-                        })
-                        .collect();
+            if let Some(ref extensions) = file_extensions
+                && !extensions.is_empty()
+            {
+                let extension_queries: Vec<_> = extensions
+                    .iter()
+                    .map(|ext| {
+                        let ext_lower = ext.to_lowercase();
+                        let term = tantivy::Term::from_field_text(self.extension_field, &ext_lower);
+                        tantivy::query::TermQuery::new(term, IndexRecordOption::Basic)
+                    })
+                    .collect();
 
-                    if !extension_queries.is_empty() {
-                        let extension_bool_query = tantivy::query::BooleanQuery::new(
-                            extension_queries
-                                .into_iter()
-                                .map(|q| {
-                                    (Occur::Should, Box::new(q) as Box<dyn tantivy::query::Query>)
-                                })
-                                .collect(),
-                        );
-                        combine.push((Occur::Must, Box::new(extension_bool_query)));
-                    }
+                if !extension_queries.is_empty() {
+                    let extension_bool_query = tantivy::query::BooleanQuery::new(
+                        extension_queries
+                            .into_iter()
+                            .map(|q| (Occur::Should, Box::new(q) as Box<dyn tantivy::query::Query>))
+                            .collect(),
+                    );
+                    combine.push((Occur::Must, Box::new(extension_bool_query)));
                 }
             }
 
@@ -452,10 +449,10 @@ impl IndexSearcher {
         let mut total_size = 0;
         if let Ok(entries) = std::fs::read_dir(&self.index_path) {
             for entry in entries.flatten() {
-                if let Ok(metadata) = entry.metadata() {
-                    if metadata.is_file() {
-                        total_size += metadata.len();
-                    }
+                if let Ok(metadata) = entry.metadata()
+                    && metadata.is_file()
+                {
+                    total_size += metadata.len();
                 }
             }
         }

@@ -44,10 +44,10 @@ impl IndexManager {
     fn rebuild_index_internal(index_path: &Path) -> Result<()> {
         // Try to backup the index before destroying it
         let backup_path = index_path.with_extension("backup");
-        if let Err(e) = std::fs::remove_dir_all(&backup_path) {
-            if e.kind() != std::io::ErrorKind::NotFound {
-                warn!("Failed to remove old backup at {:?}: {}", backup_path, e);
-            }
+        if let Err(e) = std::fs::remove_dir_all(&backup_path)
+            && e.kind() != std::io::ErrorKind::NotFound
+        {
+            warn!("Failed to remove old backup at {:?}: {}", backup_path, e);
         }
         if let Err(e) = copy_dir(index_path, &backup_path) {
             warn!("Failed to backup index to {:?}: {}", backup_path, e);
