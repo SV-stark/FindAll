@@ -7,8 +7,10 @@ use crate::indexer::searcher::{SearchParams, SearchResult};
 use crate::scanner::ProgressEvent;
 use crate::settings::AppSettings;
 use compact_str::CompactString;
+use iced::futures::SinkExt;
 use iced::widget::Id;
 use iced::{Element, Subscription, Task};
+use parking_lot::Mutex;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
@@ -97,6 +99,11 @@ pub fn get_search_input_id() -> Id {
     ID.get_or_init(Id::unique).clone()
 }
 
+pub fn get_progress_subscription_id() -> Id {
+    static ID: std::sync::OnceLock<Id> = std::sync::OnceLock::new();
+    ID.get_or_init(Id::unique).clone()
+}
+
 pub fn format_size(bytes: u64) -> String {
     const KB: u64 = 1024;
     const MB: u64 = 1024 * 1024;
@@ -171,6 +178,7 @@ pub enum Message {
     // Lifecycle
     PollProgress,
     PollProgressResult(Option<ProgressEvent>),
+    PreviewLoaded(crate::models::PreviewResult),
     IndexRebuilt,
     RebuildProgress(f32),
     StatusUpdate(String),
@@ -222,7 +230,27 @@ pub struct App {
     #[allow(dead_code)]
     pub(crate) tray_icon: Option<tray_icon::TrayIcon>,
     pub(crate) window_id: Option<iced::window::Id>,
+    pub(crate) progress_rx: Option<Arc<Mutex<tokio::sync::mpsc::Receiver<ProgressEvent>>>>,
 }
+
+#[derive(Debug, Clone)]
+struct SubscriptionData {
+    rx: Arc<Mutex<tokio::sync::mpsc::Receiver<ProgressEvent>>>,
+}
+
+impl std::hash::Hash for SubscriptionData {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        Arc::as_ptr(&self.rx).hash(state);
+    }
+}
+
+impl PartialEq for SubscriptionData {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.rx, &other.rx)
+    }
+}
+
+impl Eq for SubscriptionData {}
 
 impl Default for App {
     fn default() -> Self {
@@ -258,12 +286,16 @@ impl Default for App {
             is_loading_preview: false,
             tray_icon: None,
             window_id: None,
+            progress_rx: None,
         }
     }
 }
 
 impl App {
-    fn new(state: Result<Arc<AppState>, String>) -> Self {
+    fn new(
+        state: Result<Arc<AppState>, String>,
+        progress_rx: Option<mpsc::Receiver<ProgressEvent>>,
+    ) -> Self {
         match state {
             Ok(state) => {
                 let settings = state.settings_manager.load().unwrap_or_default();
@@ -280,6 +312,7 @@ impl App {
                     files_indexed: i32::try_from(index_stats.total_documents).unwrap_or(i32::MAX),
                     index_size,
                     is_dark,
+                    progress_rx: progress_rx.map(|rx| Arc::new(Mutex::new(rx))),
                     ..Default::default()
                 };
 
@@ -291,6 +324,7 @@ impl App {
             }
             Err(e) => Self {
                 error: Some(e),
+                progress_rx: progress_rx.map(|rx| Arc::new(Mutex::new(rx))),
                 ..Default::default()
             },
         }
@@ -556,15 +590,17 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                     return Task::future(async move {
                         match get_file_preview_highlighted_internal(item.path, query, &state).await
                         {
-                            Ok(preview) => Message::StatusUpdate(format!(
-                                "Preview loaded: {}",
-                                preview.content.len()
-                            )),
+                            Ok(preview) => Message::PreviewLoaded(preview),
                             Err(e) => Message::StatusUpdate(format!("Preview error: {e}")),
                         }
                     });
                 }
             }
+            Task::none()
+        }
+        Message::PreviewLoaded(preview) => {
+            app.preview_result = Some(preview);
+            app.is_loading_preview = false;
             Task::none()
         }
         Message::ItemHovered(idx) => {
@@ -777,13 +813,15 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             app.sidebar_collapsed = !app.sidebar_collapsed;
             Task::none()
         }
-        Message::RemoveFolder(i)
-        | Message::RemoveIndexDir(i)
-        | Message::RemoveExcludePattern(i) => {
-            // Simplified handling for multiple variants
+        Message::RemoveFolder(i) | Message::RemoveIndexDir(i) => {
             if i < app.settings.index_dirs.len() {
-                // This logic is slightly flawed for exclude patterns but serves to merge arms
-                // In a real app we would distinguish by variant
+                app.settings.index_dirs.remove(i);
+            }
+            Task::none()
+        }
+        Message::RemoveExcludePattern(i) => {
+            if i < app.settings.exclude_patterns.len() {
+                app.settings.exclude_patterns.remove(i);
             }
             Task::none()
         }
@@ -798,8 +836,44 @@ pub fn view(app: &App) -> Element<'_, Message> {
     }
 }
 
-pub fn subscription(_app: &App) -> Subscription<Message> {
-    Subscription::none()
+pub fn subscription(app: &App) -> Subscription<Message> {
+    if let Some(rx) = &app.progress_rx {
+        Subscription::run_with(SubscriptionData { rx: rx.clone() }, |data| {
+            let rx = data.rx.clone();
+            iced::stream::channel(
+                100,
+                move |mut output: iced::futures::channel::mpsc::Sender<Message>| {
+                    let rx = rx.clone();
+                    async move {
+                        loop {
+                            let event = {
+                                let mut rx_lock = rx.lock();
+                                rx_lock.try_recv().ok()
+                            };
+
+                            if let Some(event) = event {
+                                let _ = output.send(Message::PollProgressResult(Some(event))).await;
+                            } else {
+                                // Check if disconnected
+                                {
+                                    let mut rx_lock = rx.lock();
+                                    if matches!(
+                                        rx_lock.try_recv(),
+                                        Err(mpsc::error::TryRecvError::Disconnected)
+                                    ) {
+                                        break;
+                                    }
+                                }
+                                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                            }
+                        }
+                    }
+                },
+            )
+        })
+    } else {
+        Subscription::none()
+    }
 }
 
 pub const fn app_theme(app: &App) -> iced::Theme {
@@ -822,11 +896,15 @@ pub fn app_title(app: &App) -> String {
 /// Panics if the application fails to run.
 pub fn run_ui(
     state: &Result<std::sync::Arc<AppState>, String>,
-    _progress_rx: mpsc::Receiver<ProgressEvent>,
+    progress_rx: mpsc::Receiver<ProgressEvent>,
 ) {
     let state_clone = state.clone();
-    iced::application(
-        move || (App::new(state_clone.clone()), Task::none()),
+    let progress_rx = Arc::new(Mutex::new(Some(progress_rx)));
+    if let Err(e) = iced::application(
+        move || {
+            let rx = progress_rx.lock().take();
+            (App::new(state_clone.clone(), rx), Task::none())
+        },
         update,
         view,
     )
@@ -834,7 +912,10 @@ pub fn run_ui(
     .theme(app_theme)
     .subscription(subscription)
     .run()
-    .expect("Failed to run application");
+    {
+        tracing::error!("Iced application failed to run: {}", e);
+        panic!("Iced application failed to run: {}", e);
+    }
 }
 
 #[cfg(test)]

@@ -119,24 +119,23 @@ mod windows_usn {
                     break;
                 }
 
-                let next_usn = unsafe { buffer_ptr.cast::<i64>().read_unaligned() };
+                let next_usn = buffer_ptr.cast::<i64>().read_unaligned();
                 mft_enum_data.StartFileReferenceNumber = u64::try_from(next_usn).unwrap_or(0);
 
                 let mut offset = 8;
                 while offset < bytes_returned as usize {
                     let record_ptr = buffer_ptr.add(offset);
                     #[allow(clippy::cast_ptr_alignment)]
-                    let record = unsafe { &*record_ptr.cast::<USN_RECORD_V2>() };
+                    let record = &*record_ptr.cast::<USN_RECORD_V2>();
 
                     // Skip system files to clean up the output and increase performance
                     if (record.FileAttributes & FILE_ATTRIBUTE_SYSTEM.0) == 0 {
                         #[allow(clippy::cast_ptr_alignment)]
-                        let name_ptr =
-                            unsafe { record_ptr.add(record.FileNameOffset as usize).cast::<u16>() };
+                        let name_ptr = record_ptr.add(record.FileNameOffset as usize).cast::<u16>();
                         let name_len = (record.FileNameLength / 2) as usize;
-                        let name = CompactString::from_utf16_lossy(unsafe {
-                            std::slice::from_raw_parts(name_ptr, name_len)
-                        });
+                        let name = CompactString::from_utf16_lossy(std::slice::from_raw_parts(
+                            name_ptr, name_len,
+                        ));
 
                         let frn = record.FileReferenceNumber;
                         let parent_frn = record.ParentFileReferenceNumber;

@@ -107,6 +107,7 @@ const fn default_settings_version() -> u32 {
     Debug, Clone, Serialize, Deserialize, Default, Display, EnumString, EnumIter, PartialEq, Eq,
 )]
 #[strum(serialize_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
 pub enum Theme {
     #[default]
     Auto,
@@ -118,6 +119,7 @@ pub enum Theme {
     Debug, Clone, Serialize, Deserialize, Default, Display, EnumString, EnumIter, PartialEq, Eq,
 )]
 #[strum(serialize_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
 pub enum FontSize {
     Small,
     #[default]
@@ -129,6 +131,7 @@ pub enum FontSize {
     Debug, Clone, Serialize, Deserialize, Default, Display, EnumString, EnumIter, PartialEq, Eq,
 )]
 #[strum(serialize_all = "snake_case")]
+#[serde(rename_all = "snake_case")]
 pub enum DoubleClickAction {
     #[default]
     OpenFile,

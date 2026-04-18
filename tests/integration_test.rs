@@ -36,6 +36,7 @@ async fn test_end_to_end_search() -> Result<()> {
         tokio::task::spawn_blocking(move || flash_search::parsers::parse_file(&txt_path_clone))
             .await
             .map_err(|e| flash_search::error::FlashError::parse(&txt_path, e.to_string()))??;
+
     let md_doc =
         tokio::task::spawn_blocking(move || flash_search::parsers::parse_file(&md_path_clone))
             .await
@@ -50,7 +51,8 @@ async fn test_end_to_end_search() -> Result<()> {
     indexer.add_document(&md_doc, now, 200)?;
     indexer.commit()?;
 
-    std::thread::sleep(std::time::Duration::from_millis(500));
+    // Wait for indexing to complete - 500ms might be too short on some systems
+    std::thread::sleep(std::time::Duration::from_millis(1500));
 
     let results = indexer
         .search(

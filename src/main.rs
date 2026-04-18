@@ -114,6 +114,14 @@ fn main() {
     }
 
     init_logging(&app_dir);
+
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("Failed to create tokio runtime");
+
+    let _guard = rt.enter();
+
     spawn_update_checker();
 
     // Set up graceful shutdown
