@@ -320,17 +320,14 @@ impl MetadataDb {
         let results: Vec<bool> = entries
             .iter()
             .map(|(path, modified, size)| {
-                table
-                    .get(path.as_str())
-                    .ok()
-                    .is_none_or(|opt_metadata| {
-                        opt_metadata.is_none_or(|metadata| {
-                            let bytes = metadata.value();
-                            rkyv::access::<rkyv::Archived<FileMetadata>, rkyv::rancor::Error>(bytes)
-                                .ok()
-                                .is_none_or(|meta| meta.modified != *modified || meta.size != *size)
-                        })
+                table.get(path.as_str()).ok().is_none_or(|opt_metadata| {
+                    opt_metadata.is_none_or(|metadata| {
+                        let bytes = metadata.value();
+                        rkyv::access::<rkyv::Archived<FileMetadata>, rkyv::rancor::Error>(bytes)
+                            .ok()
+                            .is_none_or(|meta| meta.modified != *modified || meta.size != *size)
                     })
+                })
             })
             .collect();
 

@@ -84,7 +84,8 @@ mod windows_usn {
                 u32::try_from(std::mem::size_of::<USN_JOURNAL_DATA_V0>()).unwrap_or(u32::MAX),
                 Some(&raw mut bytes_returned),
                 None,
-            )            .map_err(|e| FlashError::index(format!("Query USN Journal failed: {e}")))?;
+            )
+            .map_err(|e| FlashError::index(format!("Query USN Journal failed: {e}")))?;
 
             let mut mft_enum_data = MFT_ENUM_DATA_V0 {
                 StartFileReferenceNumber: 0,

@@ -258,7 +258,6 @@ pub fn hit_highlight_container(theme: &Theme) -> container::Style {
 
 // --- Button Styles ---
 
-
 pub fn primary_button() -> impl Fn(&Theme, button::Status) -> button::Style + use<> {
     move |_theme: &Theme, status: button::Status| {
         let base = button::Style {
@@ -285,7 +284,6 @@ pub fn primary_button() -> impl Fn(&Theme, button::Status) -> button::Style + us
         }
     }
 }
-
 
 pub fn search_button() -> impl Fn(&Theme, button::Status) -> button::Style + use<> {
     move |theme: &Theme, status: button::Status| {
@@ -442,7 +440,6 @@ pub fn error_text_style() -> impl Fn(&Theme) -> text::Style + use<> {
         color: Some(Color::from_rgb(0.9, 0.2, 0.2)),
     }
 }
-
 
 #[must_use]
 pub fn error_container(_theme: &Theme) -> container::Style {

@@ -837,41 +837,44 @@ pub fn view(app: &App) -> Element<'_, Message> {
 }
 
 pub fn subscription(app: &App) -> Subscription<Message> {
-    app.progress_rx.as_ref().map_or_else(Subscription::none, |rx| {
-        Subscription::run_with(SubscriptionData { rx: rx.clone() }, |data| {
-            let rx = data.rx.clone();
-            iced::stream::channel(
-                100,
-                move |mut output: iced::futures::channel::mpsc::Sender<Message>| {
-                    let rx = rx.clone();
-                    async move {
-                        loop {
-                            let event = {
-                                let mut rx_lock = rx.lock();
-                                rx_lock.try_recv().ok()
-                            };
-
-                            if let Some(event) = event {
-                                let _ = output.send(Message::PollProgressResult(Some(event))).await;
-                            } else {
-                                // Check if disconnected
-                                {
+    app.progress_rx
+        .as_ref()
+        .map_or_else(Subscription::none, |rx| {
+            Subscription::run_with(SubscriptionData { rx: rx.clone() }, |data| {
+                let rx = data.rx.clone();
+                iced::stream::channel(
+                    100,
+                    move |mut output: iced::futures::channel::mpsc::Sender<Message>| {
+                        let rx = rx.clone();
+                        async move {
+                            loop {
+                                let event = {
                                     let mut rx_lock = rx.lock();
-                                    if matches!(
-                                        rx_lock.try_recv(),
-                                        Err(mpsc::error::TryRecvError::Disconnected)
-                                    ) {
-                                        break;
+                                    rx_lock.try_recv().ok()
+                                };
+
+                                if let Some(event) = event {
+                                    let _ =
+                                        output.send(Message::PollProgressResult(Some(event))).await;
+                                } else {
+                                    // Check if disconnected
+                                    {
+                                        let mut rx_lock = rx.lock();
+                                        if matches!(
+                                            rx_lock.try_recv(),
+                                            Err(mpsc::error::TryRecvError::Disconnected)
+                                        ) {
+                                            break;
+                                        }
                                     }
+                                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                                 }
-                                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                             }
                         }
-                    }
-                },
-            )
+                    },
+                )
+            })
         })
-    })
 }
 
 pub const fn app_theme(app: &App) -> iced::Theme {
