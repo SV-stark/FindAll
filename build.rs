@@ -8,7 +8,7 @@ fn main() -> Result<()> {
         let logo_path = Path::new("assets/logo.png");
 
         // Generate icon if it doesn't exist (or is empty) and logo exists
-        if (!icon_path.exists() || std::fs::metadata(icon_path).map(|m| m.len()).unwrap_or(0) == 0)
+        if (!icon_path.exists() || std::fs::metadata(icon_path).map_or(0, |m| m.len()) == 0)
             && logo_path.exists()
         {
             println!("cargo:warning=Generating icon from logo.png...");
@@ -25,7 +25,7 @@ fn main() -> Result<()> {
             }
         }
 
-        if icon_path.exists() && std::fs::metadata(icon_path).map(|m| m.len()).unwrap_or(0) > 0 {
+        if icon_path.exists() && std::fs::metadata(icon_path).map_or(0, |m| m.len()) > 0 {
             let mut res = winres::WindowsResource::new();
             res.set_icon(icon_path.to_str().unwrap());
             res.compile()?;
