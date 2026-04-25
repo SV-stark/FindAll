@@ -3,7 +3,7 @@ use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
 
 /// Recent file from metadata DB
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default, bon::Builder)]
 pub struct RecentFile {
     pub path: String,
     pub title: Option<CompactString>,

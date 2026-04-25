@@ -46,7 +46,7 @@ pub struct Scanner {
     indexer: Arc<IndexManager>,
     metadata_db: Arc<MetadataDb>,
     filename_index: Option<Arc<crate::indexer::filename_index::FilenameIndex>>,
-    progress_tx: Option<mpsc::Sender<ProgressEvent>>,
+    progress_tx: Option<flume::Sender<ProgressEvent>>,
     settings: crate::settings::AppSettings,
 }
 
@@ -56,7 +56,7 @@ impl Scanner {
         indexer: Arc<IndexManager>,
         metadata_db: Arc<MetadataDb>,
         filename_index: Option<Arc<crate::indexer::filename_index::FilenameIndex>>,
-        progress_tx: Option<mpsc::Sender<ProgressEvent>>,
+        progress_tx: Option<flume::Sender<ProgressEvent>>,
         settings: crate::settings::AppSettings,
     ) -> Self {
         Self {
@@ -102,7 +102,7 @@ impl Scanner {
         filename_index: Option<&Arc<crate::indexer::filename_index::FilenameIndex>>,
         indexer: &Arc<IndexManager>,
         metadata_db: &Arc<MetadataDb>,
-        progress_tx: Option<&mpsc::Sender<ProgressEvent>>,
+        progress_tx: Option<&flume::Sender<ProgressEvent>>,
         total_files: &Arc<AtomicUsize>,
     ) {
         info!("Stage 2b: Batch Writing");

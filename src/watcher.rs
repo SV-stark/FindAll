@@ -3,6 +3,7 @@ use crate::indexer::IndexManager;
 use crate::metadata::MetadataDb;
 use crate::parsers::parse_file;
 use blake3;
+use globset::{Glob, GlobSet, GlobSetBuilder};
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -24,6 +25,9 @@ pub struct WatcherManager {
     _metadata_db: Arc<MetadataDb>,
     _runtime_handle: tokio::runtime::Handle,
     external_tx: mpsc::Sender<(PathBuf, WatcherAction)>,
+    /// Compiled glob set for exclude patterns (applied during live events)
+    #[allow(dead_code)]
+    exclude_globs: Arc<GlobSet>,
 }
 
 impl WatcherManager {
@@ -37,8 +41,34 @@ impl WatcherManager {
         metadata_db: Arc<MetadataDb>,
         allowed_extensions: std::collections::HashSet<String>,
     ) -> Self {
+        Self::new_with_excludes(indexer, metadata_db, allowed_extensions, &[])
+    }
+
+    /// Creates a new `WatcherManager` with exclude patterns.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the background processor task fails to spawn.
+    pub fn new_with_excludes(
+        indexer: Arc<IndexManager>,
+        metadata_db: Arc<MetadataDb>,
+        allowed_extensions: std::collections::HashSet<String>,
+        exclude_patterns: &[String],
+    ) -> Self {
         let (external_tx, external_rx) = mpsc::channel::<(PathBuf, WatcherAction)>(1000);
         let runtime_handle = tokio::runtime::Handle::current();
+
+        // Compile exclude patterns into a GlobSet for O(1) matching
+        let mut glob_builder = GlobSetBuilder::new();
+        for pattern in exclude_patterns {
+            match Glob::new(pattern) {
+                Ok(glob) => {
+                    glob_builder.add(glob);
+                }
+                Err(e) => warn!("Invalid exclude glob '{}': {}", pattern, e),
+            }
+        }
+        let exclude_globs = Arc::new(glob_builder.build().unwrap_or_default());
 
         // Spawn background processor for debounced events
         Self::spawn_processor_task(
@@ -47,6 +77,7 @@ impl WatcherManager {
             indexer.clone(),
             metadata_db.clone(),
             allowed_extensions,
+            Arc::clone(&exclude_globs),
         );
 
         Self {
@@ -55,6 +86,7 @@ impl WatcherManager {
             _metadata_db: metadata_db,
             _runtime_handle: runtime_handle,
             external_tx,
+            exclude_globs,
         }
     }
 
@@ -64,6 +96,7 @@ impl WatcherManager {
         indexer: Arc<IndexManager>,
         metadata_db: Arc<MetadataDb>,
         allowed_extensions: std::collections::HashSet<String>,
+        exclude_globs: Arc<GlobSet>,
     ) {
         const MAX_DEBOUNCE_WAIT: Duration = Duration::from_secs(5);
         const DEBOUNCE_GAP: Duration = Duration::from_millis(500);
@@ -102,7 +135,7 @@ impl WatcherManager {
                         }
                         first_event_time = None;
                         let events = std::mem::take(&mut buffer);
-                        Self::process_events(events, &indexer, &metadata_db, &allowed_extensions).await;
+                        Self::process_events(events, &indexer, &metadata_db, &allowed_extensions, &exclude_globs).await;
                     }
                 }
             }
@@ -114,8 +147,22 @@ impl WatcherManager {
         indexer: &Arc<IndexManager>,
         metadata_db: &Arc<MetadataDb>,
         allowed_extensions: &std::collections::HashSet<String>,
+        exclude_globs: &GlobSet,
     ) {
         let mut needs_commit = false;
+
+        // Filter out paths matching any exclude pattern (using the path as a string)
+        let events: HashMap<PathBuf, WatcherAction> = events
+            .into_iter()
+            .filter(|(path, _)| {
+                let path_str = path.to_string_lossy();
+                // Check each path component against the globs
+                !path.components().any(|c| {
+                    let comp = c.as_os_str().to_string_lossy();
+                    exclude_globs.is_match(comp.as_ref())
+                }) && !exclude_globs.is_match(path_str.as_ref())
+            })
+            .collect();
 
         // First pass: collect all paths that need to be removed
         let remove_paths: Vec<PathBuf> = events

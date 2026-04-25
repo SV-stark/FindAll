@@ -32,7 +32,6 @@ use crate::watcher::WatcherManager;
 use arc_swap::ArcSwap;
 use parking_lot::Mutex;
 use std::sync::Arc;
-use tokio::sync::mpsc;
 
 pub struct AppState {
     pub indexer: Arc<IndexManager>,
@@ -41,7 +40,7 @@ pub struct AppState {
     pub settings_cache: ArcSwap<AppSettings>,
     pub watcher: Mutex<WatcherManager>,
     pub filename_index: Option<Arc<FilenameIndex>>,
-    pub progress_tx: mpsc::Sender<crate::scanner::ProgressEvent>,
+    pub progress_tx: flume::Sender<crate::scanner::ProgressEvent>,
     pub scanner: Arc<crate::scanner::Scanner>,
     pub indexing_handle: Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
@@ -55,7 +54,7 @@ impl AppState {
         settings_manager: SettingsManager,
         watcher: WatcherManager,
         filename_index: Option<Arc<FilenameIndex>>,
-        progress_tx: mpsc::Sender<crate::scanner::ProgressEvent>,
+        progress_tx: flume::Sender<crate::scanner::ProgressEvent>,
         scanner: Arc<crate::scanner::Scanner>,
     ) -> Self {
         let cache = settings_manager.load().unwrap_or_else(|e| {
