@@ -9,7 +9,7 @@ use std::time::SystemTime;
 
 const FILES_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("files");
 
-#[derive(Debug, Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+#[derive(Debug, Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, bon::Builder)]
 pub struct FileMetadata {
     pub path: String,
     pub modified: u64,          // Unix timestamp
@@ -137,16 +137,18 @@ impl MetadataDb {
                 FlashError::database("database_operation", "files_table", e.to_string())
             })?;
 
-            let metadata = FileMetadata {
-                path: path.to_string_lossy().to_string(),
-                modified,
-                size,
-                content_hash,
-                indexed_at: SystemTime::now()
-                    .duration_since(SystemTime::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs(),
-            };
+            let metadata = FileMetadata::builder()
+                .path(path.to_string_lossy().to_string())
+                .modified(modified)
+                .size(size)
+                .content_hash(content_hash)
+                .indexed_at(
+                    SystemTime::now()
+                        .duration_since(SystemTime::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs(),
+                )
+                .build();
 
             let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&metadata).map_err(|e| {
                 FlashError::database(
@@ -270,13 +272,13 @@ impl MetadataDb {
             })?;
 
             for (path, modified, size, content_hash) in entries {
-                let metadata = FileMetadata {
-                    path: path.clone(),
-                    modified: *modified,
-                    size: *size,
-                    content_hash: *content_hash,
-                    indexed_at,
-                };
+                let metadata = FileMetadata::builder()
+                    .path(path.clone())
+                    .modified(*modified)
+                    .size(*size)
+                    .content_hash(*content_hash)
+                    .indexed_at(indexed_at)
+                    .build();
 
                 let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&metadata).map_err(|e| {
                     FlashError::database(

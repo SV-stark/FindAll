@@ -97,6 +97,10 @@ config = "0.14"
 bon = "3.1"
 syntect = "5.2"
 arc-swap = "1.6"
+flume = "0.11"
+smart-default = "0.7"
+derive_more = { version = "1", features = ["display", "from"] }
+globset = "0.4"
 
 # Performance & Observability
 mimalloc = { version = "0.1", default-features = false }

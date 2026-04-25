@@ -48,7 +48,7 @@ pub fn get_app_data_dir() -> std::result::Result<PathBuf, FlashError> {
 pub fn setup_app() -> std::result::Result<
     (
         Arc<AppState>,
-        tokio::sync::mpsc::Receiver<crate::scanner::ProgressEvent>,
+        flume::Receiver<crate::scanner::ProgressEvent>,
     ),
     FlashError,
 > {
@@ -90,14 +90,15 @@ pub fn setup_app() -> std::result::Result<
             }
         };
 
-    // Initialize watcher
-    let watcher = watcher::WatcherManager::new(
+    // Initialize watcher with exclude patterns for live event filtering
+    let watcher = watcher::WatcherManager::new_with_excludes(
         indexer_shared.clone(),
         metadata_db_shared.clone(),
         settings.get_allowed_extensions().clone(),
+        &settings.exclude_patterns,
     );
 
-    let (progress_tx, progress_rx) = tokio::sync::mpsc::channel(100);
+    let (progress_tx, progress_rx) = flume::bounded(100);
 
     let scanner = Arc::new(crate::scanner::Scanner::new(
         indexer_shared.clone(),
@@ -130,7 +131,7 @@ pub fn setup_app() -> std::result::Result<
 pub fn run_ui() -> std::result::Result<(), FlashError> {
     let (state_res, rx) = match setup_app() {
         Ok((state, rx)) => (Ok(state), rx),
-        Err(e) => (Err(e.to_string()), tokio::sync::mpsc::channel(1).1),
+        Err(e) => (Err(e.to_string()), flume::bounded(1).1),
     };
 
     iced_ui::run_ui(&state_res, rx);

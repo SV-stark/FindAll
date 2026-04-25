@@ -8,7 +8,6 @@ mod windows_usn {
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use tokio::sync::mpsc;
     use tracing::{error, info};
     use windows::Win32::Foundation::{CloseHandle, GENERIC_READ, HANDLE};
     use windows::Win32::Storage::FileSystem::{
@@ -32,7 +31,7 @@ mod windows_usn {
     pub fn scan_volume(
         root: &Path,
         path_tx: &crossbeam_channel::Sender<PathBuf>,
-        progress_tx: Option<&mpsc::Sender<ProgressEvent>>,
+        progress_tx: Option<&flume::Sender<ProgressEvent>>,
         total_count: &Arc<AtomicUsize>,
     ) -> Result<()> {
         let drive_letter = root.to_string_lossy();
@@ -68,7 +67,7 @@ mod windows_usn {
         handle: HANDLE,
         drive_root: &str,
         path_tx: &crossbeam_channel::Sender<PathBuf>,
-        progress_tx: Option<&mpsc::Sender<ProgressEvent>>,
+        progress_tx: Option<&flume::Sender<ProgressEvent>>,
         total_count: &Arc<AtomicUsize>,
     ) -> Result<()> {
         unsafe {
@@ -167,7 +166,7 @@ mod windows_usn {
     fn reconstruct_paths(
         drive_root: &str,
         path_tx: &crossbeam_channel::Sender<PathBuf>,
-        progress_tx: Option<&mpsc::Sender<ProgressEvent>>,
+        progress_tx: Option<&flume::Sender<ProgressEvent>>,
         total_count: &Arc<AtomicUsize>,
         dir_map: &HashMap<u64, DirInfo>,
         files: Vec<(CompactString, u64)>,
@@ -398,7 +397,6 @@ use ignore::WalkBuilder;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use tokio::sync::mpsc;
 use tracing::{info, warn};
 
 pub trait DriveScanner: Send + Sync {
@@ -407,7 +405,7 @@ pub trait DriveScanner: Send + Sync {
         root: PathBuf,
         exclude_patterns: Vec<String>,
         path_tx: crossbeam_channel::Sender<PathBuf>,
-        progress_tx: Option<mpsc::Sender<ProgressEvent>>,
+        progress_tx: Option<flume::Sender<ProgressEvent>>,
         total_count: Arc<AtomicUsize>,
     ) -> Result<()>;
 
@@ -430,7 +428,7 @@ impl DriveScanner for DefaultDriveScanner {
         root: PathBuf,
         exclude_patterns: Vec<String>,
         path_tx: crossbeam_channel::Sender<PathBuf>,
-        progress_tx: Option<mpsc::Sender<ProgressEvent>>,
+        progress_tx: Option<flume::Sender<ProgressEvent>>,
         total_count: Arc<AtomicUsize>,
     ) -> Result<()> {
         let mut builder = WalkBuilder::new(&root);
@@ -513,7 +511,7 @@ impl DriveScanner for WindowsDriveScanner {
         root: PathBuf,
         exclude_patterns: Vec<String>,
         path_tx: crossbeam_channel::Sender<PathBuf>,
-        progress_tx: Option<mpsc::Sender<ProgressEvent>>,
+        progress_tx: Option<flume::Sender<ProgressEvent>>,
         total_count: Arc<AtomicUsize>,
     ) -> Result<()> {
         let root_str = root.to_string_lossy();
@@ -606,7 +604,7 @@ impl DriveScanner for MacDriveScanner {
         root: PathBuf,
         exclude_patterns: Vec<String>,
         path_tx: crossbeam_channel::Sender<PathBuf>,
-        progress_tx: Option<mpsc::Sender<ProgressEvent>>,
+        progress_tx: Option<flume::Sender<ProgressEvent>>,
         total_count: Arc<AtomicUsize>,
     ) -> Result<()> {
         let _ = macos_fsevents::scan_volume(&root);
@@ -625,7 +623,7 @@ impl DriveScanner for LinuxDriveScanner {
         root: PathBuf,
         exclude_patterns: Vec<String>,
         path_tx: crossbeam_channel::Sender<PathBuf>,
-        progress_tx: Option<mpsc::Sender<ProgressEvent>>,
+        progress_tx: Option<flume::Sender<ProgressEvent>>,
         total_count: Arc<AtomicUsize>,
     ) -> Result<()> {
         let _ = linux_fanotify::scan_volume(&root);

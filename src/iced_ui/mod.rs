@@ -12,7 +12,6 @@ use iced::widget::Id;
 use iced::{Element, Subscription, Task};
 use parking_lot::Mutex;
 use std::sync::Arc;
-use tokio::sync::mpsc;
 
 pub mod icons;
 pub mod search;
@@ -78,19 +77,49 @@ impl From<crate::models::FilenameSearchResult> for FileItem {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+    strum::Display,
+    strum::EnumIter,
+    strum::EnumString,
+)]
 pub enum DateFilter {
     #[default]
+    #[strum(serialize = "Anytime")]
     Anytime,
+    #[strum(serialize = "Today")]
     Today,
+    #[strum(serialize = "Last 7 Days")]
     Last7Days,
+    #[strum(serialize = "Last 30 Days")]
     Last30Days,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+    strum::Display,
+    strum::EnumIter,
+    strum::EnumString,
+)]
 pub enum SearchMode {
     #[default]
+    #[strum(serialize = "Full Text")]
     FullText,
+    #[strum(serialize = "Filename")]
     Filename,
 }
 
@@ -230,23 +259,25 @@ pub struct App {
     #[allow(dead_code)]
     pub(crate) tray_icon: Option<tray_icon::TrayIcon>,
     pub(crate) window_id: Option<iced::window::Id>,
-    pub(crate) progress_rx: Option<Arc<Mutex<tokio::sync::mpsc::Receiver<ProgressEvent>>>>,
+    pub(crate) progress_rx: Option<flume::Receiver<ProgressEvent>>,
 }
 
 #[derive(Debug, Clone)]
 struct SubscriptionData {
-    rx: Arc<Mutex<tokio::sync::mpsc::Receiver<ProgressEvent>>>,
+    rx: flume::Receiver<ProgressEvent>,
 }
 
 impl std::hash::Hash for SubscriptionData {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        Arc::as_ptr(&self.rx).hash(state);
+        // same_channel defines equality; use a constant so hash is consistent.
+        // Iced uses this only for subscription deduplication within a single run.
+        0u8.hash(state);
     }
 }
 
 impl PartialEq for SubscriptionData {
     fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.rx, &other.rx)
+        self.rx.same_channel(&other.rx)
     }
 }
 
@@ -294,7 +325,7 @@ impl Default for App {
 impl App {
     fn new(
         state: Result<Arc<AppState>, String>,
-        progress_rx: Option<mpsc::Receiver<ProgressEvent>>,
+        progress_rx: Option<flume::Receiver<ProgressEvent>>,
     ) -> Self {
         match state {
             Ok(state) => {
@@ -312,7 +343,7 @@ impl App {
                     files_indexed: i32::try_from(index_stats.total_documents).unwrap_or(i32::MAX),
                     index_size,
                     is_dark,
-                    progress_rx: progress_rx.map(|rx| Arc::new(Mutex::new(rx))),
+                    progress_rx,
                     ..Default::default()
                 };
 
@@ -324,7 +355,7 @@ impl App {
             }
             Err(e) => Self {
                 error: Some(e),
-                progress_rx: progress_rx.map(|rx| Arc::new(Mutex::new(rx))),
+                progress_rx,
                 ..Default::default()
             },
         }
@@ -848,26 +879,19 @@ pub fn subscription(app: &App) -> Subscription<Message> {
                         let rx = rx.clone();
                         async move {
                             loop {
-                                let event = {
-                                    let mut rx_lock = rx.lock();
-                                    rx_lock.try_recv().ok()
-                                };
-
-                                if let Some(event) = event {
-                                    let _ =
-                                        output.send(Message::PollProgressResult(Some(event))).await;
-                                } else {
-                                    // Check if disconnected
-                                    {
-                                        let mut rx_lock = rx.lock();
-                                        if matches!(
-                                            rx_lock.try_recv(),
-                                            Err(mpsc::error::TryRecvError::Disconnected)
-                                        ) {
-                                            break;
-                                        }
+                                match rx.try_recv() {
+                                    Ok(event) => {
+                                        let _ = output
+                                            .send(Message::PollProgressResult(Some(event)))
+                                            .await;
                                     }
-                                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                                    Err(flume::TryRecvError::Empty) => {
+                                        tokio::time::sleep(
+                                            std::time::Duration::from_millis(100),
+                                        )
+                                        .await;
+                                    }
+                                    Err(flume::TryRecvError::Disconnected) => break,
                                 }
                             }
                         }
@@ -897,7 +921,7 @@ pub fn app_title(app: &App) -> String {
 /// Panics if the application fails to run.
 pub fn run_ui(
     state: &Result<std::sync::Arc<AppState>, String>,
-    progress_rx: mpsc::Receiver<ProgressEvent>,
+    progress_rx: flume::Receiver<ProgressEvent>,
 ) {
     let state_clone = state.clone();
     let progress_rx = Arc::new(Mutex::new(Some(progress_rx)));
