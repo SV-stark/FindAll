@@ -8,9 +8,8 @@ use iced::{Alignment, Element, Font, Length, Padding, font};
 // --- Icons from TTF Font ---
 use crate::iced_ui::icons::{load_icon, load_icon_size};
 
-
-use iced_highlighter::{Highlighter, Settings};
 use iced::widget::text::Highlighter as _;
+use iced_highlighter::{Highlighter, Settings};
 use std::ops::Range;
 
 #[allow(dead_code)]
@@ -63,14 +62,14 @@ impl TermHighlighter {
             merged.push(m);
         }
 
-        merged
-            .into_iter()
-            .map(|r| (r, theme::HIT_AMBER))
-            .collect()
+        merged.into_iter().map(|r| (r, theme::HIT_AMBER)).collect()
     }
 }
 
-fn sidebar_section<'a>(title: &'a str, content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
+fn sidebar_section<'a>(
+    title: &'a str,
+    content: impl Into<Element<'a, Message>>,
+) -> Element<'a, Message> {
     column![
         text(title).size(14).font(Font {
             weight: font::Weight::Bold,
@@ -93,10 +92,8 @@ fn highlight_to_spans<H>(
             let mut line_spans: Vec<_> = highlighter(line)
                 .into_iter()
                 .map(|(range, highlight)| {
-                    let mut s = span(&line[range])
-                        .size(13)
-                        .font(Font::MONOSPACE);
-                    
+                    let mut s = span(&line[range]).size(13).font(Font::MONOSPACE);
+
                     if let Some(color) = map_highlight(highlight) {
                         s = s.color(color);
                     }
@@ -120,7 +117,11 @@ fn render_code_preview<'a>(
         token: extension.to_string(),
     });
 
-    let spans = highlight_to_spans(content, |line| highlighter.highlight_line(line).collect(), |h| h.color());
+    let spans = highlight_to_spans(
+        content,
+        |line| highlighter.highlight_line(line).collect(),
+        |h| h.color(),
+    );
 
     if spans.is_empty() {
         return text(content).size(13).into();

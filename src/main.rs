@@ -41,8 +41,7 @@ fn init_logging(app_data_dir: &std::path::Path) {
 }
 
 fn prune_old_logs(log_dir: &std::path::Path) {
-    let thirty_days_ago =
-        std::time::SystemTime::now() - std::time::Duration::from_hours(720);
+    let thirty_days_ago = std::time::SystemTime::now() - std::time::Duration::from_hours(720);
 
     if let Ok(entries) = std::fs::read_dir(log_dir) {
         for entry in entries.flatten() {
