@@ -93,7 +93,7 @@ pub fn add_search_history_internal(query: String, state: &Arc<AppState>) -> Resu
         );
     }
 
-    history.sort_by(|a, b| b.frequency.cmp(&a.frequency));
+    history.sort_by_key(|b| std::cmp::Reverse(b.frequency));
     history.truncate(50);
 
     cache.search_history = history;

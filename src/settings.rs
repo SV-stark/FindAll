@@ -1,6 +1,7 @@
 use crate::error::{FlashError, Result};
 use config::{Config, Environment, File as ConfigFile};
 use serde::{Deserialize, Serialize};
+use smart_default::SmartDefault;
 use std::fs;
 use std::path::{Path, PathBuf};
 use strum::{Display, EnumIter, EnumString};
@@ -31,24 +32,44 @@ impl Clone for AllowedExtensionsCache {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, SmartDefault)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct AppSettings {
     #[serde(default = "default_settings_version")]
+    #[default(default_settings_version())]
     pub version: u32,
 
     // Indexing
     pub index_dirs: Vec<String>,
+    #[default(vec![
+        ".git/".to_string(),
+        "node_modules/".to_string(),
+        "target/".to_string(),
+        "AppData/".to_string(),
+        "*.tmp".to_string(),
+        "*.temp".to_string(),
+        "Thumbs.db".to_string(),
+        ".DS_Store".to_string(),
+    ])]
     pub exclude_patterns: Vec<String>,
+    #[default(vec![
+        "$RECYCLE.BIN".to_string(),
+        "System Volume Information".to_string(),
+    ])]
     pub exclude_folders: Vec<String>, // Explicit folder paths to exclude
+    #[default(true)]
     pub auto_index_on_startup: bool,
+    #[default(100)]
     pub index_file_size_limit_mb: u32,
     #[serde(default)]
     pub custom_extensions: String,
 
     // Search
+    #[default(50)]
     pub max_results: usize,
+    #[default(true)]
     pub search_history_enabled: bool,
+    #[default(true)]
     pub fuzzy_matching: bool,
     pub case_sensitive: bool,
     #[serde(default)]
@@ -58,26 +79,34 @@ pub struct AppSettings {
     pub recent_searches: Vec<String>,
     #[serde(default)]
     pub search_history: Vec<SearchHistoryItem>,
+    #[default(true)]
     pub filename_index_enabled: bool,
 
     // Appearance
     pub theme: Theme,
     pub font_size: FontSize,
+    #[default(true)]
     pub show_file_extensions: bool,
+    #[default(50)]
     pub results_per_page: usize,
 
     // Behavior
+    #[default(true)]
     pub minimize_to_tray: bool,
     pub auto_start_on_boot: bool,
     pub double_click_action: DoubleClickAction,
+    #[default(true)]
     pub show_preview_panel: bool,
     pub context_menu_enabled: bool,
 
     #[serde(default = "default_global_hotkey")]
+    #[default(default_global_hotkey())]
     pub global_hotkey: String,
 
     // Performance
+    #[default(4)]
     pub indexing_threads: u8,
+    #[default(512)]
     pub memory_limit_mb: u32,
 
     // Pinned files for quick access
@@ -137,66 +166,6 @@ pub enum DoubleClickAction {
     OpenFile,
     ShowInFolder,
     Preview,
-}
-
-impl Default for AppSettings {
-    fn default() -> Self {
-        Self {
-            version: default_settings_version(),
-            // Indexing
-            index_dirs: Vec::new(),
-            exclude_patterns: vec![
-                ".git/".to_string(),
-                "node_modules/".to_string(),
-                "target/".to_string(),
-                "AppData/".to_string(),
-                "*.tmp".to_string(),
-                "*.temp".to_string(),
-                "Thumbs.db".to_string(),
-                ".DS_Store".to_string(),
-            ],
-            exclude_folders: vec![
-                "$RECYCLE.BIN".to_string(),
-                "System Volume Information".to_string(),
-            ],
-            auto_index_on_startup: true,
-            index_file_size_limit_mb: 100,
-            custom_extensions: String::new(),
-
-            // Search
-            max_results: 50,
-            search_history_enabled: true,
-            fuzzy_matching: true,
-            case_sensitive: false,
-            whole_word: false,
-            default_filters: DefaultFilters::default(),
-            recent_searches: vec![],
-            search_history: vec![],
-            filename_index_enabled: true,
-
-            // Appearance
-            theme: Theme::default(),
-            font_size: FontSize::default(),
-            show_file_extensions: true,
-            results_per_page: 50,
-
-            // Behavior
-            minimize_to_tray: true,
-            auto_start_on_boot: false,
-            double_click_action: DoubleClickAction::default(),
-            show_preview_panel: true,
-            context_menu_enabled: false,
-            global_hotkey: default_global_hotkey(),
-
-            // Performance
-            indexing_threads: 4,
-            memory_limit_mb: 512,
-
-            // Pinned files
-            pinned_files: vec![],
-            allowed_extensions_cache: AllowedExtensionsCache::default(),
-        }
-    }
 }
 
 pub struct SettingsManager {

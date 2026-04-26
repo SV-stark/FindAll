@@ -57,9 +57,7 @@ fn read_with_mmap(path: &Path) -> Result<Vec<u8>> {
 
 #[must_use]
 pub fn is_mmap_applicable(path: &Path) -> bool {
-    std::fs::metadata(path)
-        .map(|m| m.len() > MMAP_THRESHOLD)
-        .unwrap_or(false)
+    std::fs::metadata(path).is_ok_and(|m| m.len() > MMAP_THRESHOLD)
 }
 
 pub fn get_file_size(path: &Path) -> Result<u64> {

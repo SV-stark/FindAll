@@ -1562,27 +1562,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "derive_more"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a9b99b9cbbe49445b21764dc0625032a89b145a2642e67603e1c936f5458d05"
-dependencies = [
- "derive_more-impl",
-]
-
-[[package]]
-name = "derive_more-impl"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb7330aeadfbe296029522e6c40f315320aba36fc43a5b3632f3795348f3bd22"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.117",
- "unicode-xid",
-]
-
-[[package]]
 name = "derive_utils"
 version = "0.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2036,7 +2015,6 @@ dependencies = [
  "crossbeam-channel",
  "csv",
  "ctrlc",
- "derive_more",
  "dirs",
  "divan",
  "fd-lock",
@@ -2075,7 +2053,6 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
- "tokio-util",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
@@ -8044,20 +8021,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1729aa945f29d91ba541258c8df89027d5792d85a8841fb65e8bf0f4ede4ef61"
 dependencies = [
  "rustls",
- "tokio",
-]
-
-[[package]]
-name = "tokio-util"
-version = "0.7.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ae9cec805b01e8fc3fd2fe289f89149a9b66dd16786abd8b19cfa7b48cb0098"
-dependencies = [
- "bytes",
- "futures-core",
- "futures-sink",
- "futures-util",
- "pin-project-lite",
  "tokio",
 ]
 

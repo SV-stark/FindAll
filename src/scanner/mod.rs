@@ -361,7 +361,7 @@ impl Scanner {
                     let first_file = just_paths
                         .first()
                         .and_then(|p| p.file_name())
-                        .map_or_else(|| String::new(), |n| n.to_string_lossy().to_string());
+                        .map_or_else(String::new, |n| n.to_string_lossy().to_string());
 
                     let _ = tx.try_send(ProgressEvent {
                         ptype: ProgressType::Content,

@@ -107,7 +107,7 @@ impl WatcherManager {
 
             loop {
                 let timeout_duration = first_event_time.map_or_else(
-                    || Duration::from_secs(3600),
+                    || Duration::from_hours(1),
                     |first_time| {
                         let elapsed = first_time.elapsed();
                         if elapsed >= MAX_DEBOUNCE_WAIT {

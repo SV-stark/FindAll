@@ -13,16 +13,19 @@ use iced_highlighter::{Highlighter, Settings};
 use iced::widget::text::Highlighter as _;
 use std::ops::Range;
 
+#[allow(dead_code)]
 struct TermHighlighter {
     terms: Vec<String>,
 }
 
 impl TermHighlighter {
-    fn new(terms: Vec<String>) -> Self {
+    #[allow(dead_code)]
+    const fn new(terms: Vec<String>) -> Self {
         Self { terms }
     }
 
-    fn highlight_line(&mut self, line: &str) -> Vec<(Range<usize>, iced::Color)> {
+    #[allow(dead_code)]
+    fn highlight_line(&self, line: &str) -> Vec<(Range<usize>, iced::Color)> {
         if self.terms.is_empty() {
             return Vec::new();
         }
@@ -50,6 +53,7 @@ impl TermHighlighter {
 
         let mut merged: Vec<Range<usize>> = Vec::new();
         for m in matches {
+            #[allow(clippy::collapsible_if)]
             if let Some(last) = merged.last_mut() {
                 if m.start <= last.end {
                     last.end = last.end.max(m.end);
@@ -78,11 +82,11 @@ fn sidebar_section<'a>(title: &'a str, content: impl Into<Element<'a, Message>>)
     .into()
 }
 
-fn highlight_to_spans<'a, H>(
-    content: &'a str,
+fn highlight_to_spans<H>(
+    content: &str,
     mut highlighter: impl FnMut(&str) -> Vec<(Range<usize>, H)>,
     map_highlight: impl Fn(H) -> Option<iced::Color>,
-) -> Vec<iced::widget::text::Span<'a, Message>> {
+) -> Vec<iced::widget::text::Span<'_, Message>> {
     content
         .lines()
         .flat_map(|line| {
@@ -108,14 +112,11 @@ fn highlight_to_spans<'a, H>(
 fn render_code_preview<'a>(
     content: &'a str,
     extension: &str,
-    is_dark: bool,
+    _is_dark: bool,
 ) -> Element<'a, Message> {
     let mut highlighter = Highlighter::new(&Settings {
-        theme: if is_dark {
-            iced_highlighter::Theme::Base16Ocean
-        } else {
-            iced_highlighter::Theme::Base16Ocean
-        },
+        #[allow(clippy::if_same_then_else)]
+        theme: iced_highlighter::Theme::Base16Ocean,
         token: extension.to_string(),
     });
 
@@ -444,6 +445,7 @@ fn results_panel(app: &App) -> Element<'_, Message> {
 }
 
 #[allow(clippy::too_many_lines)]
+#[allow(clippy::elidable_lifetime_names)]
 fn result_item_view<'a>(
     selected_index: Option<usize>,
     hovered_item_index: Option<usize>,

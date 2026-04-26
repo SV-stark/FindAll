@@ -12,7 +12,7 @@ fn get_preview_cache() -> &'static Cache<(String, u64), String> {
     PREVIEW_CACHE.get_or_init(|| {
         Cache::builder()
             .max_capacity(100)
-            .time_to_live(Duration::from_secs(600))
+            .time_to_live(Duration::from_mins(10))
             .build()
     })
 }
@@ -42,12 +42,11 @@ pub async fn get_file_preview_internal(path: String) -> Result<String, String> {
     let path_buf = std::path::PathBuf::from(&path);
     let modified = std::fs::metadata(&path_buf)
         .and_then(|m| m.modified())
-        .map(|t| {
+        .map_or(0, |t| {
             t.duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs()
-        })
-        .unwrap_or(0);
+        });
 
     let cache = get_preview_cache();
     let cache_key = (path.clone(), modified);
