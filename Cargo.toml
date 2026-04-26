@@ -49,7 +49,7 @@ fd-lock = "4.0"
 
 # Document Parsing
 # Simplified with Kreuzberg
-kreuzberg = { version = "4.8.6", features = [
+kreuzberg = { version = "4.9.4", features = [
     "tokio-runtime",
     "pdf",
     "ocr",
