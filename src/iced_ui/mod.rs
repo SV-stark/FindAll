@@ -249,6 +249,7 @@ pub struct App {
     pub(crate) index_size: String,
     pub(crate) rebuild_status: Option<String>,
     pub(crate) rebuild_progress: Option<f32>,
+    pub(crate) rebuild_eta: Option<u64>,
     pub(crate) is_dark: bool,
     pub(crate) sidebar_collapsed: bool,
     pub(crate) settings: AppSettings,
@@ -308,6 +309,7 @@ impl Default for App {
             index_size: "0 MB".to_string(),
             rebuild_status: None,
             rebuild_progress: None,
+            rebuild_eta: None,
             is_dark: false,
             sidebar_collapsed: false,
             settings: AppSettings::default(),
@@ -792,6 +794,11 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                         None
                     };
                     app.rebuild_status = Some(event.status);
+                    app.rebuild_eta = if event.eta_seconds > 0 {
+                        Some(event.eta_seconds)
+                    } else {
+                        None
+                    };
                 }
                 crate::scanner::ProgressType::Filename => {
                     app.rebuild_status = Some(event.status);
@@ -809,6 +816,7 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             app.index_size = format!("{:.1} MB", (stats.total_size_bytes as f64) / 1_048_576.0);
             app.rebuild_progress = None;
             app.rebuild_status = None;
+            app.rebuild_eta = None;
             Task::none()
         }
         Message::StatusUpdate(s) => {

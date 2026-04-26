@@ -121,6 +121,12 @@ impl Scanner {
                 }
             }
 
+            let current_file = std::path::Path::new(&task.doc.path)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
+
             // Clone path before moving doc
             let doc_path = task.doc.path.clone();
             doc_batch.push((task.doc, task.modified, task.size));
@@ -147,23 +153,15 @@ impl Scanner {
                     0.0
                 };
 
-                // Batch summary every 1000 files
-                if processed.is_multiple_of(1000) {
-                    info!(
-                        "Indexed {} / {} files ({:.1} files/s)",
-                        processed, current_total, rate
-                    );
-                }
-
                 if let Some(tx) = progress_tx {
                     let _ = tx.try_send(ProgressEvent {
                         ptype: ProgressType::Content,
-                        current_file: String::new(),
+                        current_file,
                         current_folder: String::new(),
                         processed,
                         total: current_total,
-                        status: "Indexing contents...".to_string(),
-                        eta_seconds: if rate > 0.0 {
+                        status: format!("Indexing: {processed} / {current_total}"),
+                        eta_seconds: if rate > 0.0 && current_total > processed {
                             #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
                             {
                                 (current_total.saturating_sub(processed) as f64 / rate).round()
@@ -253,6 +251,7 @@ impl Scanner {
         let progress_tx_clone = self.progress_tx.clone();
         let total_files = total.clone();
 
+        let indexing_threads = self.settings.indexing_threads;
         let file_size_limit_mb = self.settings.index_file_size_limit_mb;
         let allowed_extensions: Arc<std::collections::HashSet<String>> = Arc::new(
             self.settings
@@ -349,12 +348,34 @@ impl Scanner {
         // Receives chunks over the mpsc channel and awaits kreuzberg's native
         // concurrent JoinSet-based batch extractor directly on the Tokio runtime.
         let task_tx_for_parser = task_tx.clone();
+        let progress_tx_for_parser = self.progress_tx.clone();
+        let total_files_for_parser = total.clone();
+
         let parser_handle = tokio::spawn(async move {
             info!("Stage 2b: Async Kreuzberg batch parsing");
             while let Some(chunk) = chunk_rx.recv().await {
                 let just_paths: Vec<PathBuf> = chunk.iter().map(|(p, _, _)| p.clone()).collect();
 
-                match crate::parsers::parse_files_batch(&just_paths).await {
+                if let Some(tx) = &progress_tx_for_parser {
+                    let current_total = total_files_for_parser.load(Ordering::Relaxed);
+                    let first_file = just_paths
+                        .first()
+                        .and_then(|p| p.file_name())
+                        .map_or_else(|| String::new(), |n| n.to_string_lossy().to_string());
+
+                    let _ = tx.try_send(ProgressEvent {
+                        ptype: ProgressType::Content,
+                        current_file: first_file,
+                        current_folder: String::new(),
+                        processed: 0, // We don't know the absolute processed count here easily
+                        total: current_total,
+                        status: format!("Parsing batch of {} files...", just_paths.len()),
+                        eta_seconds: 0,
+                        files_per_second: 0.0,
+                    });
+                }
+
+                match crate::parsers::parse_files_batch(&just_paths, indexing_threads).await {
                     Ok(results) => {
                         for (parsed_res, (path, modified, size)) in
                             results.into_iter().zip(chunk.into_iter())

@@ -48,13 +48,20 @@ pub fn parse_file(path: &Path) -> Result<ParsedDocument> {
 /// Process a batch of files using Kreuzberg's native async concurrent batch extraction.
 ///
 /// This is `async` — it must be called from within a Tokio async context. Kreuzberg
-/// manages its own semaphore-gated `JoinSet` internally, scaling concurrency to
-/// `(num_cpus * 1.5).ceil()` by default — no manual Rayon pools needed.
-pub async fn parse_files_batch(paths: &[PathBuf]) -> Result<Vec<Result<ParsedDocument>>> {
-    tracing::debug!("Async batch parsing {} files via kreuzberg", paths.len());
+/// manages its own semaphore-gated `JoinSet` internally.
+pub async fn parse_files_batch(
+    paths: &[PathBuf],
+    max_threads: u8,
+) -> Result<Vec<Result<ParsedDocument>>> {
+    tracing::debug!(
+        "Async batch parsing {} files via kreuzberg (max_threads: {})",
+        paths.len(),
+        max_threads
+    );
 
     let config = kreuzberg::ExtractionConfig {
         use_cache: false,
+        max_concurrent_extractions: Some(max_threads as usize),
         ..Default::default()
     };
 

@@ -213,7 +213,7 @@ mod windows_usn {
                 let _ = path_tx.send(full_path.clone());
                 count += 1;
 
-                if count % 2000 == 0 {
+                if count % 500 == 0 {
                     total_count.store(count, Ordering::Relaxed);
                     if let Some(tx) = progress_tx {
                         let _ = tx.try_send(ProgressEvent {
@@ -222,7 +222,7 @@ mod windows_usn {
                             current_folder: String::new(),
                             processed: count,
                             total: 0,
-                            status: format!("Reconstructing MFT: {count} files"),
+                            status: format!("Scanning filenames: {count}"),
                             eta_seconds: 0,
                             files_per_second: 0.0,
                         });

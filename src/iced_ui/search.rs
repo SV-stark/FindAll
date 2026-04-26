@@ -760,6 +760,18 @@ fn status_bar(app: &App) -> Element<'_, Message> {
         status_row = status_row
             .push(container(iced::widget::progress_bar(0.0..=1.0, p)).width(Length::Fixed(100.0)));
         status_row = status_row.push(Space::new().width(Length::Fixed(8.0)));
+
+        if let Some(eta) = app.rebuild_eta {
+            let eta_str = if eta >= 3600 {
+                format!("ETA: {}h {}m", eta / 3600, (eta % 3600) / 60)
+            } else if eta >= 60 {
+                format!("ETA: {}m {}s", eta / 60, eta % 60)
+            } else {
+                format!("ETA: {eta}s")
+            };
+            status_row = status_row.push(text(eta_str).size(11));
+            status_row = status_row.push(Space::new().width(Length::Fixed(8.0)));
+        }
     }
 
     if let Some(status) = &app.rebuild_status {
