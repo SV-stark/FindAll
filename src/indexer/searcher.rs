@@ -267,10 +267,10 @@ impl IndexSearcher {
 
             let final_query = tantivy::query::BooleanQuery::new(combine);
             let top_docs = searcher
-                .search(&final_query, &TopDocs::with_limit(limit))
+                .search(&final_query, &TopDocs::with_limit(limit).order_by_score())
                 .map_err(|e| FlashError::search(query_str, e.to_string()))?;
 
-            Ok((Box::new(final_query), top_docs))
+            Ok((Box::new(final_query) as Box<dyn tantivy::query::Query>, top_docs))
         };
 
         let (final_query, top_docs) = if parsed.text_query == "*" {
