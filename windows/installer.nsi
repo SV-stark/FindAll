@@ -4,7 +4,7 @@
 # Define application constants
 !define APP_NAME "Flash Search"
 !define APP_EXECUTABLE "flash-search.exe"
-!define APP_VERSION "0.2.0"
+!define APP_VERSION "0.10.0"
 !define APP_PUBLISHER "Flash Search Team"
 !define APP_URL "https://github.com/flash-search/flash-search"
 !define APP_ICON "..\assets\icon.ico"
