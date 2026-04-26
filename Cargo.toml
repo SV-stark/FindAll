@@ -29,7 +29,7 @@ serde_json = "1.0"
 tantivy = "0.25"
 
 # Metadata Database (Pure Rust KV store)
-redb = "2.1"
+redb = "2.6"
 
 # Concurrency & Parallelism
 tokio = { version = "1", features = [
@@ -82,15 +82,15 @@ regex = "1"
 opener = { version = "0.8", features = ["reveal"] }
 rfd = "0.17"
 ctrlc = "3.2"
-tray-icon = "0.21"
+tray-icon = "0.22"
 auto-launch = "0.6"
 image = { version = "0.25", default-features = false, features = [
     "png",
     "ico",
 ] }
-global-hotkey = "0.5.0"
-self_update = { version = "0.41", features = ["rustls"] }
-itertools = "0.13"
+global-hotkey = "0.7"
+self_update = { version = "0.44", features = ["rustls"] }
+itertools = "0.14"
 strum = { version = "0.26", features = ["derive"] }
 config = "0.14"
 bon = "3.1"
