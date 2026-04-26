@@ -894,10 +894,8 @@ pub fn subscription(app: &App) -> Subscription<Message> {
                                             .await;
                                     }
                                     Err(flume::TryRecvError::Empty) => {
-                                        tokio::time::sleep(
-                                            std::time::Duration::from_millis(100),
-                                        )
-                                        .await;
+                                        tokio::time::sleep(std::time::Duration::from_millis(100))
+                                            .await;
                                     }
                                     Err(flume::TryRecvError::Disconnected) => break,
                                 }
