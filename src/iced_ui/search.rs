@@ -8,20 +8,101 @@ use iced::{Alignment, Element, Font, Length, Padding, font};
 // --- Icons from TTF Font ---
 use crate::iced_ui::icons::{load_icon, load_icon_size};
 
-use std::sync::OnceLock;
-use syntect::easy::HighlightLines;
-use syntect::highlighting::ThemeSet;
-use syntect::parsing::SyntaxSet;
-use syntect::util::LinesWithEndings;
 
-fn get_syntax_set() -> &'static SyntaxSet {
-    static SYNTAX_SET: OnceLock<SyntaxSet> = OnceLock::new();
-    SYNTAX_SET.get_or_init(SyntaxSet::load_defaults_newlines)
+use iced_highlighter::{Highlighter, Settings};
+use iced::widget::text::Highlighter as _;
+use std::ops::Range;
+
+struct TermHighlighter {
+    terms: Vec<String>,
 }
 
-fn get_theme_set() -> &'static ThemeSet {
-    static THEME_SET: OnceLock<ThemeSet> = OnceLock::new();
-    THEME_SET.get_or_init(ThemeSet::load_defaults)
+impl TermHighlighter {
+    fn new(terms: Vec<String>) -> Self {
+        Self { terms }
+    }
+
+    fn highlight_line(&mut self, line: &str) -> Vec<(Range<usize>, iced::Color)> {
+        if self.terms.is_empty() {
+            return Vec::new();
+        }
+
+        let mut matches = Vec::new();
+        let lower_line = line.to_lowercase();
+
+        for term in &self.terms {
+            if term.is_empty() {
+                continue;
+            }
+            let lower_term = term.to_lowercase();
+            let mut start = 0;
+            while let Some(idx) = lower_line[start..].find(&lower_term) {
+                let abs_idx = start + idx;
+                matches.push(abs_idx..abs_idx + term.len());
+                start = abs_idx + term.len();
+            }
+        }
+
+        if matches.is_empty() {
+            return Vec::new();
+        }
+        matches.sort_by_key(|r| r.start);
+
+        let mut merged: Vec<Range<usize>> = Vec::new();
+        for m in matches {
+            if let Some(last) = merged.last_mut() {
+                if m.start <= last.end {
+                    last.end = last.end.max(m.end);
+                    continue;
+                }
+            }
+            merged.push(m);
+        }
+
+        merged
+            .into_iter()
+            .map(|r| (r, theme::HIT_AMBER))
+            .collect()
+    }
+}
+
+fn sidebar_section<'a>(title: &'a str, content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
+    column![
+        text(title).size(14).font(Font {
+            weight: font::Weight::Bold,
+            ..Font::default()
+        }),
+        content.into()
+    ]
+    .spacing(12)
+    .into()
+}
+
+fn highlight_to_spans<'a, H>(
+    content: &'a str,
+    mut highlighter: impl FnMut(&str) -> Vec<(Range<usize>, H)>,
+    map_highlight: impl Fn(H) -> Option<iced::Color>,
+) -> Vec<iced::widget::text::Span<'a, Message>> {
+    content
+        .lines()
+        .flat_map(|line| {
+            let mut line_spans: Vec<_> = highlighter(line)
+                .into_iter()
+                .map(|(range, highlight)| {
+                    let mut s = span(&line[range])
+                        .size(13)
+                        .font(Font::MONOSPACE);
+                    
+                    if let Some(color) = map_highlight(highlight) {
+                        s = s.color(color);
+                    }
+                    s
+                })
+                .collect::<Vec<_>>();
+            line_spans.push(span("\n"));
+            line_spans
+        })
+        .collect()
 }
 
 fn render_code_preview<'a>(
@@ -29,48 +110,16 @@ fn render_code_preview<'a>(
     extension: &str,
     is_dark: bool,
 ) -> Element<'a, Message> {
-    let ps = get_syntax_set();
-    let ts = get_theme_set();
-
-    let syntax = ps
-        .find_syntax_by_extension(extension)
-        .unwrap_or_else(|| ps.find_syntax_plain_text());
-
-    let theme_name = if is_dark {
-        "base16-ocean.dark"
-    } else {
-        "base16-ocean.light"
-    };
-    let theme = &ts.themes[theme_name];
-
-    let mut h = HighlightLines::new(syntax, theme);
-    let mut spans: Vec<iced::widget::text::Span<'a, Message>> = Vec::new();
-
-    // Limit to first 1000 lines to prevent UI freezing on massive files
-    for line in LinesWithEndings::from(content).take(1000) {
-        if let Ok(ranges) = h.highlight_line(line, ps) {
-            for (style, text) in ranges {
-                spans.push(
-                    span(text)
-                        .size(13)
-                        .font(Font {
-                            family: font::Family::Monospace,
-                            ..Font::default()
-                        })
-                        .color(iced::Color::from_rgb8(
-                            style.foreground.r,
-                            style.foreground.g,
-                            style.foreground.b,
-                        )),
-                );
-            }
+    let mut highlighter = Highlighter::new(&Settings {
+        theme: if is_dark {
+            iced_highlighter::Theme::Base16Ocean
         } else {
-            spans.push(span(line).size(13).font(Font {
-                family: font::Family::Monospace,
-                ..Font::default()
-            }));
-        }
-    }
+            iced_highlighter::Theme::Base16Ocean
+        },
+        token: extension.to_string(),
+    });
+
+    let spans = highlight_to_spans(content, |line| highlighter.highlight_line(line).collect(), |h| h.color());
 
     if spans.is_empty() {
         return text(content).size(13).into();
@@ -169,7 +218,7 @@ fn main_layout(app: &App) -> Element<'_, Message> {
         column![
             filter_chips(app),
             row![
-                results_panel(app).width(Length::FillPortion(2)),
+                results_panel(app),
                 container(right_panel(app)).width(Length::FillPortion(3)),
             ]
             .height(Length::Fill)
@@ -280,12 +329,9 @@ fn left_sidebar(app: &App) -> Element<'_, Message> {
         .into()
 }
 
-fn extension_filter_section(app: &App) -> iced::widget::Column<'_, Message> {
-    column![
-        text("File Extension").size(14).font(Font {
-            weight: font::Weight::Bold,
-            ..Font::default()
-        }),
+fn extension_filter_section(app: &App) -> Element<'_, Message> {
+    sidebar_section(
+        "File Extension",
         column![
             extension_checkbox("pdf", app),
             extension_checkbox("md", app),
@@ -293,57 +339,51 @@ fn extension_filter_section(app: &App) -> iced::widget::Column<'_, Message> {
             extension_checkbox("py", app),
             extension_checkbox("json", app),
         ]
-        .spacing(8)
-    ]
-    .spacing(12)
+        .spacing(8),
+    )
 }
 
-fn size_filter_section(app: &App) -> iced::widget::Column<'_, Message> {
-    column![
-        text("Size Range").size(14).font(Font {
-            weight: font::Weight::Bold,
-            ..Font::default()
-        }),
-        row![
-            TextInput::new("Min", &app.min_size)
-                .on_input(Message::MinSizeChanged)
-                .padding(Padding::new(8.0))
-                .size(13)
-                .width(Length::Fill),
-            text("-").size(14),
-            TextInput::new("Max", &app.max_size)
-                .on_input(Message::MaxSizeChanged)
-                .padding(Padding::new(8.0))
-                .size(13)
-                .width(Length::Fill),
+fn size_filter_section(app: &App) -> Element<'_, Message> {
+    sidebar_section(
+        "Size Range",
+        column![
+            row![
+                TextInput::new("Min", &app.min_size)
+                    .on_input(Message::MinSizeChanged)
+                    .padding(Padding::new(8.0))
+                    .size(13)
+                    .width(Length::Fill),
+                text("-").size(14),
+                TextInput::new("Max", &app.max_size)
+                    .on_input(Message::MaxSizeChanged)
+                    .padding(Padding::new(8.0))
+                    .size(13)
+                    .width(Length::Fill),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center),
+            row![
+                size_unit_button("KB", app),
+                size_unit_button("MB", app),
+                size_unit_button("GB", app),
+            ]
+            .spacing(4)
         ]
-        .spacing(8)
-        .align_y(Alignment::Center),
-        row![
-            size_unit_button("KB", app),
-            size_unit_button("MB", app),
-            size_unit_button("GB", app),
-        ]
-        .spacing(4)
-    ]
-    .spacing(12)
+        .spacing(12),
+    )
 }
 
-fn date_filter_section(app: &App) -> iced::widget::Column<'_, Message> {
-    column![
-        text("Last Modified").size(14).font(Font {
-            weight: font::Weight::Bold,
-            ..Font::default()
-        }),
+fn date_filter_section(app: &App) -> Element<'_, Message> {
+    sidebar_section(
+        "Last Modified",
         column![
             date_filter_button("Anytime", DateFilter::Anytime, app),
             date_filter_button("Today", DateFilter::Today, app),
             date_filter_button("Past Week", DateFilter::Last7Days, app),
             date_filter_button("Past Month", DateFilter::Last30Days, app),
         ]
-        .spacing(6)
-    ]
-    .spacing(12)
+        .spacing(6),
+    )
 }
 
 fn match_options_section(app: &App) -> iced::widget::Column<'_, Message> {
@@ -366,7 +406,7 @@ fn match_options_section(app: &App) -> iced::widget::Column<'_, Message> {
     .spacing(8)
 }
 
-fn results_panel(app: &App) -> iced::widget::Container<'_, Message> {
+fn results_panel(app: &App) -> Element<'_, Message> {
     if app.results.is_empty() {
         let (icon, msg) = if app.search_query.is_empty() {
             ("search", "Type something to begin searching...")
@@ -383,25 +423,35 @@ fn results_panel(app: &App) -> iced::widget::Container<'_, Message> {
             .align_x(Alignment::Center),
         )
         .center_x(Length::Fill)
-        .center_y(Length::Fill);
+        .center_y(Length::Fill)
+        .width(Length::FillPortion(2))
+        .into();
     }
 
     let results = scrollable(column(
         app.results
             .iter()
             .enumerate()
-            .map(|(i, res)| result_item_view(app, i, res))
+            .map(|(i, res)| result_item_view(app.selected_index, app.hovered_item_index, i, res))
             .collect::<Vec<Element<Message>>>(),
     ))
     .height(Length::Fill);
 
-    container(results).width(Length::Fill).height(Length::Fill)
+    container(results)
+        .width(Length::FillPortion(2))
+        .height(Length::Fill)
+        .into()
 }
 
 #[allow(clippy::too_many_lines)]
-fn result_item_view<'a>(app: &App, i: usize, res: &'a super::FileItem) -> Element<'a, Message> {
-    let is_selected = app.selected_index == Some(i);
-    let is_hovered = app.hovered_item_index == Some(i);
+fn result_item_view<'a>(
+    selected_index: Option<usize>,
+    hovered_item_index: Option<usize>,
+    i: usize,
+    res: &'a super::FileItem,
+) -> Element<'a, Message> {
+    let is_selected = selected_index == Some(i);
+    let is_hovered = hovered_item_index == Some(i);
 
     let mut actions_row = row![].spacing(10);
     if is_hovered || is_selected {
