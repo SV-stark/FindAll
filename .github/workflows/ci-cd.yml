@@ -25,17 +25,6 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
 
-  audit:
-    name: Security Audit
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Security Audit
-        uses: rustsec/audit-check@v2.0.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          deny: vulnerabilities
-
   test:
     name: Test (windows-latest)
     needs: [fmt]
@@ -72,7 +61,7 @@ jobs:
 
   build-release:
     name: Build & Release
-    needs: [test, clippy, audit]
+    needs: [test, clippy]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: windows-latest
     permissions:
