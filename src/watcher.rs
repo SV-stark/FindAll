@@ -2,7 +2,6 @@ use crate::error::{FlashError, Result};
 use crate::indexer::IndexManager;
 use crate::metadata::MetadataDb;
 use crate::parsers::parse_file;
-use blake3;
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::collections::HashMap;
@@ -40,8 +39,9 @@ impl WatcherManager {
         indexer: Arc<IndexManager>,
         metadata_db: Arc<MetadataDb>,
         allowed_extensions: std::collections::HashSet<String>,
+        enable_ocr: bool,
     ) -> Self {
-        Self::new_with_excludes(indexer, metadata_db, allowed_extensions, &[])
+        Self::new_with_excludes(indexer, metadata_db, allowed_extensions, &[], enable_ocr)
     }
 
     /// Creates a new `WatcherManager` with exclude patterns.
@@ -54,6 +54,7 @@ impl WatcherManager {
         metadata_db: Arc<MetadataDb>,
         allowed_extensions: std::collections::HashSet<String>,
         exclude_patterns: &[String],
+        enable_ocr: bool,
     ) -> Self {
         let (external_tx, external_rx) = mpsc::channel::<(PathBuf, WatcherAction)>(1000);
         let runtime_handle = tokio::runtime::Handle::current();
@@ -78,6 +79,7 @@ impl WatcherManager {
             metadata_db.clone(),
             allowed_extensions,
             Arc::clone(&exclude_globs),
+            enable_ocr,
         );
 
         Self {
@@ -97,6 +99,7 @@ impl WatcherManager {
         metadata_db: Arc<MetadataDb>,
         allowed_extensions: std::collections::HashSet<String>,
         exclude_globs: Arc<GlobSet>,
+        enable_ocr: bool,
     ) {
         const MAX_DEBOUNCE_WAIT: Duration = Duration::from_secs(5);
         const DEBOUNCE_GAP: Duration = Duration::from_millis(500);
@@ -135,7 +138,7 @@ impl WatcherManager {
                         }
                         first_event_time = None;
                         let events = std::mem::take(&mut buffer);
-                        Self::process_events(events, &indexer, &metadata_db, &allowed_extensions, &exclude_globs).await;
+                        Self::process_events(events, &indexer, &metadata_db, &allowed_extensions, &exclude_globs, enable_ocr).await;
                     }
                 }
             }
@@ -148,6 +151,7 @@ impl WatcherManager {
         metadata_db: &Arc<MetadataDb>,
         allowed_extensions: &std::collections::HashSet<String>,
         exclude_globs: &GlobSet,
+        enable_ocr: bool,
     ) {
         let mut needs_commit = false;
 
@@ -201,7 +205,7 @@ impl WatcherManager {
                 continue;
             }
 
-            match Self::reindex_single_file(&path, metadata_db).await {
+            match Self::reindex_single_file(&path, metadata_db, enable_ocr).await {
                 Ok(Some((doc, modified, size, hash))) => {
                     meta_to_update.push((doc.path.clone(), modified, size, hash));
                     docs_to_add.push((doc, modified, size));
@@ -280,6 +284,7 @@ impl WatcherManager {
     async fn reindex_single_file(
         path: &Path,
         metadata_db: &Arc<MetadataDb>,
+        enable_ocr: bool,
     ) -> Result<Option<(crate::parsers::ParsedDocument, u64, u64, [u8; 32])>> {
         if !path.exists() {
             return Ok(None);
@@ -307,7 +312,7 @@ impl WatcherManager {
         }
 
         let path_buf = path.to_path_buf();
-        let parsed_res = tokio::task::spawn_blocking(move || parse_file(&path_buf))
+        let parsed_res = tokio::task::spawn_blocking(move || parse_file(&path_buf, enable_ocr))
             .await
             .map_err(|e| FlashError::parse(path, format!("Parse task failed: {e}")))?;
 
@@ -319,7 +324,12 @@ impl WatcherManager {
             }
         };
 
-        let content_hash: [u8; 32] = blake3::hash(parsed.content.as_bytes()).into();
+        // Shallow hash instead of expensive blake3
+        let mut content_hash = [0u8; 32];
+        let s_bytes = size.to_le_bytes();
+        let m_bytes = modified.to_le_bytes();
+        content_hash[..8].copy_from_slice(&s_bytes);
+        content_hash[8..16].copy_from_slice(&m_bytes);
 
         Ok(Some((parsed, modified, size, content_hash)))
     }
@@ -340,7 +350,8 @@ mod tests {
         let indexer = Arc::new(IndexManager::open(temp.path(), 256).unwrap());
         let metadata = Arc::new(MetadataDb::open(&temp.path().join("metadata.db")).unwrap());
 
-        let mut watcher = WatcherManager::new(indexer, metadata, std::collections::HashSet::new());
+        let mut watcher =
+            WatcherManager::new(indexer, metadata, std::collections::HashSet::new(), false);
 
         // Add a directory to watch
         let watch_dir = temp.path().join("watch_me");
@@ -369,7 +380,7 @@ mod tests {
         writeln!(file, "Initial content").unwrap();
 
         // Should return Some on first index
-        let result = WatcherManager::reindex_single_file(&file_path, &metadata).await;
+        let result = WatcherManager::reindex_single_file(&file_path, &metadata, false).await;
         assert!(result.is_ok());
         let option = result.unwrap();
         assert!(option.is_some());
@@ -377,11 +388,11 @@ mod tests {
         assert_eq!(doc.content, "Initial content");
 
         metadata
-            .update_metadata(&file_path, modified, size, [0; 32])
+            .update_metadata(&file_path, modified, size, _hash)
             .unwrap();
 
         // Should return None if no change
-        let result = WatcherManager::reindex_single_file(&file_path, &metadata).await;
+        let result = WatcherManager::reindex_single_file(&file_path, &metadata, false).await;
         assert!(result.is_ok());
         assert!(result.unwrap().is_none());
     }

@@ -171,67 +171,66 @@ mod windows_usn {
         dir_map: &HashMap<u64, DirInfo>,
         files: Vec<(CompactString, u64)>,
     ) {
+        use rayon::prelude::*;
+
         info!(
-            "MFT Enumeration finished. Reconstructing paths for {} files...",
+            "MFT Enumeration finished. Reconstructing paths for {} files in parallel...",
             files.len()
         );
 
-        let mut count = 0;
+        files
+            .into_par_iter()
+            .for_each(|(name, mut current_parent)| {
+                let mut path_parts: SmallVec<[&str; 16]> = SmallVec::new();
+                path_parts.push(name.as_str());
 
-        for (name, mut current_parent) in files {
-            let mut path_parts: SmallVec<[&str; 16]> = SmallVec::new();
-            path_parts.push(name.as_str());
+                let mut depth = 0;
+                let mut valid_path = true;
 
-            let mut depth = 0;
-            let mut valid_path = true;
-
-            // Trace back to root. In NTFS, root's parent is itself. FRN 5 is typically root.
-            while depth < 50 {
-                if let Some(parent_info) = dir_map.get(&current_parent) {
-                    path_parts.push(parent_info.name.as_str());
-                    if current_parent == parent_info.parent_frn {
-                        break; // Reached root
-                    }
-                    current_parent = parent_info.parent_frn;
-                    depth += 1;
-                } else {
-                    // Parent not found, orphaned or root not in map
-                    valid_path = false;
-                    break;
-                }
-            }
-
-            if valid_path {
-                let mut full_path = PathBuf::from(drive_root);
-                for part in path_parts.iter().rev() {
-                    // Skip if it's the drive root name itself being reported
-                    if !part.is_empty() && !part.contains(':') {
-                        full_path.push(part);
+                // Trace back to root. In NTFS, root's parent is itself. FRN 5 is typically root.
+                while depth < 50 {
+                    if let Some(parent_info) = dir_map.get(&current_parent) {
+                        path_parts.push(parent_info.name.as_str());
+                        if current_parent == parent_info.parent_frn {
+                            break; // Reached root
+                        }
+                        current_parent = parent_info.parent_frn;
+                        depth += 1;
+                    } else {
+                        // Parent not found, orphaned or root not in map
+                        valid_path = false;
+                        break;
                     }
                 }
 
-                let _ = path_tx.send(full_path.clone());
-                count += 1;
+                if valid_path {
+                    let mut full_path = PathBuf::from(drive_root);
+                    for part in path_parts.iter().rev() {
+                        // Skip if it's the drive root name itself being reported
+                        if !part.is_empty() && !part.contains(':') {
+                            full_path.push(part);
+                        }
+                    }
 
-                if count % 500 == 0 {
-                    total_count.store(count, Ordering::Relaxed);
-                    if let Some(tx) = progress_tx {
-                        let _ = tx.try_send(ProgressEvent {
-                            ptype: ProgressType::Filename,
-                            current_file: name.to_string(),
-                            current_folder: String::new(),
-                            processed: count,
-                            total: 0,
-                            status: format!("Scanning filenames: {count}"),
-                            eta_seconds: 0,
-                            files_per_second: 0.0,
-                        });
+                    let _ = path_tx.send(full_path);
+                    let count = total_count.fetch_add(1, Ordering::Relaxed);
+
+                    if count % 500 == 0 {
+                        if let Some(tx) = progress_tx {
+                            let _ = tx.try_send(ProgressEvent {
+                                ptype: ProgressType::Filename,
+                                current_file: name.to_string(),
+                                current_folder: String::new(),
+                                processed: count,
+                                total: 0,
+                                status: format!("Scanning filenames: {count}"),
+                                eta_seconds: 0,
+                                files_per_second: 0.0,
+                            });
+                        }
                     }
                 }
-            }
-        }
-
-        total_count.store(count, Ordering::Relaxed);
+            });
     }
 
     pub fn watch_volume(

@@ -2032,7 +2032,7 @@ checksum = "9844ddc3a6e533d62bba727eb6c28b5d360921d5175e9ff0f1e621a5c590a4d5"
 
 [[package]]
 name = "flash-search"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "ahash",
  "anyhow",
@@ -3906,9 +3906,9 @@ dependencies = [
 
 [[package]]
 name = "kreuzberg"
-version = "4.9.4"
+version = "4.10.0-rc.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "075403eee3e430917b55b195ef90098c6252d737883eba38c80d2297deaccb08"
+checksum = "8d766162744e128f0819724431ed7d4d20ddd71fe4c2d02e1bc056098f8ddad3"
 dependencies = [
  "ahash",
  "async-trait",
@@ -3968,9 +3968,9 @@ dependencies = [
 
 [[package]]
 name = "kreuzberg-pdfium-render"
-version = "4.9.5"
+version = "4.10.0-rc.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4f928da2bda36777a55cebd59570ac1d2907ddcfe531de8f15b343180a04f501"
+checksum = "c79a5723a523689e6bcb9257cf7a90bec2b84b63f0857e07d6f63afffb70f464"
 dependencies = [
  "bitflags 2.11.1",
  "bytemuck",
@@ -3993,9 +3993,9 @@ dependencies = [
 
 [[package]]
 name = "kreuzberg-tesseract"
-version = "4.9.5"
+version = "4.10.0-rc.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce3ea8bcf6118bc043da2b63d0e190595fddc48bd99416ccfb8cb10f9feef1c5"
+checksum = "32ba0329ff7aaefee1ec5b80fc7f54a5a8dcabde59d2a8e4a8ae458f5eed6eb9"
 dependencies = [
  "cc",
  "cmake",
@@ -8609,6 +8609,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "v_escape-base"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f1212fce830b75af194b578e55b3db9049f2c8c45f58d397fb25602fdb50fb3d"
+
+[[package]]
 name = "v_frame"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8621,9 +8627,12 @@ dependencies = [
 
 [[package]]
 name = "v_htmlescape"
-version = "0.15.8"
+version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4e8257fbc510f0a46eb602c10215901938b5c2a7d5e70fc11483b1d3c9b5b18c"
+checksum = "befb3d53c9e3ec641417685896cbc8cc5bd264d6a2e190c56aaef1af24740d99"
+dependencies = [
+ "v_escape-base",
+]
 
 [[package]]
 name = "valuable"

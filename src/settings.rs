@@ -108,6 +108,8 @@ pub struct AppSettings {
     pub indexing_threads: u8,
     #[default(512)]
     pub memory_limit_mb: u32,
+    #[default(false)]
+    pub enable_ocr: bool,
 
     // Pinned files for quick access
     pub pinned_files: Vec<String>,

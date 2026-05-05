@@ -96,6 +96,7 @@ pub fn setup_app() -> std::result::Result<
         metadata_db_shared.clone(),
         settings.get_allowed_extensions().clone(),
         &settings.exclude_patterns,
+        settings.enable_ocr,
     );
 
     let (progress_tx, progress_rx) = flume::bounded(100);

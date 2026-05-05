@@ -4,7 +4,6 @@ use crate::error::Result;
 use crate::indexer::IndexManager;
 use crate::metadata::MetadataDb;
 use crate::parsers::{ParsedDocument, parse_file};
-use blake3;
 use drive_scanner::DriveScanner;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -32,7 +31,7 @@ pub struct ProgressEvent {
     pub current_folder: String,
 }
 
-const BATCH_SIZE: usize = 1000;
+const BATCH_SIZE: usize = 5000;
 
 #[derive(Debug)]
 struct IndexTask {
@@ -136,8 +135,8 @@ impl Scanner {
             // Flush batch when full
             if doc_batch.len() >= BATCH_SIZE {
                 let _ = indexer.add_documents_batch(&doc_batch);
-                let _ = indexer.commit();
-                indexer.invalidate_cache();
+                // Removed periodic commit and cache invalidation for performance.
+                // We now commit only at the very end of the indexing process.
                 let _ = metadata_db.batch_update_metadata(&meta_batch);
                 doc_batch.clear();
                 meta_batch.clear();
@@ -252,6 +251,7 @@ impl Scanner {
         let total_files = total.clone();
 
         let indexing_threads = self.settings.indexing_threads;
+        let enable_ocr = self.settings.enable_ocr;
         let file_size_limit_mb = self.settings.index_file_size_limit_mb;
         let allowed_extensions: Arc<std::collections::HashSet<String>> = Arc::new(
             self.settings
@@ -375,15 +375,22 @@ impl Scanner {
                     });
                 }
 
-                match crate::parsers::parse_files_batch(&just_paths, indexing_threads).await {
+                match crate::parsers::parse_files_batch(&just_paths, indexing_threads, enable_ocr)
+                    .await
+                {
                     Ok(results) => {
                         for (parsed_res, (path, modified, size)) in
                             results.into_iter().zip(chunk.into_iter())
                         {
                             match parsed_res {
                                 Ok(parsed) => {
-                                    let content_hash =
-                                        blake3::hash(parsed.content.as_bytes()).into();
+                                    // Use a shallow "hash" (size + modified) instead of expensive blake3
+                                    let mut content_hash = [0u8; 32];
+                                    let s_bytes = size.to_le_bytes();
+                                    let m_bytes = modified.to_le_bytes();
+                                    content_hash[..8].copy_from_slice(&s_bytes);
+                                    content_hash[8..16].copy_from_slice(&m_bytes);
+
                                     let _ = task_tx_for_parser.send(IndexTask {
                                         doc: parsed,
                                         modified,
@@ -401,8 +408,14 @@ impl Scanner {
                         // Batch-level crash: fall back to individual sync parsing.
                         warn!("Async batch crashed ({e}), falling back to per-file sync parsing");
                         for (path, modified, size) in chunk {
-                            if let Ok(parsed) = parse_file(&path) {
-                                let content_hash = blake3::hash(parsed.content.as_bytes()).into();
+                            if let Ok(parsed) = parse_file(&path, enable_ocr) {
+                                // Shallow hash
+                                let mut content_hash = [0u8; 32];
+                                let s_bytes = size.to_le_bytes();
+                                let m_bytes = modified.to_le_bytes();
+                                content_hash[..8].copy_from_slice(&s_bytes);
+                                content_hash[8..16].copy_from_slice(&m_bytes);
+
                                 let _ = task_tx_for_parser.send(IndexTask {
                                     doc: parsed,
                                     modified,

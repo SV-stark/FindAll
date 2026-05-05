@@ -55,7 +55,7 @@ pub async fn get_file_preview_internal(path: String) -> Result<String, String> {
         return Ok(cached);
     }
 
-    let result = tokio::task::spawn_blocking(move || parse_file(&path_buf))
+    let result = tokio::task::spawn_blocking(move || parse_file(&path_buf, false))
         .await
         .map_err(|e| format!("Preview task failed: {e}"))?;
 

@@ -18,7 +18,7 @@ pub struct ParsedDocument {
 }
 
 /// Detect file type and route to appropriate parser using Kreuzberg
-pub fn parse_file(path: &Path) -> Result<ParsedDocument> {
+pub fn parse_file(path: &Path, enable_ocr: bool) -> Result<ParsedDocument> {
     // Log the file extension for debugging
     let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("none");
     tracing::debug!(
@@ -32,6 +32,7 @@ pub fn parse_file(path: &Path) -> Result<ParsedDocument> {
     // Disable cache to prevent unbounded memory growth during deep directory scans.
     let config = kreuzberg::ExtractionConfig {
         use_cache: false,
+        disable_ocr: !enable_ocr,
         ..Default::default()
     };
 
@@ -52,6 +53,7 @@ pub fn parse_file(path: &Path) -> Result<ParsedDocument> {
 pub async fn parse_files_batch(
     paths: &[PathBuf],
     max_threads: u8,
+    enable_ocr: bool,
 ) -> Result<Vec<Result<ParsedDocument>>> {
     tracing::debug!(
         "Async batch parsing {} files via kreuzberg (max_threads: {})",
@@ -62,6 +64,7 @@ pub async fn parse_files_batch(
     let config = kreuzberg::ExtractionConfig {
         use_cache: false,
         max_concurrent_extractions: Some(max_threads as usize),
+        disable_ocr: !enable_ocr,
         ..Default::default()
     };
 
@@ -139,7 +142,7 @@ mod tests {
         let mut file = std::fs::File::create(&file_path).unwrap();
         writeln!(file, "Hello, world!").unwrap();
 
-        let result = parse_file(&file_path);
+        let result = parse_file(&file_path, false);
         assert!(result.is_ok());
         let doc = result.unwrap();
         assert!(doc.content.contains("Hello, world!"));
@@ -151,7 +154,7 @@ mod tests {
         let file_path = dir.path().join("test.unknown");
         std::fs::File::create(&file_path).unwrap();
 
-        let result = parse_file(&file_path);
+        let result = parse_file(&file_path, false);
         assert!(result.is_err());
     }
 }
