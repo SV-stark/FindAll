@@ -360,21 +360,24 @@ impl IndexSearcher {
     ) -> Result<Vec<SearchResult>> {
         let mut results = Vec::with_capacity(top_docs.len().min(cache_key.limit));
 
+        // Create snippet generator once per search instead of per document
+        let snippet_generator = tantivy::snippet::SnippetGenerator::create(
+            searcher,
+            final_query,
+            self.content_field,
+        ).ok();
+
         for (score, doc_address) in top_docs {
-            match self.retrieve_result(searcher, query, score, doc_address, highlight_terms) {
+            let doc: tantivy::TantivyDocument = searcher
+                .doc(doc_address)
+                .map_err(|e| FlashError::search(query, e.to_string()))?;
+
+            match self.retrieve_result_with_doc(searcher, query, score, doc_address, &doc, highlight_terms) {
                 Ok(mut result) => {
-                    if let Ok(snippet_generator) = tantivy::snippet::SnippetGenerator::create(
-                        searcher,
-                        final_query,
-                        self.content_field,
-                    ) {
-                        let doc: tantivy::TantivyDocument = searcher
-                            .doc(doc_address)
-                            .map_err(|e| FlashError::search(query, e.to_string()))?;
-                        let snippet = snippet_generator.snippet_from_doc(&doc);
+                    if let Some(ref generator) = snippet_generator {
+                        let snippet = generator.snippet_from_doc(&doc);
                         result.snippets = vec![snippet.to_html()];
                     }
-
                     results.push(result);
                 }
                 Err(e) => {
@@ -391,18 +394,15 @@ impl IndexSearcher {
         Ok(results)
     }
 
-    fn retrieve_result(
+    fn retrieve_result_with_doc(
         &self,
         searcher: &tantivy::Searcher,
-        query: &str,
+        _query: &str,
         score: f32,
         doc_address: tantivy::DocAddress,
+        tantivy_doc: &tantivy::TantivyDocument,
         highlight_terms: &[String],
     ) -> Result<SearchResult> {
-        let tantivy_doc: tantivy::TantivyDocument = searcher
-            .doc(doc_address)
-            .map_err(|e| FlashError::search(query, e.to_string()))?;
-
         let file_path = tantivy_doc
             .get_first(self.path_field)
             .and_then(|v| v.as_str())
@@ -479,9 +479,11 @@ impl IndexSearcher {
             .map_err(|e| FlashError::index(format!("Failed to get recent files: {e}")))?;
 
         let mut results = Vec::new();
-        for (_score, doc_address) in top_docs {
-            if let Ok(res) = self.retrieve_result(&searcher, "", 0.0, doc_address, &[]) {
-                results.push(res);
+        for (_mod_time, doc_address) in top_docs {
+            if let Ok(doc) = searcher.doc(doc_address) {
+                if let Ok(res) = self.retrieve_result_with_doc(&searcher, "", 0.0, doc_address, &doc, &[]) {
+                    results.push(res);
+                }
             }
         }
 

@@ -215,20 +215,18 @@ mod windows_usn {
                     let _ = path_tx.send(full_path);
                     let count = total_count.fetch_add(1, Ordering::Relaxed);
 
-                    if count % 500 == 0 {
-                        if let Some(tx) = progress_tx {
-                            let _ = tx.try_send(ProgressEvent {
-                                ptype: ProgressType::Filename,
-                                current_file: name.to_string(),
-                                current_folder: String::new(),
-                                processed: count,
-                                total: 0,
-                                status: format!("Scanning filenames: {count}"),
-                                eta_seconds: 0,
-                                files_per_second: 0.0,
-                            });
-                        }
-                    }
+                if count.is_multiple_of(500) && let Some(tx) = progress_tx {
+                    let _ = tx.try_send(ProgressEvent {
+                        ptype: ProgressType::Filename,
+                        current_file: name.to_string(),
+                        current_folder: String::new(),
+                        processed: count,
+                        total: 0,
+                        status: format!("Scanning filenames: {count}"),
+                        eta_seconds: 0,
+                        files_per_second: 0.0,
+                    });
+                }
                 }
             });
     }

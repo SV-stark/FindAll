@@ -126,6 +126,15 @@ impl FilenameIndex {
         Ok(())
     }
 
+    /// Add multiple files to the staging buffer in a single lock acquisition
+    pub fn add_files_batch(&self, entries: Vec<FilenameEntry>) -> Result<()> {
+        if entries.is_empty() {
+            return Ok(());
+        }
+        self.staging.lock().extend(entries);
+        Ok(())
+    }
+
     pub fn commit(&self) -> Result<()> {
         let mut staging = self.staging.lock();
         if staging.is_empty() {

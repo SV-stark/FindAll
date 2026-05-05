@@ -109,14 +109,19 @@ impl Scanner {
         let mut doc_batch: Vec<(crate::parsers::ParsedDocument, u64, u64)> =
             Vec::with_capacity(BATCH_SIZE);
         let mut meta_batch: Vec<(String, u64, u64, [u8; 32])> = Vec::with_capacity(BATCH_SIZE);
+        let mut filename_batch: Vec<crate::indexer::filename_index::FilenameEntry> =
+            Vec::with_capacity(BATCH_SIZE);
         let mut processed: usize = 0;
 
         for task in task_rx {
-            // Add to filename index
-            if let Some(f_index) = filename_index {
+            // Prepare for filename index
+            if let Some(_) = filename_index {
                 let path = std::path::Path::new(&task.doc.path);
                 if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                    let _ = f_index.add_file(&task.doc.path, name);
+                    filename_batch.push(crate::indexer::filename_index::FilenameEntry {
+                        path: task.doc.path.clone(),
+                        name: compact_str::CompactString::from(name),
+                    });
                 }
             }
 
@@ -135,9 +140,12 @@ impl Scanner {
             // Flush batch when full
             if doc_batch.len() >= BATCH_SIZE {
                 let _ = indexer.add_documents_batch(&doc_batch);
-                // Removed periodic commit and cache invalidation for performance.
-                // We now commit only at the very end of the indexing process.
                 let _ = metadata_db.batch_update_metadata(&meta_batch);
+
+                if let Some(f_index) = filename_index {
+                    let _ = f_index.add_files_batch(std::mem::take(&mut filename_batch));
+                }
+
                 doc_batch.clear();
                 meta_batch.clear();
             }
@@ -181,6 +189,10 @@ impl Scanner {
             let _ = indexer.commit();
             indexer.invalidate_cache();
             let _ = metadata_db.batch_update_metadata(&meta_batch);
+
+            if let Some(f_index) = filename_index {
+                let _ = f_index.add_files_batch(filename_batch);
+            }
         }
 
         // Final progress
