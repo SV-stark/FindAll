@@ -81,8 +81,6 @@ fn sidebar_section<'a>(
     .into()
 }
 
-
-
 fn render_element(element: &DocumentElementHighlight) -> Element<'_, Message> {
     let spans = element
         .spans
