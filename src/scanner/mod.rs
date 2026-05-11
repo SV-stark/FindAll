@@ -121,7 +121,7 @@ impl Scanner {
             }
 
             // Prepare for filename index
-            if let Some(_) = filename_index {
+            if filename_index.is_some() {
                 let path = std::path::Path::new(&task.doc.path);
                 if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
                     filename_batch.push(crate::indexer::filename_index::FilenameEntry {
@@ -157,7 +157,7 @@ impl Scanner {
             }
 
             // Progress update
-            if processed % 10 == 0 {
+            if processed.is_multiple_of(10) {
                 let current_total = total_files.load(Ordering::Relaxed);
                 let elapsed = start.elapsed().as_secs_f64();
                 let rate = if elapsed > 0.0 {

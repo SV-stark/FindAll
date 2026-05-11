@@ -139,7 +139,7 @@ impl AppStateBuilder {
         self
     }
 
-    pub fn db_corrupted(mut self, db_corrupted: bool) -> Self {
+    pub const fn db_corrupted(mut self, db_corrupted: bool) -> Self {
         self.db_corrupted = Some(db_corrupted);
         self
     }

@@ -26,30 +26,40 @@ pub struct RecentFileBuilder {
 }
 
 impl RecentFileBuilder {
+    #[must_use]
     pub fn path(mut self, path: String) -> Self {
         self.path = Some(path);
         self
     }
 
+    #[must_use]
     pub fn title(mut self, title: Option<CompactString>) -> Self {
         self.title = title;
         self
     }
 
+    #[must_use]
     pub fn maybe_title(self, title: Option<CompactString>) -> Self {
         self.title(title)
     }
 
-    pub fn modified(mut self, modified: u64) -> Self {
+    #[must_use]
+    pub const fn modified(mut self, modified: u64) -> Self {
         self.modified = Some(modified);
         self
     }
 
-    pub fn size(mut self, size: u64) -> Self {
+    #[must_use]
+    pub const fn size(mut self, size: u64) -> Self {
         self.size = Some(size);
         self
     }
 
+    /// Builds a `RecentFile`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any required fields (path, modified, size) are missing.
     pub fn build(self) -> RecentFile {
         RecentFile {
             path: self.path.expect("path is required"),

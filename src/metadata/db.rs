@@ -39,22 +39,22 @@ impl FileMetadataBuilder {
         self
     }
 
-    pub fn modified(mut self, modified: u64) -> Self {
+    pub const fn modified(mut self, modified: u64) -> Self {
         self.modified = Some(modified);
         self
     }
 
-    pub fn size(mut self, size: u64) -> Self {
+    pub const fn size(mut self, size: u64) -> Self {
         self.size = Some(size);
         self
     }
 
-    pub fn content_hash(mut self, content_hash: [u8; 32]) -> Self {
+    pub const fn content_hash(mut self, content_hash: [u8; 32]) -> Self {
         self.content_hash = Some(content_hash);
         self
     }
 
-    pub fn indexed_at(mut self, indexed_at: u64) -> Self {
+    pub const fn indexed_at(mut self, indexed_at: u64) -> Self {
         self.indexed_at = Some(indexed_at);
         self
     }

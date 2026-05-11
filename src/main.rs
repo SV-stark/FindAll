@@ -87,10 +87,11 @@ fn main() {
     std::fs::create_dir_all(&app_dir).ok();
     let lock_path = app_dir.join("app.lock");
 
-    let mut lock_file = match std::fs::OpenOptions::new()
+    let lock_file = match std::fs::OpenOptions::new()
         .read(true)
         .write(true)
         .create(true)
+        .truncate(true)
         .open(&lock_path)
     {
         Ok(file) => file,
@@ -108,35 +109,35 @@ fn main() {
 
     // We must keep the guard alive for the entire program to hold the OS lock.
     // If it fails, another instance holds it.
-    let _guard_lock = match lock.try_write() {
-        Ok(mut guard) => {
+    let _guard_lock = lock.try_write().map_or_else(
+        |_| {
+            // App might already be running. Check for a stale PID.
+            if let Ok(pid_str) = std::fs::read_to_string(&lock_path)
+                && let Ok(pid) = pid_str.trim().parse::<u32>()
+            {
+                use sysinfo::System;
+                let mut sys = System::new_all();
+                sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+                if let Some(process) = sys.process(sysinfo::Pid::from_u32(pid))
+                    && process.name().to_string_lossy().contains("flash-search")
+                {
+                    // Alive and is flash-search - just exit
+                    std::process::exit(0);
+                }
+            }
+            // If we reach here, it's either a stale lock or unreadable.
+            tracing::warn!("Lock is blocked but PID appears stale. Continuing anyway...");
+            None
+        },
+        |mut guard| {
             use std::io::{Seek, SeekFrom, Write};
             let _ = guard.seek(SeekFrom::Start(0));
             let _ = guard.set_len(0);
             let _ = write!(&mut *guard, "{}", std::process::id());
             let _ = guard.flush();
             Some(guard)
-        }
-        Err(_) => {
-            // App might already be running. Check for a stale PID.
-            if let Ok(pid_str) = std::fs::read_to_string(&lock_path) {
-                if let Ok(pid) = pid_str.trim().parse::<u32>() {
-                    use sysinfo::System;
-                    let mut sys = System::new_all();
-                    sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
-                    if let Some(process) = sys.process(sysinfo::Pid::from_u32(pid)) {
-                        if process.name().to_string_lossy().contains("flash-search") {
-                            // Alive and is flash-search - just exit
-                            std::process::exit(0);
-                        }
-                    }
-                }
-            }
-            // If we reach here, it's either a stale lock or unreadable.
-            tracing::warn!("Lock is blocked but PID appears stale. Continuing anyway...");
-            None
-        }
-    };
+        },
+    );
 
     init_logging(&app_dir);
 

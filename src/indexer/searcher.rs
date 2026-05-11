@@ -47,7 +47,7 @@ impl SearchResultBuilder {
         self
     }
 
-    pub fn score(mut self, score: f32) -> Self {
+    pub const fn score(mut self, score: f32) -> Self {
         self.score = Some(score);
         self
     }
@@ -70,12 +70,12 @@ impl SearchResultBuilder {
         self.extension(extension)
     }
 
-    pub fn modified(mut self, modified: Option<u64>) -> Self {
+    pub const fn modified(mut self, modified: Option<u64>) -> Self {
         self.modified = modified;
         self
     }
 
-    pub fn size(mut self, size: Option<u64>) -> Self {
+    pub const fn size(mut self, size: Option<u64>) -> Self {
         self.size = size;
         self
     }
@@ -152,49 +152,49 @@ pub struct SearchParamsBuilder<'a> {
 }
 
 impl<'a> SearchParamsBuilder<'a> {
-    pub fn query(mut self, query: &'a str) -> Self {
+    pub const fn query(mut self, query: &'a str) -> Self {
         self.query = Some(query);
         self
     }
 
-    pub fn limit(mut self, limit: usize) -> Self {
+    pub const fn limit(mut self, limit: usize) -> Self {
         self.limit = Some(limit);
         self
     }
 
-    pub fn min_size(mut self, min_size: Option<u64>) -> Self {
+    pub const fn min_size(mut self, min_size: Option<u64>) -> Self {
         self.min_size = min_size;
         self
     }
 
-    pub fn maybe_min_size(self, min_size: Option<u64>) -> Self {
+    pub const fn maybe_min_size(self, min_size: Option<u64>) -> Self {
         self.min_size(min_size)
     }
 
-    pub fn max_size(mut self, max_size: Option<u64>) -> Self {
+    pub const fn max_size(mut self, max_size: Option<u64>) -> Self {
         self.max_size = max_size;
         self
     }
 
-    pub fn maybe_max_size(self, max_size: Option<u64>) -> Self {
+    pub const fn maybe_max_size(self, max_size: Option<u64>) -> Self {
         self.max_size(max_size)
     }
 
-    pub fn min_modified(mut self, min_modified: Option<u64>) -> Self {
+    pub const fn min_modified(mut self, min_modified: Option<u64>) -> Self {
         self.min_modified = min_modified;
         self
     }
 
-    pub fn maybe_min_modified(self, min_modified: Option<u64>) -> Self {
+    pub const fn maybe_min_modified(self, min_modified: Option<u64>) -> Self {
         self.min_modified(min_modified)
     }
 
-    pub fn file_extensions(mut self, extensions: &'a [String]) -> Self {
+    pub const fn file_extensions(mut self, extensions: &'a [String]) -> Self {
         self.file_extensions = Some(extensions);
         self
     }
 
-    pub fn maybe_file_extensions(self, extensions: Option<&'a [String]>) -> Self {
+    pub const fn maybe_file_extensions(self, extensions: Option<&'a [String]>) -> Self {
         if let Some(exts) = extensions {
             self.file_extensions(exts)
         } else {
@@ -202,12 +202,12 @@ impl<'a> SearchParamsBuilder<'a> {
         }
     }
 
-    pub fn case_sensitive(mut self, case_sensitive: bool) -> Self {
+    pub const fn case_sensitive(mut self, case_sensitive: bool) -> Self {
         self.case_sensitive = Some(case_sensitive);
         self
     }
 
-    pub fn maybe_case_sensitive(self, case_sensitive: Option<bool>) -> Self {
+    pub const fn maybe_case_sensitive(self, case_sensitive: Option<bool>) -> Self {
         if let Some(cs) = case_sensitive {
             self.case_sensitive(cs)
         } else {
@@ -215,7 +215,7 @@ impl<'a> SearchParamsBuilder<'a> {
         }
     }
 
-    pub fn build(self) -> SearchParams<'a> {
+    pub const fn build(self) -> SearchParams<'a> {
         SearchParams {
             query: self.query.expect("query is required"),
             limit: self.limit.expect("limit is required"),
@@ -648,12 +648,11 @@ impl IndexSearcher {
 
         let mut results = Vec::new();
         for (_mod_time, doc_address) in top_docs {
-            if let Ok(doc) = searcher.doc(doc_address) {
-                if let Ok(res) =
+            if let Ok(doc) = searcher.doc(doc_address)
+                && let Ok(res) =
                     self.retrieve_result_with_doc(&searcher, "", 0.0, doc_address, &doc, &[])
-                {
-                    results.push(res);
-                }
+            {
+                results.push(res);
             }
         }
 

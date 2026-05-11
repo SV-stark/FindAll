@@ -133,9 +133,11 @@ fn render_code_preview<'a>(
 pub fn search_view(app: &App) -> Element<'_, Message> {
     let mut col = column![top_navigation(app)];
 
-    if let Some(state) = &app.state {
-        if state.db_corrupted && !app.db_corrupted_dismissed {
-            col = col.push(
+    if let Some(state) = &app.state
+        && state.db_corrupted
+        && !app.db_corrupted_dismissed
+    {
+        col = col.push(
                 container(
                     row![
                         text("⚠️ Metadata database was corrupted and has been reset. Full re-index recommended.")
@@ -152,14 +154,13 @@ pub fn search_view(app: &App) -> Element<'_, Message> {
                 .style(theme::warning_banner)
                 .width(Length::Fill)
             );
-        }
     }
 
     if let Some(err) = &app.search_error {
         col = col.push(
             container(
                 row![
-                    text(format!("Error: {}", err))
+                    text(format!("Error: {err}"))
                         .size(14)
                         .style(theme::danger_text_style()),
                     Space::new().width(Length::Fill),
@@ -748,7 +749,7 @@ fn right_panel(app: &App) -> Element<'_, Message> {
             .into()
         },
         |preview_result| {
-            let ext = app
+            let _ext = app
                 .selected_index
                 .and_then(|i| app.results.get(i))
                 .and_then(|r| r.extension.as_deref())

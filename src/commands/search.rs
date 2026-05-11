@@ -135,11 +135,11 @@ pub async fn get_file_preview_highlighted_internal(
             matches.sort_by_key(|r| r.0);
             let mut merged: Vec<(usize, usize)> = Vec::new();
             for m in matches {
-                if let Some(last) = merged.last_mut() {
-                    if m.0 <= last.1 {
-                        last.1 = last.1.max(m.1);
-                        continue;
-                    }
+                if let Some(last) = merged.last_mut()
+                    && m.0 <= last.1
+                {
+                    last.1 = last.1.max(m.1);
+                    continue;
                 }
                 merged.push(m);
             }
