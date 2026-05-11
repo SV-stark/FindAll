@@ -34,31 +34,41 @@ pub struct FileMetadataBuilder {
 }
 
 impl FileMetadataBuilder {
+    #[must_use]
     pub fn path(mut self, path: String) -> Self {
         self.path = Some(path);
         self
     }
 
+    #[must_use]
     pub const fn modified(mut self, modified: u64) -> Self {
         self.modified = Some(modified);
         self
     }
 
+    #[must_use]
     pub const fn size(mut self, size: u64) -> Self {
         self.size = Some(size);
         self
     }
 
+    #[must_use]
     pub const fn content_hash(mut self, content_hash: [u8; 32]) -> Self {
         self.content_hash = Some(content_hash);
         self
     }
 
+    #[must_use]
     pub const fn indexed_at(mut self, indexed_at: u64) -> Self {
         self.indexed_at = Some(indexed_at);
         self
     }
 
+    /// Builds the `FileMetadata`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any required field is missing.
     pub fn build(self) -> FileMetadata {
         FileMetadata {
             path: self.path.expect("path is required"),

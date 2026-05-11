@@ -42,54 +42,69 @@ pub struct SearchResultBuilder {
 }
 
 impl SearchResultBuilder {
+    #[must_use]
     pub fn file_path(mut self, file_path: String) -> Self {
         self.file_path = Some(file_path);
         self
     }
 
+    #[must_use]
     pub const fn score(mut self, score: f32) -> Self {
         self.score = Some(score);
         self
     }
 
+    #[must_use]
     pub fn title(mut self, title: Option<CompactString>) -> Self {
         self.title = title;
         self
     }
 
+    #[must_use]
     pub fn maybe_title(self, title: Option<CompactString>) -> Self {
         self.title(title)
     }
 
+    #[must_use]
     pub fn extension(mut self, extension: Option<CompactString>) -> Self {
         self.extension = extension;
         self
     }
 
+    #[must_use]
     pub fn maybe_extension(self, extension: Option<CompactString>) -> Self {
         self.extension(extension)
     }
 
+    #[must_use]
     pub const fn modified(mut self, modified: Option<u64>) -> Self {
         self.modified = modified;
         self
     }
 
+    #[must_use]
     pub const fn size(mut self, size: Option<u64>) -> Self {
         self.size = size;
         self
     }
 
+    #[must_use]
     pub fn matched_terms(mut self, matched_terms: Vec<String>) -> Self {
         self.matched_terms = Some(matched_terms);
         self
     }
 
+    #[must_use]
     pub fn snippets(mut self, snippets: Vec<String>) -> Self {
         self.snippets = Some(snippets);
         self
     }
 
+    /// Builds the `SearchResult`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any required field is missing.
     pub fn build(self) -> SearchResult {
         SearchResult {
             file_path: self.file_path.expect("file_path is required"),
@@ -152,48 +167,58 @@ pub struct SearchParamsBuilder<'a> {
 }
 
 impl<'a> SearchParamsBuilder<'a> {
+    #[must_use]
     pub const fn query(mut self, query: &'a str) -> Self {
         self.query = Some(query);
         self
     }
 
+    #[must_use]
     pub const fn limit(mut self, limit: usize) -> Self {
         self.limit = Some(limit);
         self
     }
 
+    #[must_use]
     pub const fn min_size(mut self, min_size: Option<u64>) -> Self {
         self.min_size = min_size;
         self
     }
 
+    #[must_use]
     pub const fn maybe_min_size(self, min_size: Option<u64>) -> Self {
         self.min_size(min_size)
     }
 
+    #[must_use]
     pub const fn max_size(mut self, max_size: Option<u64>) -> Self {
         self.max_size = max_size;
         self
     }
 
+    #[must_use]
     pub const fn maybe_max_size(self, max_size: Option<u64>) -> Self {
         self.max_size(max_size)
     }
 
+    #[must_use]
     pub const fn min_modified(mut self, min_modified: Option<u64>) -> Self {
         self.min_modified = min_modified;
         self
     }
 
+    #[must_use]
     pub const fn maybe_min_modified(self, min_modified: Option<u64>) -> Self {
         self.min_modified(min_modified)
     }
 
+    #[must_use]
     pub const fn file_extensions(mut self, extensions: &'a [String]) -> Self {
         self.file_extensions = Some(extensions);
         self
     }
 
+    #[must_use]
     pub const fn maybe_file_extensions(self, extensions: Option<&'a [String]>) -> Self {
         if let Some(exts) = extensions {
             self.file_extensions(exts)
@@ -202,11 +227,13 @@ impl<'a> SearchParamsBuilder<'a> {
         }
     }
 
+    #[must_use]
     pub const fn case_sensitive(mut self, case_sensitive: bool) -> Self {
         self.case_sensitive = Some(case_sensitive);
         self
     }
 
+    #[must_use]
     pub const fn maybe_case_sensitive(self, case_sensitive: Option<bool>) -> Self {
         if let Some(cs) = case_sensitive {
             self.case_sensitive(cs)
@@ -215,6 +242,11 @@ impl<'a> SearchParamsBuilder<'a> {
         }
     }
 
+    /// Builds the `SearchParams`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any required field is missing.
     pub const fn build(self) -> SearchParams<'a> {
         SearchParams {
             query: self.query.expect("query is required"),
@@ -537,21 +569,15 @@ impl IndexSearcher {
                 .doc(doc_address)
                 .map_err(|e| FlashError::search(query, e.to_string()))?;
 
-            match self.retrieve_result_with_doc(
+            let result = self.retrieve_result_with_doc(
                 searcher,
                 query,
                 score,
                 doc_address,
                 &doc,
                 highlight_terms,
-            ) {
-                Ok(result) => {
-                    results.push(result);
-                }
-                Err(e) => {
-                    tracing::error!("Error retrieving result: {}", e);
-                }
-            }
+            );
+            results.push(result);
 
             if results.len() >= cache_key.limit {
                 break;
@@ -570,7 +596,7 @@ impl IndexSearcher {
         doc_address: tantivy::DocAddress,
         tantivy_doc: &tantivy::TantivyDocument,
         highlight_terms: &[String],
-    ) -> Result<SearchResult> {
+    ) -> SearchResult {
         let file_path = tantivy_doc
             .get_first(self.path_field)
             .and_then(|v| v.as_str())
@@ -601,7 +627,7 @@ impl IndexSearcher {
                 u64::try_from(date.into_timestamp_secs()).unwrap_or(0)
             });
 
-        Ok(SearchResult {
+        SearchResult {
             file_path,
             score,
             title,
@@ -610,7 +636,7 @@ impl IndexSearcher {
             size,
             matched_terms: highlight_terms.to_vec(),
             snippets: Vec::new(),
-        })
+        }
     }
 
     pub fn get_statistics(&self) -> Result<IndexStatistics> {
@@ -648,10 +674,8 @@ impl IndexSearcher {
 
         let mut results = Vec::new();
         for (_mod_time, doc_address) in top_docs {
-            if let Ok(doc) = searcher.doc(doc_address)
-                && let Ok(res) =
-                    self.retrieve_result_with_doc(&searcher, "", 0.0, doc_address, &doc, &[])
-            {
+            if let Ok(doc) = searcher.doc(doc_address) {
+                let res = self.retrieve_result_with_doc(&searcher, "", 0.0, doc_address, &doc, &[]);
                 results.push(res);
             }
         }

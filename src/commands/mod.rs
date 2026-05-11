@@ -52,6 +52,7 @@ impl AppState {
         AppStateBuilder::default()
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         indexer: Arc<IndexManager>,
         metadata_db: Arc<MetadataDb>,
@@ -90,42 +91,49 @@ pub struct AppStateBuilder {
     metadata_db: Option<Arc<MetadataDb>>,
     settings_manager: Option<SettingsManager>,
     watcher: Option<WatcherManager>,
-    filename_index: Option<Option<Arc<FilenameIndex>>>,
+    filename_index: Option<Arc<FilenameIndex>>,
     progress_tx: Option<flume::Sender<crate::scanner::ProgressEvent>>,
     scanner: Option<Arc<crate::scanner::Scanner>>,
     db_corrupted: Option<bool>,
 }
 
 impl AppStateBuilder {
+    #[must_use]
     pub fn indexer(mut self, indexer: Arc<IndexManager>) -> Self {
         self.indexer = Some(indexer);
         self
     }
 
+    #[must_use]
     pub fn metadata_db(mut self, metadata_db: Arc<MetadataDb>) -> Self {
         self.metadata_db = Some(metadata_db);
         self
     }
 
+    #[must_use]
     pub fn settings_manager(mut self, settings_manager: SettingsManager) -> Self {
         self.settings_manager = Some(settings_manager);
         self
     }
 
+    #[must_use]
     pub fn watcher(mut self, watcher: WatcherManager) -> Self {
         self.watcher = Some(watcher);
         self
     }
 
+    #[must_use]
     pub fn filename_index(mut self, filename_index: Option<Arc<FilenameIndex>>) -> Self {
-        self.filename_index = Some(filename_index);
+        self.filename_index = filename_index;
         self
     }
 
+    #[must_use]
     pub fn maybe_filename_index(self, filename_index: Option<Arc<FilenameIndex>>) -> Self {
         self.filename_index(filename_index)
     }
 
+    #[must_use]
     pub fn progress_tx(
         mut self,
         progress_tx: flume::Sender<crate::scanner::ProgressEvent>,
@@ -134,23 +142,30 @@ impl AppStateBuilder {
         self
     }
 
+    #[must_use]
     pub fn scanner(mut self, scanner: Arc<crate::scanner::Scanner>) -> Self {
         self.scanner = Some(scanner);
         self
     }
 
+    #[must_use]
     pub const fn db_corrupted(mut self, db_corrupted: bool) -> Self {
         self.db_corrupted = Some(db_corrupted);
         self
     }
 
+    /// Builds the `AppState`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any required field is missing.
     pub fn build(self) -> AppState {
         AppState::new(
             self.indexer.expect("indexer is required"),
             self.metadata_db.expect("metadata_db is required"),
             self.settings_manager.expect("settings_manager is required"),
             self.watcher.expect("watcher is required"),
-            self.filename_index.flatten(),
+            self.filename_index,
             self.progress_tx.expect("progress_tx is required"),
             self.scanner.expect("scanner is required"),
             self.db_corrupted.unwrap_or(false),

@@ -9,8 +9,6 @@ use iced::{Alignment, Element, Font, Length, Padding, font};
 // --- Icons from TTF Font ---
 use crate::iced_ui::icons::{load_icon, load_icon_size};
 
-use iced::widget::text::Highlighter as _;
-use iced_highlighter::{Highlighter, Settings};
 use std::ops::Range;
 
 #[allow(dead_code)]
@@ -20,7 +18,8 @@ struct TermHighlighter {
 
 impl TermHighlighter {
     #[allow(dead_code)]
-    const fn new(terms: Vec<String>) -> Self {
+    #[must_use]
+    pub const fn new(terms: Vec<String>) -> Self {
         Self { terms }
     }
 
@@ -82,32 +81,9 @@ fn sidebar_section<'a>(
     .into()
 }
 
-fn highlight_to_spans<H>(
-    content: &str,
-    mut highlighter: impl FnMut(&str) -> Vec<(Range<usize>, H)>,
-    map_highlight: impl Fn(H) -> Option<iced::Color>,
-) -> Vec<iced::widget::text::Span<'_, Message>> {
-    content
-        .lines()
-        .flat_map(|line| {
-            let mut line_spans: Vec<_> = highlighter(line)
-                .into_iter()
-                .map(|(range, highlight)| {
-                    let mut s = span(&line[range]).size(13).font(Font::MONOSPACE);
 
-                    if let Some(color) = map_highlight(highlight) {
-                        s = s.color(color);
-                    }
-                    s
-                })
-                .collect::<Vec<iced::widget::text::Span<'_, Message>>>();
-            line_spans.push(span("\n").into());
-            line_spans
-        })
-        .collect()
-}
 
-fn render_element<'a>(element: &'a DocumentElementHighlight) -> Element<'a, Message> {
+fn render_element(element: &DocumentElementHighlight) -> Element<'_, Message> {
     let spans = element
         .spans
         .iter()

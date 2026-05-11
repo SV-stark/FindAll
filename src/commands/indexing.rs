@@ -12,9 +12,10 @@ use tracing::error;
 /// Returns an error if the indexing task cannot be spawned or fails.
 pub async fn start_indexing_internal(path: String, state: Arc<AppState>) -> Result<(), String> {
     let path = PathBuf::from(path);
-    let mut handle_guard = state.indexing_handle.lock();
-    let previous_handle = handle_guard.take();
-    drop(handle_guard);
+    let previous_handle = {
+        let mut handle_guard = state.indexing_handle.lock();
+        handle_guard.take()
+    };
 
     // Gracefully cancel previous indexing if still running
     if let Some(handle) = previous_handle {
