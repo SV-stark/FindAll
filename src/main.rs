@@ -105,7 +105,7 @@ fn main() {
     };
 
     let mut lock = fd_lock::RwLock::new(lock_file);
-    
+
     // We must keep the guard alive for the entire program to hold the OS lock.
     // If it fails, another instance holds it.
     let _guard_lock = match lock.try_write() {
@@ -132,7 +132,7 @@ fn main() {
                     }
                 }
             }
-            // If we reach here, it's either a stale lock or unreadable. 
+            // If we reach here, it's either a stale lock or unreadable.
             tracing::warn!("Lock is blocked but PID appears stale. Continuing anyway...");
             None
         }

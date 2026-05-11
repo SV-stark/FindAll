@@ -43,7 +43,8 @@ pub fn read_file(path: &Path) -> Result<FileData> {
 
 pub fn read_file_as_string(path: &Path) -> Result<String> {
     let bytes = read_file(path)?;
-    String::from_utf8(bytes.to_vec()).map_err(|e| FlashError::parse(path, format!("Invalid UTF-8: {e}")))
+    String::from_utf8(bytes.to_vec())
+        .map_err(|e| FlashError::parse(path, format!("Invalid UTF-8: {e}")))
 }
 
 fn read_with_buffer(path: &Path) -> Result<FileData> {

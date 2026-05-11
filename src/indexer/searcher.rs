@@ -537,7 +537,14 @@ impl IndexSearcher {
                 .doc(doc_address)
                 .map_err(|e| FlashError::search(query, e.to_string()))?;
 
-            match self.retrieve_result_with_doc(searcher, query, score, doc_address, &doc, highlight_terms) {
+            match self.retrieve_result_with_doc(
+                searcher,
+                query,
+                score,
+                doc_address,
+                &doc,
+                highlight_terms,
+            ) {
                 Ok(result) => {
                     results.push(result);
                 }
@@ -642,7 +649,9 @@ impl IndexSearcher {
         let mut results = Vec::new();
         for (_mod_time, doc_address) in top_docs {
             if let Ok(doc) = searcher.doc(doc_address) {
-                if let Ok(res) = self.retrieve_result_with_doc(&searcher, "", 0.0, doc_address, &doc, &[]) {
+                if let Ok(res) =
+                    self.retrieve_result_with_doc(&searcher, "", 0.0, doc_address, &doc, &[])
+                {
                     results.push(res);
                 }
             }

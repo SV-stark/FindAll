@@ -51,7 +51,10 @@ impl IndexManager {
         }
         if index_path.exists() {
             if let Err(e) = std::fs::rename(index_path, &backup_path) {
-                warn!("Failed to atomic rename index to {:?}: {}. Falling back to copy.", backup_path, e);
+                warn!(
+                    "Failed to atomic rename index to {:?}: {}. Falling back to copy.",
+                    backup_path, e
+                );
                 if let Err(e) = copy_dir(index_path, &backup_path) {
                     warn!("Failed to backup index to {:?}: {}", backup_path, e);
                 }

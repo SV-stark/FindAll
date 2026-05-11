@@ -752,7 +752,11 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                 return Task::future(async move {
                     let _ = state
                         .scanner
-                        .scan_directory(std::path::PathBuf::from("C:\\"), vec![], state.indexing_cancel.clone())
+                        .scan_directory(
+                            std::path::PathBuf::from("C:\\"),
+                            vec![],
+                            state.indexing_cancel.clone(),
+                        )
                         .await;
                     Message::IndexRebuilt
                 });

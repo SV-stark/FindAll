@@ -126,7 +126,10 @@ impl AppStateBuilder {
         self.filename_index(filename_index)
     }
 
-    pub fn progress_tx(mut self, progress_tx: flume::Sender<crate::scanner::ProgressEvent>) -> Self {
+    pub fn progress_tx(
+        mut self,
+        progress_tx: flume::Sender<crate::scanner::ProgressEvent>,
+    ) -> Self {
         self.progress_tx = Some(progress_tx);
         self
     }

@@ -224,7 +224,12 @@ impl Scanner {
 
     #[allow(clippy::too_many_lines)]
     #[instrument(skip(self, exclude_patterns, cancel_flag), fields(root = %root.display()))]
-    pub async fn scan_directory(&self, root: PathBuf, exclude_patterns: Vec<String>, cancel_flag: Arc<std::sync::atomic::AtomicBool>) -> Result<()> {
+    pub async fn scan_directory(
+        &self,
+        root: PathBuf,
+        exclude_patterns: Vec<String>,
+        cancel_flag: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<()> {
         info!("Starting directory scan for {}", root.display());
 
         let (path_tx, path_rx) = flume::unbounded::<PathBuf>();
@@ -294,7 +299,7 @@ impl Scanner {
                 if cancel_flag_for_filter.load(Ordering::Relaxed) {
                     break;
                 }
-                
+
                 // Extension filter
                 let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
                     continue;
@@ -414,7 +419,8 @@ impl Scanner {
                         {
                             match parsed_res {
                                 Ok(parsed) => {
-                                    let content_hash: [u8; 32] = blake3::hash(parsed.content.as_bytes()).into();
+                                    let content_hash: [u8; 32] =
+                                        blake3::hash(parsed.content.as_bytes()).into();
 
                                     let _ = task_tx_for_parser.send(IndexTask {
                                         doc: parsed,
@@ -434,7 +440,8 @@ impl Scanner {
                         warn!("Async batch crashed ({e}), falling back to per-file sync parsing");
                         for (path, modified, size) in chunk {
                             if let Ok(parsed) = parse_file(&path, enable_ocr) {
-                                let content_hash: [u8; 32] = blake3::hash(parsed.content.as_bytes()).into();
+                                let content_hash: [u8; 32] =
+                                    blake3::hash(parsed.content.as_bytes()).into();
 
                                 let _ = task_tx_for_parser.send(IndexTask {
                                     doc: parsed,

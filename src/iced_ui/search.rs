@@ -167,11 +167,11 @@ pub fn search_view(app: &App) -> Element<'_, Message> {
                         .on_press(Message::DismissError)
                         .padding(Padding::from([4, 8]))
                 ]
-                .align_y(Alignment::Center)
+                .align_y(Alignment::Center),
             )
             .padding(10)
             .style(theme::error_banner)
-            .width(Length::Fill)
+            .width(Length::Fill),
         );
     }
 
@@ -758,7 +758,8 @@ fn right_panel(app: &App) -> Element<'_, Message> {
                 .cached_spans
                 .iter()
                 .map(|(text_part, color_opt)| {
-                    let mut s: iced::widget::text::Span<'_, Message> = span(text_part).size(13).font(Font::MONOSPACE);
+                    let mut s: iced::widget::text::Span<'_, Message> =
+                        span(text_part).size(13).font(Font::MONOSPACE);
                     if let Some([r, g, b, a]) = color_opt {
                         s = s.color(iced::Color::from_rgba(*r, *g, *b, *a));
                     }

@@ -18,17 +18,21 @@ pub async fn start_indexing_internal(path: String, state: Arc<AppState>) -> Resu
 
     // Gracefully cancel previous indexing if still running
     if let Some(handle) = previous_handle {
-        state.indexing_cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+        state
+            .indexing_cancel
+            .store(true, std::sync::atomic::Ordering::Relaxed);
         let _ = handle.await;
     }
 
     // Reset the cancel flag for the new indexing run
-    state.indexing_cancel.store(false, std::sync::atomic::Ordering::Relaxed);
+    state
+        .indexing_cancel
+        .store(false, std::sync::atomic::Ordering::Relaxed);
 
     let mut handle_guard = state.indexing_handle.lock();
     let state_clone = state.clone();
     let cancel_flag = state.indexing_cancel.clone();
-    
+
     let handle = tokio::spawn(async move {
         let settings = state_clone.settings_cache.load();
         let mut exclude_patterns = settings.exclude_patterns.clone();

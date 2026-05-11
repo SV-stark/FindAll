@@ -43,9 +43,8 @@ impl ParsedQuery {
             Regex::new(r#"(?i)(ext|path|title|size):(?:"([^"]*)"|(\S+))"#).unwrap()
         });
 
-        let size_regex = SIZE_REGEX.get_or_init(|| {
-            Regex::new(r"(?i)^([<>]?)(\d+(?:\.\d+)?)(MB|KB|GB|B)?$").unwrap()
-        });
+        let size_regex = SIZE_REGEX
+            .get_or_init(|| Regex::new(r"(?i)^([<>]?)(\d+(?:\.\d+)?)(MB|KB|GB|B)?$").unwrap());
 
         let mut remaining = input.to_string();
 

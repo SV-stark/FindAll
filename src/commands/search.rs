@@ -2,10 +2,10 @@ use crate::commands::AppState;
 use crate::indexer::searcher::{SearchParams, SearchResult};
 use crate::models::{FilenameIndexStats, FilenameSearchResult, PreviewResult};
 use crate::parsers::parse_file;
+use iced::widget::text::Highlighter as _;
 use moka::sync::Cache;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
-use iced::widget::text::Highlighter as _;
 
 static PREVIEW_CACHE: OnceLock<Cache<(String, u64), String>> = OnceLock::new();
 
@@ -88,7 +88,7 @@ pub async fn get_file_preview_highlighted_internal(
 
     let content_clone = content.clone();
     let matched_terms_clone = matched_terms.clone();
-    
+
     let cached_spans = tokio::task::spawn_blocking(move || {
         let mut spans = Vec::new();
         if matched_terms_clone.is_empty() {
@@ -108,14 +108,22 @@ pub async fn get_file_preview_highlighted_internal(
                 spans.push(("\n".to_string(), None));
             }
         } else {
-            let lower_content = if case_sensitive { content_clone.clone() } else { content_clone.to_lowercase() };
+            let lower_content = if case_sensitive {
+                content_clone.clone()
+            } else {
+                content_clone.to_lowercase()
+            };
             let mut matches = Vec::new();
 
             for term in &matched_terms_clone {
                 if term.is_empty() {
                     continue;
                 }
-                let term_to_match = if case_sensitive { term.clone() } else { term.to_lowercase() };
+                let term_to_match = if case_sensitive {
+                    term.clone()
+                } else {
+                    term.to_lowercase()
+                };
                 let mut start = 0;
                 while let Some(idx) = lower_content[start..].find(&term_to_match) {
                     let abs_idx = start + idx;
@@ -142,7 +150,10 @@ pub async fn get_file_preview_highlighted_internal(
                     spans.push((content_clone[last_idx..start].to_string(), None));
                 }
                 // AMBER color mapping
-                spans.push((content_clone[start..end].to_string(), Some([1.0, 0.75, 0.0, 1.0])));
+                spans.push((
+                    content_clone[start..end].to_string(),
+                    Some([1.0, 0.75, 0.0, 1.0]),
+                ));
                 last_idx = end;
             }
             if last_idx < content_clone.len() {
@@ -150,7 +161,9 @@ pub async fn get_file_preview_highlighted_internal(
             }
         }
         spans
-    }).await.unwrap_or_default();
+    })
+    .await
+    .unwrap_or_default();
 
     Ok(PreviewResult {
         content,

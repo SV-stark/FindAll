@@ -37,7 +37,12 @@ pub fn parse_file(path: &Path, enable_ocr: bool) -> Result<ParsedDocument> {
     };
 
     let file_data = memory_map::read_file(path)?;
-    let result = kreuzberg::extract_bytes_sync(&file_data, mime.as_deref().unwrap_or("application/octet-stream"), &config).map_err(|e| {
+    let result = kreuzberg::extract_bytes_sync(
+        &file_data,
+        mime.as_deref().unwrap_or("application/octet-stream"),
+        &config,
+    )
+    .map_err(|e| {
         tracing::error!("Failed to extract file {}: {}", path.display(), e);
         FlashError::parse(path, format!("Extraction failed: {e}"))
     })?;

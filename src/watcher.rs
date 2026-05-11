@@ -343,7 +343,11 @@ mod tests {
     async fn test_watcher_manager_creation() {
         let temp = tempdir().unwrap();
         let indexer = Arc::new(IndexManager::open(temp.path(), 256).unwrap());
-        let metadata = Arc::new(MetadataDb::open(&temp.path().join("metadata.db")).unwrap().0);
+        let metadata = Arc::new(
+            MetadataDb::open(&temp.path().join("metadata.db"))
+                .unwrap()
+                .0,
+        );
 
         let mut watcher =
             WatcherManager::new(indexer, metadata, std::collections::HashSet::new(), false);
@@ -368,7 +372,11 @@ mod tests {
     async fn test_reindex_single_file() {
         use std::io::Write;
         let temp = tempdir().unwrap();
-        let metadata = Arc::new(MetadataDb::open(&temp.path().join("metadata.db")).unwrap().0);
+        let metadata = Arc::new(
+            MetadataDb::open(&temp.path().join("metadata.db"))
+                .unwrap()
+                .0,
+        );
 
         let file_path = temp.path().join("test.txt");
         let mut file = fs::File::create(&file_path).unwrap();

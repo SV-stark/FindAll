@@ -215,18 +215,20 @@ mod windows_usn {
                     let _ = path_tx.send(full_path);
                     let count = total_count.fetch_add(1, Ordering::Relaxed);
 
-                if count.is_multiple_of(500) && let Some(tx) = progress_tx {
-                    let _ = tx.try_send(ProgressEvent {
-                        ptype: ProgressType::Filename,
-                        current_file: name.to_string(),
-                        current_folder: String::new(),
-                        processed: count,
-                        total: 0,
-                        status: format!("Scanning filenames: {count}"),
-                        eta_seconds: 0,
-                        files_per_second: 0.0,
-                    });
-                }
+                    if count.is_multiple_of(500)
+                        && let Some(tx) = progress_tx
+                    {
+                        let _ = tx.try_send(ProgressEvent {
+                            ptype: ProgressType::Filename,
+                            current_file: name.to_string(),
+                            current_folder: String::new(),
+                            processed: count,
+                            total: 0,
+                            status: format!("Scanning filenames: {count}"),
+                            eta_seconds: 0,
+                            files_per_second: 0.0,
+                        });
+                    }
                 }
             });
     }
@@ -561,7 +563,14 @@ impl DriveScanner for WindowsDriveScanner {
         }
 
         let fallback = DefaultDriveScanner;
-        fallback.scan(root, exclude_patterns, path_tx, progress_tx, total_count, cancel_flag)
+        fallback.scan(
+            root,
+            exclude_patterns,
+            path_tx,
+            progress_tx,
+            total_count,
+            cancel_flag,
+        )
     }
 
     fn watch(
@@ -615,7 +624,14 @@ impl DriveScanner for MacDriveScanner {
     ) -> Result<()> {
         let _ = macos_fsevents::scan_volume(&root);
         let fallback = DefaultDriveScanner;
-        fallback.scan(root, exclude_patterns, path_tx, progress_tx, total_count, cancel_flag)
+        fallback.scan(
+            root,
+            exclude_patterns,
+            path_tx,
+            progress_tx,
+            total_count,
+            cancel_flag,
+        )
     }
 }
 
@@ -635,6 +651,13 @@ impl DriveScanner for LinuxDriveScanner {
     ) -> Result<()> {
         let _ = linux_fanotify::scan_volume(&root);
         let fallback = DefaultDriveScanner;
-        fallback.scan(root, exclude_patterns, path_tx, progress_tx, total_count, cancel_flag)
+        fallback.scan(
+            root,
+            exclude_patterns,
+            path_tx,
+            progress_tx,
+            total_count,
+            cancel_flag,
+        )
     }
 }

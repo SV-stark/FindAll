@@ -150,7 +150,7 @@ impl FilenameIndex {
 
         let data_path = self.data_path.clone();
         let data_to_save = current.clone();
-        
+
         let fst_map_clone = Arc::clone(&self.fst_map);
 
         self.committed.store(Arc::new(current));

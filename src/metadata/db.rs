@@ -138,8 +138,6 @@ impl MetadataDb {
         Ok((Self { db }, reset_occurred))
     }
 
-
-
     /// Check if file needs reindexing based on modification time and hash
     pub fn needs_reindex(&self, path: &Path, modified: u64, size: u64) -> Result<bool> {
         let txn = self.db.begin_read().map_err(|e| {
