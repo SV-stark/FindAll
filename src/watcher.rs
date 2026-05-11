@@ -387,11 +387,11 @@ mod tests {
         assert!(result.is_ok());
         let option = result.unwrap();
         assert!(option.is_some());
-        let (doc, modified, size, _hash) = option.unwrap();
+        let (doc, modified, size, hash) = option.unwrap();
         assert_eq!(doc.content, "Initial content");
 
         metadata
-            .update_metadata(&file_path, modified, size, _hash)
+            .update_metadata(&file_path, modified, size, hash)
             .unwrap();
 
         // Should return None if no change
