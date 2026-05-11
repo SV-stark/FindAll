@@ -324,12 +324,7 @@ impl WatcherManager {
             }
         };
 
-        // Shallow hash instead of expensive blake3
-        let mut content_hash = [0u8; 32];
-        let s_bytes = size.to_le_bytes();
-        let m_bytes = modified.to_le_bytes();
-        content_hash[..8].copy_from_slice(&s_bytes);
-        content_hash[8..16].copy_from_slice(&m_bytes);
+        let content_hash: [u8; 32] = blake3::hash(parsed.content.as_bytes()).into();
 
         Ok(Some((parsed, modified, size, content_hash)))
     }
@@ -348,7 +343,7 @@ mod tests {
     async fn test_watcher_manager_creation() {
         let temp = tempdir().unwrap();
         let indexer = Arc::new(IndexManager::open(temp.path(), 256).unwrap());
-        let metadata = Arc::new(MetadataDb::open(&temp.path().join("metadata.db")).unwrap());
+        let metadata = Arc::new(MetadataDb::open(&temp.path().join("metadata.db")).unwrap().0);
 
         let mut watcher =
             WatcherManager::new(indexer, metadata, std::collections::HashSet::new(), false);
@@ -373,7 +368,7 @@ mod tests {
     async fn test_reindex_single_file() {
         use std::io::Write;
         let temp = tempdir().unwrap();
-        let metadata = Arc::new(MetadataDb::open(&temp.path().join("metadata.db")).unwrap());
+        let metadata = Arc::new(MetadataDb::open(&temp.path().join("metadata.db")).unwrap().0);
 
         let file_path = temp.path().join("test.txt");
         let mut file = fs::File::create(&file_path).unwrap();

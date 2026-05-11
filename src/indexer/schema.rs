@@ -10,8 +10,8 @@ pub fn create_schema() -> Schema {
     // File path - stored for retrieval, indexed for exact matches
     schema_builder.add_text_field("file_path", STRING | STORED);
 
-    // Content - indexed for search AND stored for fast preview retrieval
-    // Storing content allows fast previews without re-parsing files
+    // Content - indexed for search, explicitly NOT stored to save space
+    // Snippets will be generated lazily or re-read from disk on demand
     let text_options = TextOptions::default().set_indexing_options(
         TextFieldIndexing::default()
             .set_tokenizer("default")

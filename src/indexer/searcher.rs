@@ -11,7 +11,7 @@ use tantivy::schema::{Field, IndexRecordOption, Term, Value};
 use tantivy::{Index, IndexReader};
 
 /// Search result containing file metadata and score
-#[derive(Debug, Clone, Serialize, Deserialize, bon::Builder)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchResult {
     pub file_path: String,
     pub score: f32,
@@ -21,6 +21,87 @@ pub struct SearchResult {
     pub size: Option<u64>,
     pub matched_terms: Vec<String>,
     pub snippets: Vec<String>,
+}
+
+impl SearchResult {
+    pub fn builder() -> SearchResultBuilder {
+        SearchResultBuilder::default()
+    }
+}
+
+#[derive(Default)]
+pub struct SearchResultBuilder {
+    file_path: Option<String>,
+    score: Option<f32>,
+    title: Option<CompactString>,
+    extension: Option<CompactString>,
+    modified: Option<u64>,
+    size: Option<u64>,
+    matched_terms: Option<Vec<String>>,
+    snippets: Option<Vec<String>>,
+}
+
+impl SearchResultBuilder {
+    pub fn file_path(mut self, file_path: String) -> Self {
+        self.file_path = Some(file_path);
+        self
+    }
+
+    pub fn score(mut self, score: f32) -> Self {
+        self.score = Some(score);
+        self
+    }
+
+    pub fn title(mut self, title: Option<CompactString>) -> Self {
+        self.title = title;
+        self
+    }
+
+    pub fn maybe_title(self, title: Option<CompactString>) -> Self {
+        self.title(title)
+    }
+
+    pub fn extension(mut self, extension: Option<CompactString>) -> Self {
+        self.extension = extension;
+        self
+    }
+
+    pub fn maybe_extension(self, extension: Option<CompactString>) -> Self {
+        self.extension(extension)
+    }
+
+    pub fn modified(mut self, modified: Option<u64>) -> Self {
+        self.modified = modified;
+        self
+    }
+
+    pub fn size(mut self, size: Option<u64>) -> Self {
+        self.size = size;
+        self
+    }
+
+    pub fn matched_terms(mut self, matched_terms: Vec<String>) -> Self {
+        self.matched_terms = Some(matched_terms);
+        self
+    }
+
+    pub fn snippets(mut self, snippets: Vec<String>) -> Self {
+        self.snippets = Some(snippets);
+        self
+    }
+
+    pub fn build(self) -> SearchResult {
+        SearchResult {
+            file_path: self.file_path.expect("file_path is required"),
+            score: self.score.expect("score is required"),
+            title: self.title,
+            extension: self.extension,
+            modified: self.modified,
+            size: self.size,
+            matched_terms: self.matched_terms.expect("matched_terms is required"),
+            snippets: self.snippets.expect("snippets is required"),
+        }
+    }
 }
 
 /// Statistics about the index
@@ -42,7 +123,7 @@ pub(crate) struct CacheKey {
     pub(crate) case_sensitive: bool,
 }
 
-#[derive(Debug, Clone, bon::Builder)]
+#[derive(Debug, Clone)]
 pub struct SearchParams<'a> {
     pub query: &'a str,
     pub limit: usize,
@@ -51,6 +132,100 @@ pub struct SearchParams<'a> {
     pub min_modified: Option<u64>,
     pub file_extensions: Option<&'a [String]>,
     pub case_sensitive: bool,
+}
+
+impl<'a> SearchParams<'a> {
+    pub fn builder() -> SearchParamsBuilder<'a> {
+        SearchParamsBuilder::default()
+    }
+}
+
+#[derive(Default)]
+pub struct SearchParamsBuilder<'a> {
+    query: Option<&'a str>,
+    limit: Option<usize>,
+    min_size: Option<u64>,
+    max_size: Option<u64>,
+    min_modified: Option<u64>,
+    file_extensions: Option<&'a [String]>,
+    case_sensitive: Option<bool>,
+}
+
+impl<'a> SearchParamsBuilder<'a> {
+    pub fn query(mut self, query: &'a str) -> Self {
+        self.query = Some(query);
+        self
+    }
+
+    pub fn limit(mut self, limit: usize) -> Self {
+        self.limit = Some(limit);
+        self
+    }
+
+    pub fn min_size(mut self, min_size: Option<u64>) -> Self {
+        self.min_size = min_size;
+        self
+    }
+
+    pub fn maybe_min_size(self, min_size: Option<u64>) -> Self {
+        self.min_size(min_size)
+    }
+
+    pub fn max_size(mut self, max_size: Option<u64>) -> Self {
+        self.max_size = max_size;
+        self
+    }
+
+    pub fn maybe_max_size(self, max_size: Option<u64>) -> Self {
+        self.max_size(max_size)
+    }
+
+    pub fn min_modified(mut self, min_modified: Option<u64>) -> Self {
+        self.min_modified = min_modified;
+        self
+    }
+
+    pub fn maybe_min_modified(self, min_modified: Option<u64>) -> Self {
+        self.min_modified(min_modified)
+    }
+
+    pub fn file_extensions(mut self, extensions: &'a [String]) -> Self {
+        self.file_extensions = Some(extensions);
+        self
+    }
+
+    pub fn maybe_file_extensions(self, extensions: Option<&'a [String]>) -> Self {
+        if let Some(exts) = extensions {
+            self.file_extensions(exts)
+        } else {
+            self
+        }
+    }
+
+    pub fn case_sensitive(mut self, case_sensitive: bool) -> Self {
+        self.case_sensitive = Some(case_sensitive);
+        self
+    }
+
+    pub fn maybe_case_sensitive(self, case_sensitive: Option<bool>) -> Self {
+        if let Some(cs) = case_sensitive {
+            self.case_sensitive(cs)
+        } else {
+            self
+        }
+    }
+
+    pub fn build(self) -> SearchParams<'a> {
+        SearchParams {
+            query: self.query.expect("query is required"),
+            limit: self.limit.expect("limit is required"),
+            min_size: self.min_size,
+            max_size: self.max_size,
+            min_modified: self.min_modified,
+            file_extensions: self.file_extensions,
+            case_sensitive: self.case_sensitive.expect("case_sensitive is required"),
+        }
+    }
 }
 
 /// LRU-style query result cache using moka + ahash
@@ -69,7 +244,7 @@ impl QueryCache {
     pub fn new() -> Self {
         Self {
             cache: Cache::builder()
-                .max_capacity(1000)
+                .max_capacity(100)
                 .time_to_live(Duration::from_mins(5)) // 5 minutes TTL
                 .build(),
         }
@@ -276,7 +451,7 @@ impl IndexSearcher {
             ))
         };
 
-        let (final_query, top_docs) = if parsed.text_query == "*" {
+        let (_final_query, top_docs) = if parsed.text_query == "*" {
             run_query(
                 Box::new(tantivy::query::AllQuery),
                 params.limit,
@@ -332,7 +507,6 @@ impl IndexSearcher {
                         combined.into_iter().take(params.limit).collect(),
                         params.query,
                         &highlight_terms,
-                        &*final_query,
                         &cache_key,
                     );
                 }
@@ -344,7 +518,6 @@ impl IndexSearcher {
             top_docs,
             params.query,
             &highlight_terms,
-            &*final_query,
             &cache_key,
         )
     }
@@ -355,17 +528,9 @@ impl IndexSearcher {
         top_docs: Vec<(f32, tantivy::DocAddress)>,
         query: &str,
         highlight_terms: &[String],
-        final_query: &dyn tantivy::query::Query,
         cache_key: &CacheKey,
     ) -> Result<Vec<SearchResult>> {
         let mut results = Vec::with_capacity(top_docs.len().min(cache_key.limit));
-
-        // Create snippet generator once per search instead of per document
-        let snippet_generator = tantivy::snippet::SnippetGenerator::create(
-            searcher,
-            final_query,
-            self.content_field,
-        ).ok();
 
         for (score, doc_address) in top_docs {
             let doc: tantivy::TantivyDocument = searcher
@@ -373,11 +538,7 @@ impl IndexSearcher {
                 .map_err(|e| FlashError::search(query, e.to_string()))?;
 
             match self.retrieve_result_with_doc(searcher, query, score, doc_address, &doc, highlight_terms) {
-                Ok(mut result) => {
-                    if let Some(ref generator) = snippet_generator {
-                        let snippet = generator.snippet_from_doc(&doc);
-                        result.snippets = vec![snippet.to_html()];
-                    }
+                Ok(result) => {
                     results.push(result);
                 }
                 Err(e) => {

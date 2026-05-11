@@ -97,12 +97,13 @@ impl Scanner {
     }
 
     fn process_writer_loop(
-        task_rx: &crossbeam_channel::Receiver<IndexTask>,
+        task_rx: &flume::Receiver<IndexTask>,
         filename_index: Option<&Arc<crate::indexer::filename_index::FilenameIndex>>,
         indexer: &Arc<IndexManager>,
         metadata_db: &Arc<MetadataDb>,
         progress_tx: Option<&flume::Sender<ProgressEvent>>,
         total_files: &Arc<AtomicUsize>,
+        cancel_flag: &Arc<std::sync::atomic::AtomicBool>,
     ) {
         info!("Stage 2b: Batch Writing");
         let start = Instant::now();
@@ -114,6 +115,11 @@ impl Scanner {
         let mut processed: usize = 0;
 
         for task in task_rx {
+            if cancel_flag.load(Ordering::Relaxed) {
+                warn!("Indexing cancelled. Flushing batches...");
+                break;
+            }
+
             // Prepare for filename index
             if let Some(_) = filename_index {
                 let path = std::path::Path::new(&task.doc.path);
@@ -151,7 +157,7 @@ impl Scanner {
             }
 
             // Progress update
-            if processed.is_multiple_of(10) {
+            if processed % 10 == 0 {
                 let current_total = total_files.load(Ordering::Relaxed);
                 let elapsed = start.elapsed().as_secs_f64();
                 let rate = if elapsed > 0.0 {
@@ -217,11 +223,11 @@ impl Scanner {
     }
 
     #[allow(clippy::too_many_lines)]
-    #[instrument(skip(self, exclude_patterns), fields(root = %root.display()))]
-    pub async fn scan_directory(&self, root: PathBuf, exclude_patterns: Vec<String>) -> Result<()> {
+    #[instrument(skip(self, exclude_patterns, cancel_flag), fields(root = %root.display()))]
+    pub async fn scan_directory(&self, root: PathBuf, exclude_patterns: Vec<String>, cancel_flag: Arc<std::sync::atomic::AtomicBool>) -> Result<()> {
         info!("Starting directory scan for {}", root.display());
 
-        let (path_tx, path_rx) = crossbeam_channel::unbounded::<PathBuf>();
+        let (path_tx, path_rx) = flume::unbounded::<PathBuf>();
 
         let root_clone = root.clone();
         let tx_clone = self.progress_tx.clone();
@@ -229,6 +235,7 @@ impl Scanner {
         let total = Arc::new(AtomicUsize::new(0));
         let total_for_scan = total.clone();
 
+        let cancel_flag_for_scan = cancel_flag.clone();
         let walker_handle = tokio::task::spawn_blocking(move || {
             scanner.scan(
                 root_clone,
@@ -236,6 +243,7 @@ impl Scanner {
                 path_tx,
                 tx_clone,
                 total_for_scan,
+                cancel_flag_for_scan,
             )
         });
 
@@ -251,7 +259,7 @@ impl Scanner {
         //   - Parsed IndexTasks are forwarded to a sync writer via crossbeam.
         const CHUNK_SIZE: usize = 200;
 
-        let (task_tx, task_rx) = crossbeam_channel::bounded::<IndexTask>(BATCH_SIZE * 8);
+        let (task_tx, task_rx) = flume::bounded::<IndexTask>(BATCH_SIZE * 8);
         // Async channel for sending path-chunks from the blocking walker to the async parser.
         let (chunk_tx, mut chunk_rx) = tokio::sync::mpsc::channel::<Vec<(PathBuf, u64, u64)>>(32);
 
@@ -276,12 +284,17 @@ impl Scanner {
         // --- Stage 2a: Blocking path receiver + filter ---
         // Drains path_rx (crossbeam), applies extension/size/metadata filters,
         // checks the metadata DB for staleness, then sends chunks over chunk_tx.
+        let cancel_flag_for_filter = cancel_flag.clone();
         let filter_handle = tokio::task::spawn_blocking(move || {
             info!("Stage 2a: Path filtering and chunking");
             let limit_bytes = u64::from(file_size_limit_mb) * 1024 * 1024;
             let mut chunk: Vec<(PathBuf, u64, u64)> = Vec::with_capacity(CHUNK_SIZE);
 
             for path in path_rx {
+                if cancel_flag_for_filter.load(Ordering::Relaxed) {
+                    break;
+                }
+                
                 // Extension filter
                 let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
                     continue;
@@ -363,9 +376,14 @@ impl Scanner {
         let progress_tx_for_parser = self.progress_tx.clone();
         let total_files_for_parser = total.clone();
 
+        let cancel_flag_for_parser = cancel_flag.clone();
+
         let parser_handle = tokio::spawn(async move {
             info!("Stage 2b: Async Kreuzberg batch parsing");
             while let Some(chunk) = chunk_rx.recv().await {
+                if cancel_flag_for_parser.load(Ordering::Relaxed) {
+                    break;
+                }
                 let just_paths: Vec<PathBuf> = chunk.iter().map(|(p, _, _)| p.clone()).collect();
 
                 if let Some(tx) = &progress_tx_for_parser {
@@ -396,12 +414,7 @@ impl Scanner {
                         {
                             match parsed_res {
                                 Ok(parsed) => {
-                                    // Use a shallow "hash" (size + modified) instead of expensive blake3
-                                    let mut content_hash = [0u8; 32];
-                                    let s_bytes = size.to_le_bytes();
-                                    let m_bytes = modified.to_le_bytes();
-                                    content_hash[..8].copy_from_slice(&s_bytes);
-                                    content_hash[8..16].copy_from_slice(&m_bytes);
+                                    let content_hash: [u8; 32] = blake3::hash(parsed.content.as_bytes()).into();
 
                                     let _ = task_tx_for_parser.send(IndexTask {
                                         doc: parsed,
@@ -421,12 +434,7 @@ impl Scanner {
                         warn!("Async batch crashed ({e}), falling back to per-file sync parsing");
                         for (path, modified, size) in chunk {
                             if let Ok(parsed) = parse_file(&path, enable_ocr) {
-                                // Shallow hash
-                                let mut content_hash = [0u8; 32];
-                                let s_bytes = size.to_le_bytes();
-                                let m_bytes = modified.to_le_bytes();
-                                content_hash[..8].copy_from_slice(&s_bytes);
-                                content_hash[8..16].copy_from_slice(&m_bytes);
+                                let content_hash: [u8; 32] = blake3::hash(parsed.content.as_bytes()).into();
 
                                 let _ = task_tx_for_parser.send(IndexTask {
                                     doc: parsed,
@@ -447,6 +455,7 @@ impl Scanner {
 
         // --- Stage 2c: Sequential batch writer (sync) ---
         // Tantivy writes must be sequential; this separate thread drains task_rx.
+        let cancel_flag_for_writer = cancel_flag.clone();
         let writer_handle = tokio::task::spawn_blocking(move || {
             Self::process_writer_loop(
                 &task_rx,
@@ -455,6 +464,7 @@ impl Scanner {
                 &metadata_db_for_writer,
                 progress_tx_clone.as_ref(),
                 &total_files,
+                &cancel_flag_for_writer,
             );
         });
 
@@ -501,7 +511,7 @@ mod tests {
 
         let settings = AppSettings::default();
         let indexer = Arc::new(IndexManager::open(&index_path, 100).unwrap());
-        let metadata_db = Arc::new(MetadataDb::open(&db_path).unwrap());
+        let metadata_db = Arc::new(MetadataDb::open(&db_path).unwrap().0);
 
         let scanner = Scanner::new(indexer, metadata_db, None, None, settings);
 

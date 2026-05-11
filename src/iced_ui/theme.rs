@@ -441,12 +441,34 @@ pub fn error_text_style() -> impl Fn(&Theme) -> text::Style + use<> {
     }
 }
 
+pub fn danger_text_style() -> impl Fn(&Theme) -> text::Style + use<> {
+    error_text_style()
+}
+
 #[must_use]
 pub fn error_container(_theme: &Theme) -> container::Style {
     container::Style {
         background: Some(Background::Color(Color::from_rgba(0.9, 0.2, 0.2, 0.1))),
         border: Border {
             color: Color::from_rgb(0.9, 0.2, 0.2),
+            width: 1.0,
+            radius: Radius::from(4.0),
+        },
+        ..Default::default()
+    }
+}
+
+#[must_use]
+pub fn error_banner(theme: &Theme) -> container::Style {
+    error_container(theme)
+}
+
+#[must_use]
+pub fn warning_banner(_theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(Color::from_rgba(0.96, 0.62, 0.04, 0.1))),
+        border: Border {
+            color: Color::from_rgb(0.96, 0.62, 0.04),
             width: 1.0,
             radius: Radius::from(4.0),
         },

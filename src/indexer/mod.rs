@@ -49,16 +49,20 @@ impl IndexManager {
         {
             warn!("Failed to remove old backup at {:?}: {}", backup_path, e);
         }
-        if let Err(e) = copy_dir(index_path, &backup_path) {
-            warn!("Failed to backup index to {:?}: {}", backup_path, e);
-        }
-
-        if let Err(e) = std::fs::remove_dir_all(index_path) {
-            error!(
-                "Failed to remove corrupted index at {:?}: {}",
-                index_path, e
-            );
-            return Err(FlashError::Io(std::sync::Arc::new(e)));
+        if index_path.exists() {
+            if let Err(e) = std::fs::rename(index_path, &backup_path) {
+                warn!("Failed to atomic rename index to {:?}: {}. Falling back to copy.", backup_path, e);
+                if let Err(e) = copy_dir(index_path, &backup_path) {
+                    warn!("Failed to backup index to {:?}: {}", backup_path, e);
+                }
+                if let Err(e) = std::fs::remove_dir_all(index_path) {
+                    error!(
+                        "Failed to remove corrupted index at {:?}: {}",
+                        index_path, e
+                    );
+                    return Err(FlashError::Io(std::sync::Arc::new(e)));
+                }
+            }
         }
 
         if let Err(e) = std::fs::create_dir_all(index_path) {

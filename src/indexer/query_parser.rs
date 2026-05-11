@@ -2,6 +2,7 @@ use regex::Regex;
 use std::sync::OnceLock;
 
 static OPERATOR_REGEX: OnceLock<Regex> = OnceLock::new();
+static SIZE_REGEX: OnceLock<Regex> = OnceLock::new();
 
 /// Parsed query with operators and search terms
 #[derive(Debug, Clone)]
@@ -42,7 +43,9 @@ impl ParsedQuery {
             Regex::new(r#"(?i)(ext|path|title|size):(?:"([^"]*)"|(\S+))"#).unwrap()
         });
 
-        let size_regex = Regex::new(r"(?i)^([<>]?)(\d+(?:\.\d+)?)(MB|KB|GB|B)?$").unwrap();
+        let size_regex = SIZE_REGEX.get_or_init(|| {
+            Regex::new(r"(?i)^([<>]?)(\d+(?:\.\d+)?)(MB|KB|GB|B)?$").unwrap()
+        });
 
         let mut remaining = input.to_string();
 

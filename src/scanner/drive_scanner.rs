@@ -30,7 +30,7 @@ mod windows_usn {
 
     pub fn scan_volume(
         root: &Path,
-        path_tx: &crossbeam_channel::Sender<PathBuf>,
+        path_tx: &flume::Sender<PathBuf>,
         progress_tx: Option<&flume::Sender<ProgressEvent>>,
         total_count: &Arc<AtomicUsize>,
     ) -> Result<()> {
@@ -66,7 +66,7 @@ mod windows_usn {
     unsafe fn iterate_mft(
         handle: HANDLE,
         drive_root: &str,
-        path_tx: &crossbeam_channel::Sender<PathBuf>,
+        path_tx: &flume::Sender<PathBuf>,
         progress_tx: Option<&flume::Sender<ProgressEvent>>,
         total_count: &Arc<AtomicUsize>,
     ) -> Result<()> {
@@ -165,7 +165,7 @@ mod windows_usn {
 
     fn reconstruct_paths(
         drive_root: &str,
-        path_tx: &crossbeam_channel::Sender<PathBuf>,
+        path_tx: &flume::Sender<PathBuf>,
         progress_tx: Option<&flume::Sender<ProgressEvent>>,
         total_count: &Arc<AtomicUsize>,
         dir_map: &HashMap<u64, DirInfo>,
@@ -393,7 +393,7 @@ use crate::scanner::{ProgressEvent, ProgressType};
 use ignore::WalkBuilder;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use tracing::{info, warn};
 
 pub trait DriveScanner: Send + Sync {
@@ -401,9 +401,10 @@ pub trait DriveScanner: Send + Sync {
         &self,
         root: PathBuf,
         exclude_patterns: Vec<String>,
-        path_tx: crossbeam_channel::Sender<PathBuf>,
+        path_tx: flume::Sender<PathBuf>,
         progress_tx: Option<flume::Sender<ProgressEvent>>,
         total_count: Arc<AtomicUsize>,
+        cancel_flag: Arc<AtomicBool>,
     ) -> Result<()>;
 
     // Real-time hook for whole drives
@@ -424,9 +425,10 @@ impl DriveScanner for DefaultDriveScanner {
         &self,
         root: PathBuf,
         exclude_patterns: Vec<String>,
-        path_tx: crossbeam_channel::Sender<PathBuf>,
+        path_tx: flume::Sender<PathBuf>,
         progress_tx: Option<flume::Sender<ProgressEvent>>,
         total_count: Arc<AtomicUsize>,
+        cancel_flag: Arc<AtomicBool>,
     ) -> Result<()> {
         let mut builder = WalkBuilder::new(&root);
 
@@ -451,7 +453,12 @@ impl DriveScanner for DefaultDriveScanner {
             let path_tx = path_tx.clone();
             let progress_tx = progress_tx.clone();
             let total = total_count.clone();
+            let cancel_flag = cancel_flag.clone();
             Box::new(move |entry| {
+                if cancel_flag.load(Ordering::Relaxed) {
+                    return ignore::WalkState::Quit;
+                }
+
                 #[allow(clippy::collapsible_if)]
                 if let Ok(entry) = entry {
                     if entry.file_type().is_some_and(|ft| ft.is_file()) {
@@ -507,9 +514,10 @@ impl DriveScanner for WindowsDriveScanner {
         &self,
         root: PathBuf,
         exclude_patterns: Vec<String>,
-        path_tx: crossbeam_channel::Sender<PathBuf>,
+        path_tx: flume::Sender<PathBuf>,
         progress_tx: Option<flume::Sender<ProgressEvent>>,
         total_count: Arc<AtomicUsize>,
+        cancel_flag: Arc<AtomicBool>,
     ) -> Result<()> {
         let root_str = root.to_string_lossy();
         let is_unc = root_str.starts_with("\\\\");
@@ -553,7 +561,7 @@ impl DriveScanner for WindowsDriveScanner {
         }
 
         let fallback = DefaultDriveScanner;
-        fallback.scan(root, exclude_patterns, path_tx, progress_tx, total_count)
+        fallback.scan(root, exclude_patterns, path_tx, progress_tx, total_count, cancel_flag)
     }
 
     fn watch(
@@ -600,13 +608,14 @@ impl DriveScanner for MacDriveScanner {
         &self,
         root: PathBuf,
         exclude_patterns: Vec<String>,
-        path_tx: crossbeam_channel::Sender<PathBuf>,
+        path_tx: flume::Sender<PathBuf>,
         progress_tx: Option<flume::Sender<ProgressEvent>>,
         total_count: Arc<AtomicUsize>,
+        cancel_flag: Arc<AtomicBool>,
     ) -> Result<()> {
         let _ = macos_fsevents::scan_volume(&root);
         let fallback = DefaultDriveScanner;
-        fallback.scan(root, exclude_patterns, path_tx, progress_tx, total_count)
+        fallback.scan(root, exclude_patterns, path_tx, progress_tx, total_count, cancel_flag)
     }
 }
 
@@ -619,12 +628,13 @@ impl DriveScanner for LinuxDriveScanner {
         &self,
         root: PathBuf,
         exclude_patterns: Vec<String>,
-        path_tx: crossbeam_channel::Sender<PathBuf>,
+        path_tx: flume::Sender<PathBuf>,
         progress_tx: Option<flume::Sender<ProgressEvent>>,
         total_count: Arc<AtomicUsize>,
+        cancel_flag: Arc<AtomicBool>,
     ) -> Result<()> {
         let _ = linux_fanotify::scan_volume(&root);
         let fallback = DefaultDriveScanner;
-        fallback.scan(root, exclude_patterns, path_tx, progress_tx, total_count)
+        fallback.scan(root, exclude_patterns, path_tx, progress_tx, total_count, cancel_flag)
     }
 }

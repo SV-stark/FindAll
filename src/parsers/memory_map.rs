@@ -7,7 +7,22 @@ use std::path::Path;
 const MMAP_THRESHOLD: u64 = 1024 * 1024; // 1MB
 const MAX_FILE_SIZE: u64 = 100 * 1024 * 1024; // 100MB
 
-pub fn read_file(path: &Path) -> Result<Vec<u8>> {
+pub enum FileData {
+    Buffer(Vec<u8>),
+    Mmap(Mmap),
+}
+
+impl std::ops::Deref for FileData {
+    type Target = [u8];
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Buffer(b) => b.as_slice(),
+            Self::Mmap(m) => m.as_ref(),
+        }
+    }
+}
+
+pub fn read_file(path: &Path) -> Result<FileData> {
     let metadata = std::fs::metadata(path).map_err(|e| FlashError::Io(std::sync::Arc::new(e)))?;
 
     let file_size = metadata.len();
@@ -28,18 +43,18 @@ pub fn read_file(path: &Path) -> Result<Vec<u8>> {
 
 pub fn read_file_as_string(path: &Path) -> Result<String> {
     let bytes = read_file(path)?;
-    String::from_utf8(bytes).map_err(|e| FlashError::parse(path, format!("Invalid UTF-8: {e}")))
+    String::from_utf8(bytes.to_vec()).map_err(|e| FlashError::parse(path, format!("Invalid UTF-8: {e}")))
 }
 
-fn read_with_buffer(path: &Path) -> Result<Vec<u8>> {
+fn read_with_buffer(path: &Path) -> Result<FileData> {
     let mut file = File::open(path).map_err(|e| FlashError::Io(std::sync::Arc::new(e)))?;
     let mut bytes = Vec::new();
     file.read_to_end(&mut bytes)
         .map_err(|e| FlashError::Io(std::sync::Arc::new(e)))?;
-    Ok(bytes)
+    Ok(FileData::Buffer(bytes))
 }
 
-fn read_with_mmap(path: &Path) -> Result<Vec<u8>> {
+fn read_with_mmap(path: &Path) -> Result<FileData> {
     let file = File::open(path)
         .map_err(|e| FlashError::parse(path, format!("Failed to open file: {e}")))?;
 
@@ -52,7 +67,7 @@ fn read_with_mmap(path: &Path) -> Result<Vec<u8>> {
             .map_err(|e| FlashError::Io(std::sync::Arc::new(std::io::Error::other(e))))?
     };
 
-    Ok(mmap.to_vec())
+    Ok(FileData::Mmap(mmap))
 }
 
 #[must_use]

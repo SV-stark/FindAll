@@ -75,7 +75,7 @@ pub fn setup_app() -> std::result::Result<
             }
         })?;
     let db_path = app_data_dir.join("metadata.redb");
-    let metadata_db = metadata::MetadataDb::open(&db_path)
+    let (metadata_db, db_corrupted) = metadata::MetadataDb::open(&db_path)
         .map_err(|e| FlashError::database("open", "metadata.redb", e.to_string()))?;
 
     let metadata_db_shared = Arc::new(metadata_db);
@@ -118,6 +118,7 @@ pub fn setup_app() -> std::result::Result<
             .maybe_filename_index(filename_index)
             .progress_tx(progress_tx)
             .scanner(scanner)
+            .db_corrupted(db_corrupted)
             .build(),
     );
 

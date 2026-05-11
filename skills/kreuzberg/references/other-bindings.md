@@ -7,7 +7,7 @@ Kreuzberg provides native bindings for multiple programming languages, each with
 **Installation:**
 
 ```bash
-go get github.com/kreuzberg-dev/kreuzberg/packages/go/v4
+go get github.com/kreuzberg-dev/kreuzberg/packages/go/v5
 ```
 
 **Basic Extraction:**
@@ -18,7 +18,7 @@ package main
 import (
     "context"
     "fmt"
-    "github.com/kreuzberg-dev/kreuzberg/packages/go/v4/kreuzberg"
+    "github.com/kreuzberg-dev/kreuzberg/packages/go/v5/kreuzberg"
 )
 
 func main() {
@@ -162,10 +162,10 @@ npm install @kreuzberg/wasm
 **Basic Extraction:**
 
 ```typescript
-import { extractBytes } from '@kreuzberg/wasm';
+import { extractBytes } from "@kreuzberg/wasm";
 
-const fileData = await fs.promises.readFile('document.pdf');
-const result = await extractBytes(fileData, 'application/pdf');
+const fileData = await fs.promises.readFile("document.pdf");
+const result = await extractBytes(fileData, "application/pdf");
 console.log(result.content);
 ```
 

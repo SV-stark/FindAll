@@ -27,7 +27,7 @@ async fn test_end_to_end_search() -> Result<()> {
 
     let indexer = Arc::new(IndexManager::open(&index_dir, 100)?);
     let metadata_db_path = index_dir.join("metadata.redb");
-    let _metadata_db = Arc::new(MetadataDb::open(&metadata_db_path)?);
+    let _metadata_db = Arc::new(MetadataDb::open(&metadata_db_path)?.0);
 
     let txt_path_clone = txt_path.clone();
     let md_path_clone = md_path.clone();

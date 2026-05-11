@@ -131,7 +131,52 @@ fn render_code_preview<'a>(
 }
 
 pub fn search_view(app: &App) -> Element<'_, Message> {
-    column![top_navigation(app), main_layout(app), status_bar(app),]
+    let mut col = column![top_navigation(app)];
+
+    if let Some(state) = &app.state {
+        if state.db_corrupted && !app.db_corrupted_dismissed {
+            col = col.push(
+                container(
+                    row![
+                        text("⚠️ Metadata database was corrupted and has been reset. Full re-index recommended.")
+                            .size(14)
+                            .style(theme::danger_text_style()),
+                        Space::new().width(Length::Fill),
+                        button(text("Dismiss").size(12))
+                            .on_press(Message::DismissError)
+                            .padding(Padding::from([4, 8]))
+                    ]
+                    .align_y(Alignment::Center)
+                )
+                .padding(10)
+                .style(theme::warning_banner)
+                .width(Length::Fill)
+            );
+        }
+    }
+
+    if let Some(err) = &app.search_error {
+        col = col.push(
+            container(
+                row![
+                    text(format!("Error: {}", err))
+                        .size(14)
+                        .style(theme::danger_text_style()),
+                    Space::new().width(Length::Fill),
+                    button(text("Dismiss").size(12))
+                        .on_press(Message::DismissError)
+                        .padding(Padding::from([4, 8]))
+                ]
+                .align_y(Alignment::Center)
+            )
+            .padding(10)
+            .style(theme::error_banner)
+            .width(Length::Fill)
+        );
+    }
+
+    col.push(main_layout(app))
+        .push(status_bar(app))
         .width(Length::Fill)
         .height(Length::Fill)
         .into()
@@ -709,11 +754,18 @@ fn right_panel(app: &App) -> Element<'_, Message> {
                 .and_then(|r| r.extension.as_deref())
                 .unwrap_or("txt");
 
-            let content = if preview_result.matched_terms.is_empty() {
-                render_code_preview(&preview_result.content, ext, app.is_dark)
-            } else {
-                highlight_text(&preview_result.content, &preview_result.matched_terms)
-            };
+            let spans = preview_result
+                .cached_spans
+                .iter()
+                .map(|(text_part, color_opt)| {
+                    let mut s: iced::widget::text::Span<'_, Message> = span(text_part).size(13).font(Font::MONOSPACE);
+                    if let Some([r, g, b, a]) = color_opt {
+                        s = s.color(iced::Color::from_rgba(*r, *g, *b, *a));
+                    }
+                    s
+                })
+                .collect::<Vec<_>>();
+            let content: Element<'_, Message> = rich_text(spans).into();
 
             let snippets: Element<'_, Message> = app
                 .selected_index

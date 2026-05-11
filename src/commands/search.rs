@@ -5,6 +5,7 @@ use crate::parsers::parse_file;
 use moka::sync::Cache;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
+use iced::widget::text::Highlighter as _;
 
 static PREVIEW_CACHE: OnceLock<Cache<(String, u64), String>> = OnceLock::new();
 
@@ -83,10 +84,78 @@ pub async fn get_file_preview_highlighted_internal(
     let case_sensitive = state.settings_cache.load().case_sensitive;
     let matched_terms = extract_highlight_terms(&query, case_sensitive);
 
-    let content = get_file_preview_internal(path).await?;
+    let content = get_file_preview_internal(path.clone()).await?;
+
+    let content_clone = content.clone();
+    let matched_terms_clone = matched_terms.clone();
+    
+    let cached_spans = tokio::task::spawn_blocking(move || {
+        let mut spans = Vec::new();
+        if matched_terms_clone.is_empty() {
+            let extension = std::path::Path::new(&path)
+                .extension()
+                .and_then(|s| s.to_str())
+                .unwrap_or("txt");
+            let mut highlighter = iced_highlighter::Highlighter::new(&iced_highlighter::Settings {
+                theme: iced_highlighter::Theme::Base16Ocean,
+                token: extension.to_string(),
+            });
+            for line in content_clone.lines() {
+                for (range, highlight) in highlighter.highlight_line(line) {
+                    let color = highlight.color().map(|c| [c.r, c.g, c.b, c.a]);
+                    spans.push((line[range].to_string(), color));
+                }
+                spans.push(("\n".to_string(), None));
+            }
+        } else {
+            let lower_content = if case_sensitive { content_clone.clone() } else { content_clone.to_lowercase() };
+            let mut matches = Vec::new();
+
+            for term in &matched_terms_clone {
+                if term.is_empty() {
+                    continue;
+                }
+                let term_to_match = if case_sensitive { term.clone() } else { term.to_lowercase() };
+                let mut start = 0;
+                while let Some(idx) = lower_content[start..].find(&term_to_match) {
+                    let abs_idx = start + idx;
+                    matches.push((abs_idx, abs_idx + term.len()));
+                    start = abs_idx + term.len();
+                }
+            }
+
+            matches.sort_by_key(|r| r.0);
+            let mut merged: Vec<(usize, usize)> = Vec::new();
+            for m in matches {
+                if let Some(last) = merged.last_mut() {
+                    if m.0 <= last.1 {
+                        last.1 = last.1.max(m.1);
+                        continue;
+                    }
+                }
+                merged.push(m);
+            }
+
+            let mut last_idx = 0;
+            for (start, end) in merged {
+                if start > last_idx {
+                    spans.push((content_clone[last_idx..start].to_string(), None));
+                }
+                // AMBER color mapping
+                spans.push((content_clone[start..end].to_string(), Some([1.0, 0.75, 0.0, 1.0])));
+                last_idx = end;
+            }
+            if last_idx < content_clone.len() {
+                spans.push((content_clone[last_idx..].to_string(), None));
+            }
+        }
+        spans
+    }).await.unwrap_or_default();
+
     Ok(PreviewResult {
         content,
         matched_terms,
+        cached_spans,
     })
 }
 

@@ -230,6 +230,7 @@ pub struct App {
     pub(crate) state: Option<Arc<AppState>>,
     pub(crate) error: Option<String>,
     pub(crate) search_error: Option<String>,
+    pub(crate) db_corrupted_dismissed: bool,
     pub(crate) active_tab: Tab,
     pub(crate) search_query: String,
     pub(crate) results: Vec<FileItem>,
@@ -290,6 +291,7 @@ impl Default for App {
             state: None,
             error: None,
             search_error: None,
+            db_corrupted_dismissed: false,
             active_tab: Tab::Search,
             search_query: String::new(),
             results: Vec::new(),
@@ -750,7 +752,7 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                 return Task::future(async move {
                     let _ = state
                         .scanner
-                        .scan_directory(std::path::PathBuf::from("C:\\"), vec![])
+                        .scan_directory(std::path::PathBuf::from("C:\\"), vec![], state.indexing_cancel.clone())
                         .await;
                     Message::IndexRebuilt
                 });
@@ -832,6 +834,7 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::DismissError => {
             app.error = None;
             app.search_error = None;
+            app.db_corrupted_dismissed = true;
             Task::none()
         }
         Message::Quit => app.window_id.map_or_else(Task::none, iced::window::close),

@@ -43,11 +43,15 @@ pub struct AppState {
     pub progress_tx: flume::Sender<crate::scanner::ProgressEvent>,
     pub scanner: Arc<crate::scanner::Scanner>,
     pub indexing_handle: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    pub indexing_cancel: Arc<std::sync::atomic::AtomicBool>,
+    pub db_corrupted: bool,
 }
 
-#[bon::bon]
 impl AppState {
-    #[builder]
+    pub fn builder() -> AppStateBuilder {
+        AppStateBuilder::default()
+    }
+
     pub fn new(
         indexer: Arc<IndexManager>,
         metadata_db: Arc<MetadataDb>,
@@ -56,6 +60,7 @@ impl AppState {
         filename_index: Option<Arc<FilenameIndex>>,
         progress_tx: flume::Sender<crate::scanner::ProgressEvent>,
         scanner: Arc<crate::scanner::Scanner>,
+        db_corrupted: bool,
     ) -> Self {
         let cache = settings_manager.load().unwrap_or_else(|e| {
             tracing::warn!("Failed to load settings (using defaults): {}", e);
@@ -73,7 +78,80 @@ impl AppState {
             progress_tx,
             scanner,
             indexing_handle: Mutex::new(None),
+            indexing_cancel: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            db_corrupted,
         }
+    }
+}
+
+#[derive(Default)]
+pub struct AppStateBuilder {
+    indexer: Option<Arc<IndexManager>>,
+    metadata_db: Option<Arc<MetadataDb>>,
+    settings_manager: Option<SettingsManager>,
+    watcher: Option<WatcherManager>,
+    filename_index: Option<Option<Arc<FilenameIndex>>>,
+    progress_tx: Option<flume::Sender<crate::scanner::ProgressEvent>>,
+    scanner: Option<Arc<crate::scanner::Scanner>>,
+    db_corrupted: Option<bool>,
+}
+
+impl AppStateBuilder {
+    pub fn indexer(mut self, indexer: Arc<IndexManager>) -> Self {
+        self.indexer = Some(indexer);
+        self
+    }
+
+    pub fn metadata_db(mut self, metadata_db: Arc<MetadataDb>) -> Self {
+        self.metadata_db = Some(metadata_db);
+        self
+    }
+
+    pub fn settings_manager(mut self, settings_manager: SettingsManager) -> Self {
+        self.settings_manager = Some(settings_manager);
+        self
+    }
+
+    pub fn watcher(mut self, watcher: WatcherManager) -> Self {
+        self.watcher = Some(watcher);
+        self
+    }
+
+    pub fn filename_index(mut self, filename_index: Option<Arc<FilenameIndex>>) -> Self {
+        self.filename_index = Some(filename_index);
+        self
+    }
+
+    pub fn maybe_filename_index(self, filename_index: Option<Arc<FilenameIndex>>) -> Self {
+        self.filename_index(filename_index)
+    }
+
+    pub fn progress_tx(mut self, progress_tx: flume::Sender<crate::scanner::ProgressEvent>) -> Self {
+        self.progress_tx = Some(progress_tx);
+        self
+    }
+
+    pub fn scanner(mut self, scanner: Arc<crate::scanner::Scanner>) -> Self {
+        self.scanner = Some(scanner);
+        self
+    }
+
+    pub fn db_corrupted(mut self, db_corrupted: bool) -> Self {
+        self.db_corrupted = Some(db_corrupted);
+        self
+    }
+
+    pub fn build(self) -> AppState {
+        AppState::new(
+            self.indexer.expect("indexer is required"),
+            self.metadata_db.expect("metadata_db is required"),
+            self.settings_manager.expect("settings_manager is required"),
+            self.watcher.expect("watcher is required"),
+            self.filename_index.flatten(),
+            self.progress_tx.expect("progress_tx is required"),
+            self.scanner.expect("scanner is required"),
+            self.db_corrupted.unwrap_or(false),
+        )
     }
 }
 

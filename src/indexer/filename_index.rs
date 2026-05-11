@@ -35,7 +35,7 @@ const LEGACY_INDEX_FILENAME: &str = "filenames.json";
 pub struct FilenameIndex {
     committed: ArcSwap<Vec<FilenameEntry>>,
     data_path: std::path::PathBuf,
-    fst_map: ArcSwap<Arc<[u8]>>,
+    fst_map: Arc<ArcSwap<Arc<[u8]>>>,
     staging: parking_lot::Mutex<Vec<FilenameEntry>>,
 }
 
@@ -106,7 +106,7 @@ impl FilenameIndex {
             Vec::new()
         };
 
-        let fst_map = ArcSwap::from_pointee(Arc::from(Self::build_fst(&entries)));
+        let fst_map = Arc::new(ArcSwap::from_pointee(Arc::from(Self::build_fst(&entries))));
 
         Ok(Self {
             committed: ArcSwap::from_pointee(entries),
@@ -148,16 +148,16 @@ impl FilenameIndex {
         let mut current = self.committed.load().as_ref().clone();
         current.extend(new_items);
 
-        // Rebuild FST map
-        self.fst_map
-            .store(Arc::new(Arc::from(Self::build_fst(&current))));
-
         let data_path = self.data_path.clone();
         let data_to_save = current.clone();
+        
+        let fst_map_clone = Arc::clone(&self.fst_map);
 
         self.committed.store(Arc::new(current));
 
         std::thread::spawn(move || {
+            let fst_bytes = Self::build_fst(&data_to_save);
+            fst_map_clone.store(Arc::new(Arc::from(fst_bytes)));
             Self::save_to_disk_sync(&data_to_save, &data_path);
         });
 

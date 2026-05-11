@@ -9,13 +9,65 @@ use std::time::SystemTime;
 
 const FILES_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("files");
 
-#[derive(Debug, Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, bon::Builder)]
+#[derive(Debug, Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct FileMetadata {
     pub path: String,
     pub modified: u64,          // Unix timestamp
     pub size: u64,              // File size in bytes
     pub content_hash: [u8; 32], // Blake3 hash for content deduplication
     pub indexed_at: u64,        // When this file was last indexed
+}
+
+impl FileMetadata {
+    pub fn builder() -> FileMetadataBuilder {
+        FileMetadataBuilder::default()
+    }
+}
+
+#[derive(Default)]
+pub struct FileMetadataBuilder {
+    path: Option<String>,
+    modified: Option<u64>,
+    size: Option<u64>,
+    content_hash: Option<[u8; 32]>,
+    indexed_at: Option<u64>,
+}
+
+impl FileMetadataBuilder {
+    pub fn path(mut self, path: String) -> Self {
+        self.path = Some(path);
+        self
+    }
+
+    pub fn modified(mut self, modified: u64) -> Self {
+        self.modified = Some(modified);
+        self
+    }
+
+    pub fn size(mut self, size: u64) -> Self {
+        self.size = Some(size);
+        self
+    }
+
+    pub fn content_hash(mut self, content_hash: [u8; 32]) -> Self {
+        self.content_hash = Some(content_hash);
+        self
+    }
+
+    pub fn indexed_at(mut self, indexed_at: u64) -> Self {
+        self.indexed_at = Some(indexed_at);
+        self
+    }
+
+    pub fn build(self) -> FileMetadata {
+        FileMetadata {
+            path: self.path.expect("path is required"),
+            modified: self.modified.expect("modified is required"),
+            size: self.size.expect("size is required"),
+            content_hash: self.content_hash.expect("content_hash is required"),
+            indexed_at: self.indexed_at.expect("indexed_at is required"),
+        }
+    }
 }
 
 pub type RecentFileEntry = (String, Option<String>, u64, u64);
@@ -29,10 +81,12 @@ pub struct MetadataDb {
 
 impl MetadataDb {
     /// Open or create the metadata database
-    pub fn open(db_path: &Path) -> Result<Self> {
+    pub fn open(db_path: &Path) -> Result<(Self, bool)> {
+        let mut reset_occurred = false;
         let db = match Database::create(db_path) {
             Ok(db) => Arc::new(db),
             Err(e) => {
+                reset_occurred = true;
                 tracing::warn!("Failed to open metadata database: {}. Forcing reset...", e);
                 let _ = std::fs::remove_file(db_path);
                 Arc::new(Database::create(db_path).map_err(|e| {
@@ -58,6 +112,7 @@ impl MetadataDb {
         };
 
         if let Err(e) = init_table(&db) {
+            reset_occurred = true;
             tracing::warn!(
                 "Failed to initialize database tables: {}. Wiping and recreating...",
                 e
@@ -77,19 +132,13 @@ impl MetadataDb {
                 )
             })?;
 
-            return Ok(Self { db });
+            return Ok((Self { db }, reset_occurred));
         }
 
-        Ok(Self { db })
+        Ok((Self { db }, reset_occurred))
     }
 
-    /// Clone with shared state (for multi-threaded access)
-    #[must_use]
-    pub fn clone_for_thread(&self) -> Self {
-        Self {
-            db: Arc::clone(&self.db),
-        }
-    }
+
 
     /// Check if file needs reindexing based on modification time and hash
     pub fn needs_reindex(&self, path: &Path, modified: u64, size: u64) -> Result<bool> {
