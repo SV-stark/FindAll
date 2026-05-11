@@ -17,6 +17,12 @@ pub struct ParsedDocument {
     pub embeddings: Option<Vec<f32>>,
 }
 
+#[derive(Debug, Clone)]
+pub struct PreviewElement {
+    pub element_type: crate::models::ElementType,
+    pub content: String,
+}
+
 /// Detect file type and route to appropriate parser using Kreuzberg
 pub fn parse_file(path: &Path, enable_ocr: bool) -> Result<ParsedDocument> {
     // Log the file extension for debugging
@@ -27,7 +33,8 @@ pub fn parse_file(path: &Path, enable_ocr: bool) -> Result<ParsedDocument> {
         extension
     );
 
-    let mime = kreuzberg::detect_mime_type(path, true).ok();
+    let mime = kreuzberg::detect_mime_type(path, true)
+        .map_err(|e| FlashError::parse(path, format!("Mime detection failed: {e}")))?;
 
     // Disable cache to prevent unbounded memory growth during deep directory scans.
     let config = kreuzberg::ExtractionConfig {
@@ -37,12 +44,7 @@ pub fn parse_file(path: &Path, enable_ocr: bool) -> Result<ParsedDocument> {
     };
 
     let file_data = memory_map::read_file(path)?;
-    let result = kreuzberg::extract_bytes_sync(
-        &file_data,
-        mime.as_deref().unwrap_or("application/octet-stream"),
-        &config,
-    )
-    .map_err(|e| {
+    let result = kreuzberg::extract_bytes_sync(&file_data, &mime, &config).map_err(|e| {
         tracing::error!("Failed to extract file {}: {}", path.display(), e);
         FlashError::parse(path, format!("Extraction failed: {e}"))
     })?;
@@ -50,6 +52,49 @@ pub fn parse_file(path: &Path, enable_ocr: bool) -> Result<ParsedDocument> {
     tracing::debug!("Successfully parsed file: {}", path.display());
 
     Ok(map_extraction_result(path, result))
+}
+
+pub fn parse_file_preview(path: &Path, enable_ocr: bool) -> Result<Vec<PreviewElement>> {
+    let mime = kreuzberg::detect_mime_type(path, true)
+        .map_err(|e| FlashError::parse(path, format!("Mime detection failed: {e}")))?;
+
+    let config = kreuzberg::ExtractionConfig {
+        use_cache: false,
+        disable_ocr: !enable_ocr,
+        result_format: kreuzberg::types::OutputFormat::ElementBased,
+        ..Default::default()
+    };
+
+    let file_data = memory_map::read_file(path)?;
+    let result = kreuzberg::extract_bytes_sync(&file_data, &mime, &config)
+        .map_err(|e| FlashError::parse(path, format!("Preview extraction failed: {e}")))?;
+
+    let elements = result
+        .elements
+        .unwrap_or_default()
+        .into_iter()
+        .map(|e| {
+            let element_type = match e.element_type {
+                kreuzberg::types::ElementType::Title => crate::models::ElementType::Title,
+                kreuzberg::types::ElementType::Heading => crate::models::ElementType::Heading,
+                kreuzberg::types::ElementType::NarrativeText => {
+                    crate::models::ElementType::NarrativeText
+                }
+                kreuzberg::types::ElementType::ListItem => crate::models::ElementType::ListItem,
+                kreuzberg::types::ElementType::CodeBlock => crate::models::ElementType::CodeBlock,
+                kreuzberg::types::ElementType::Table => crate::models::ElementType::Table,
+                kreuzberg::types::ElementType::Image => crate::models::ElementType::Image,
+                kreuzberg::types::ElementType::PageBreak => crate::models::ElementType::PageBreak,
+                _ => crate::models::ElementType::Unknown,
+            };
+            PreviewElement {
+                element_type,
+                content: e.text,
+            }
+        })
+        .collect();
+
+    Ok(elements)
 }
 
 /// Process a batch of files using Kreuzberg's native async concurrent batch extraction.

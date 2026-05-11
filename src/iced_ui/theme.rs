@@ -256,6 +256,23 @@ pub fn hit_highlight_container(theme: &Theme) -> container::Style {
     }
 }
 
+#[must_use]
+pub fn code_block_container(theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(if is_dark_theme(theme) {
+            Color::from_rgb(0.02, 0.02, 0.03)
+        } else {
+            Color::from_rgb(0.96, 0.96, 0.98)
+        })),
+        border: Border {
+            color: border_color(theme),
+            width: 1.0,
+            radius: Radius::from(4.0),
+        },
+        ..Default::default()
+    }
+}
+
 // --- Button Styles ---
 
 pub fn primary_button() -> impl Fn(&Theme, button::Status) -> button::Style + use<> {

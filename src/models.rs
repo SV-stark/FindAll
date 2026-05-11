@@ -84,12 +84,31 @@ pub struct FilenameIndexStats {
     pub index_size_bytes: u64,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ElementType {
+    Title,
+    Heading,
+    NarrativeText,
+    ListItem,
+    CodeBlock,
+    Table,
+    Image,
+    PageBreak,
+    Formula,
+    Unknown,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct DocumentElementHighlight {
+    pub element_type: ElementType,
+    pub spans: Vec<(String, Option<[f32; 4]>)>,
+}
+
 /// Preview result with highlighting
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct PreviewResult {
-    pub content: String,
+    pub elements: Vec<DocumentElementHighlight>,
     pub matched_terms: Vec<String>,
-    pub cached_spans: Vec<(String, Option<[f32; 4]>)>,
 }
 
 /// Index status

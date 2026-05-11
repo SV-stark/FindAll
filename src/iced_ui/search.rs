@@ -1,4 +1,5 @@
 use super::{App, DateFilter, Message, Tab, theme};
+use crate::models::{DocumentElementHighlight, ElementType};
 use iced::widget::{
     Space, TextInput, button, checkbox, column, container, mouse_area, rich_text, row, scrollable,
     span, text,
@@ -99,35 +100,64 @@ fn highlight_to_spans<H>(
                     }
                     s
                 })
-                .collect::<Vec<_>>();
-            line_spans.push(span("\n"));
+                .collect::<Vec<iced::widget::text::Span<'_, Message>>>();
+            line_spans.push(span("\n").into());
             line_spans
         })
         .collect()
 }
 
-fn render_code_preview<'a>(
-    content: &'a str,
-    extension: &str,
-    _is_dark: bool,
-) -> Element<'a, Message> {
-    let mut highlighter = Highlighter::new(&Settings {
-        #[allow(clippy::if_same_then_else)]
-        theme: iced_highlighter::Theme::Base16Ocean,
-        token: extension.to_string(),
-    });
+fn render_element<'a>(element: &'a DocumentElementHighlight) -> Element<'a, Message> {
+    let spans = element
+        .spans
+        .iter()
+        .map(|(text_part, color_opt)| {
+            let mut s: iced::widget::text::Span<'_, Message> = span(text_part).size(13);
+            if element.element_type == ElementType::CodeBlock {
+                s = s.font(Font::MONOSPACE);
+            }
+            if let Some([r, g, b, a]) = color_opt {
+                s = s.color(iced::Color::from_rgba(*r, *g, *b, *a));
+            }
+            s
+        })
+        .collect::<Vec<iced::widget::text::Span<'_, Message>>>();
 
-    let spans = highlight_to_spans(
-        content,
-        |line| highlighter.highlight_line(line).collect(),
-        |h| h.color(),
-    );
+    let content = rich_text(spans);
 
-    if spans.is_empty() {
-        return text(content).size(13).into();
+    match element.element_type {
+        ElementType::Title => container(content.size(24).font(Font {
+            weight: font::Weight::Bold,
+            ..Font::default()
+        }))
+        .padding(Padding {
+            bottom: 16.0,
+            ..Padding::default()
+        })
+        .into(),
+        ElementType::Heading => container(content.size(18).font(Font {
+            weight: font::Weight::Bold,
+            ..Font::default()
+        }))
+        .padding(Padding {
+            top: 12.0,
+            bottom: 8.0,
+            ..Padding::default()
+        })
+        .into(),
+        ElementType::ListItem => row![text(" • ").size(13), content].spacing(8).into(),
+        ElementType::CodeBlock => container(content)
+            .padding(12)
+            .style(theme::code_block_container)
+            .width(Length::Fill)
+            .into(),
+        ElementType::Table => container(content)
+            .padding(8)
+            .style(theme::badge_container)
+            .width(Length::Fill)
+            .into(),
+        _ => content.into(),
     }
-
-    rich_text(spans).into()
 }
 
 pub fn search_view(app: &App) -> Element<'_, Message> {
@@ -617,69 +647,6 @@ fn result_item_view<'a>(
         .into()
 }
 
-fn highlight_text<'a>(content: &'a str, terms: &[String]) -> Element<'a, Message> {
-    if terms.is_empty() || content.is_empty() {
-        return text(content).size(14).into();
-    }
-
-    let lower_content = content.to_lowercase();
-    let mut matches = Vec::new();
-
-    for term in terms {
-        if term.is_empty() {
-            continue;
-        }
-        let lower_term = term.to_lowercase();
-        let mut start = 0;
-        while let Some(idx) = lower_content[start..].find(&lower_term) {
-            let abs_idx = start + idx;
-            matches.push((abs_idx, abs_idx + term.len()));
-            start = abs_idx + term.len();
-        }
-    }
-
-    if matches.is_empty() {
-        return text(content).size(14).into();
-    }
-
-    matches.sort_by_key(|m| m.0);
-    let mut merged: Vec<(usize, usize)> = Vec::new();
-    for m in matches {
-        if let Some(last) = merged.last_mut()
-            && m.0 <= last.1
-        {
-            last.1 = last.1.max(m.1);
-            continue;
-        }
-        merged.push(m);
-    }
-
-    let mut spans: Vec<iced::widget::text::Span<'a, Message>> = Vec::new();
-    let mut current = 0;
-
-    for (start, end) in merged {
-        if start > current {
-            spans.push(span(&content[current..start]).size(14));
-        }
-        spans.push(
-            span(&content[start..end])
-                .size(14)
-                .font(Font {
-                    weight: font::Weight::Bold,
-                    ..Font::default()
-                })
-                .color(iced::Color::from_rgb8(234, 179, 8)),
-        );
-        current = end;
-    }
-
-    if current < content.len() {
-        spans.push(span(&content[current..]).size(14));
-    }
-
-    rich_text(spans).into()
-}
-
 fn parse_snippet<'a>(content: &'a str) -> Element<'a, Message> {
     let mut spans: Vec<iced::widget::text::Span<'a, Message>> = Vec::new();
     let mut current_pos = 0;
@@ -755,19 +722,10 @@ fn right_panel(app: &App) -> Element<'_, Message> {
                 .and_then(|r| r.extension.as_deref())
                 .unwrap_or("txt");
 
-            let spans = preview_result
-                .cached_spans
-                .iter()
-                .map(|(text_part, color_opt)| {
-                    let mut s: iced::widget::text::Span<'_, Message> =
-                        span(text_part).size(13).font(Font::MONOSPACE);
-                    if let Some([r, g, b, a]) = color_opt {
-                        s = s.color(iced::Color::from_rgba(*r, *g, *b, *a));
-                    }
-                    s
-                })
-                .collect::<Vec<_>>();
-            let content: Element<'_, Message> = rich_text(spans).into();
+            let content: Element<'_, Message> =
+                column(preview_result.elements.iter().map(render_element))
+                    .spacing(12)
+                    .into();
 
             let snippets: Element<'_, Message> = app
                 .selected_index
@@ -805,7 +763,7 @@ fn right_panel(app: &App) -> Element<'_, Message> {
                     container(
                         row![
                             load_icon("file-text"),
-                            text(preview_result.content.len().to_string()).size(12)
+                            text(format!("{} elements", preview_result.elements.len())).size(12)
                         ]
                         .spacing(8)
                         .align_y(Alignment::Center)
