@@ -330,6 +330,7 @@ impl App {
     fn new(
         state: Result<Arc<AppState>, String>,
         progress_rx: Option<flume::Receiver<ProgressEvent>>,
+        initial_dir: Option<String>,
     ) -> Self {
         match state {
             Ok(state) => {
@@ -353,6 +354,10 @@ impl App {
 
                 for ext in &settings.default_filters.file_types {
                     app.filter_extensions.insert(ext.clone());
+                }
+
+                if let Some(dir) = initial_dir {
+                    app.search_query = format!("path:\"{dir}\" ");
                 }
 
                 app
@@ -749,15 +754,43 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::RebuildIndex => {
             if let Some(state) = &app.state {
                 let state = state.clone();
+                let index_dirs = app.settings.index_dirs.clone();
+                app.rebuild_progress = Some(0.0);
+                app.rebuild_status = Some("Rebuilding index...".to_string());
                 return Task::future(async move {
-                    let _ = state
-                        .scanner
-                        .scan_directory(
-                            std::path::PathBuf::from("C:\\"),
-                            vec![],
-                            state.indexing_cancel.clone(),
-                        )
-                        .await;
+                    if let Err(e) = state.indexer.clear() {
+                        tracing::error!("Failed to clear search index: {e}");
+                    }
+                    let _ = state.indexer.commit();
+                    if let Err(e) = state.metadata_db.clear() {
+                        tracing::error!("Failed to clear metadata DB: {e}");
+                    }
+                    if let Some(ref filename_index) = state.filename_index {
+                        let clear_res = filename_index.clear();
+                        if let Err(e) = clear_res {
+                            tracing::error!("Failed to clear filename index: {e}");
+                        }
+                    }
+
+                    let dirs_to_scan = if index_dirs.is_empty() {
+                        crate::commands::get_home_dir_internal()
+                            .ok()
+                            .into_iter()
+                            .collect::<Vec<String>>()
+                    } else {
+                        index_dirs
+                    };
+
+                    for dir in dirs_to_scan {
+                        let _ = state
+                            .scanner
+                            .scan_directory(
+                                std::path::PathBuf::from(dir),
+                                vec![],
+                                state.indexing_cancel.clone(),
+                            )
+                            .await;
+                    }
                     Message::IndexRebuilt
                 });
             }
@@ -765,8 +798,25 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
         }
         Message::IndexDirAdded(dir) => {
             if !dir.is_empty() && !app.settings.index_dirs.contains(&dir) {
-                app.settings.index_dirs.push(dir);
+                app.settings.index_dirs.push(dir.clone());
                 app.new_index_dir.clear();
+                if let Some(state) = &app.state {
+                    let state = state.clone();
+                    let path_clone = dir;
+                    let save_task = app.save_settings();
+                    let scan_task = Task::future(async move {
+                        let _ = state
+                            .scanner
+                            .scan_directory(
+                                std::path::PathBuf::from(path_clone),
+                                vec![],
+                                state.indexing_cancel.clone(),
+                            )
+                            .await;
+                        Message::IndexRebuilt
+                    });
+                    return Task::batch(vec![save_task, scan_task]);
+                }
             }
             Task::none()
         }
@@ -851,7 +901,24 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
         }),
         Message::FolderPicked(Some(path)) => {
             if !app.settings.index_dirs.contains(&path) {
-                app.settings.index_dirs.push(path);
+                app.settings.index_dirs.push(path.clone());
+                if let Some(state) = &app.state {
+                    let state = state.clone();
+                    let path_clone = path;
+                    let save_task = app.save_settings();
+                    let scan_task = Task::future(async move {
+                        let _ = state
+                            .scanner
+                            .scan_directory(
+                                std::path::PathBuf::from(path_clone),
+                                vec![],
+                                state.indexing_cancel.clone(),
+                            )
+                            .await;
+                        Message::IndexRebuilt
+                    });
+                    return Task::batch(vec![save_task, scan_task]);
+                }
             }
             Task::none()
         }
@@ -861,7 +928,41 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
         }
         Message::RemoveFolder(i) | Message::RemoveIndexDir(i) => {
             if i < app.settings.index_dirs.len() {
-                app.settings.index_dirs.remove(i);
+                let removed_dir = app.settings.index_dirs.remove(i);
+                if let Some(state) = &app.state {
+                    let state = state.clone();
+                    let save_task = app.save_settings();
+
+                    let cleanup_task = Task::future(async move {
+                        if let Ok(all_paths) = state.metadata_db.get_all_file_paths() {
+                            let mut removed_any = false;
+                            for file_path in all_paths {
+                                let is_under = if file_path.starts_with(&removed_dir) {
+                                    let remaining = &file_path[removed_dir.len()..];
+                                    remaining.is_empty()
+                                        || remaining.starts_with('\\')
+                                        || remaining.starts_with('/')
+                                } else {
+                                    false
+                                };
+                                if is_under {
+                                    let _ = state.indexer.remove_document(&file_path);
+                                    let _ = state
+                                        .metadata_db
+                                        .remove_file(std::path::Path::new(&file_path));
+                                    removed_any = true;
+                                }
+                            }
+                            if removed_any {
+                                let _ = state.indexer.commit();
+                                state.indexer.invalidate_cache();
+                            }
+                        }
+                        Message::IndexRebuilt
+                    });
+
+                    return Task::batch(vec![save_task, cleanup_task]);
+                }
             }
             Task::none()
         }
@@ -935,13 +1036,21 @@ pub fn app_title(app: &App) -> String {
 pub fn run_ui(
     state: &Result<std::sync::Arc<AppState>, String>,
     progress_rx: flume::Receiver<ProgressEvent>,
+    initial_dir: Option<String>,
 ) {
     let state_clone = state.clone();
     let progress_rx = Arc::new(Mutex::new(Some(progress_rx)));
+    let initial_dir_clone = initial_dir;
     if let Err(e) = iced::application(
         move || {
             let rx = progress_rx.lock().take();
-            (App::new(state_clone.clone(), rx), Task::none())
+            let app = App::new(state_clone.clone(), rx, initial_dir_clone.clone());
+            let task = if app.settings.auto_index_on_startup {
+                Task::done(Message::RebuildIndex)
+            } else {
+                Task::none()
+            };
+            (app, task)
         },
         update,
         view,

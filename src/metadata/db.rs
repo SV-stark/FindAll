@@ -280,6 +280,30 @@ impl MetadataDb {
         Ok(())
     }
 
+    /// Get all file paths currently stored in the metadata database
+    pub fn get_all_file_paths(&self) -> Result<Vec<String>> {
+        let txn = self.db.begin_read().map_err(|e| {
+            FlashError::database("database_operation", "files_table", e.to_string())
+        })?;
+
+        let table = txn.open_table(FILES_TABLE).map_err(|e| {
+            FlashError::database("database_operation", "files_table", e.to_string())
+        })?;
+
+        let mut paths = Vec::new();
+        for entry in table
+            .iter()
+            .map_err(|e| FlashError::database("database_operation", "files_table", e.to_string()))?
+        {
+            let (k, _) = entry.map_err(|e| {
+                FlashError::database("database_operation", "files_table", e.to_string())
+            })?;
+            paths.push(k.value().to_string());
+        }
+
+        Ok(paths)
+    }
+
     /// Get metadata for a specific file
     pub fn get_metadata(&self, path: &Path) -> Result<Option<FileMetadata>> {
         let txn = self.db.begin_read().map_err(|e| {

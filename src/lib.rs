@@ -130,13 +130,13 @@ pub fn setup_app() -> std::result::Result<
 /// # Errors
 ///
 /// Returns a `FlashError` if the GUI fails to initialize or run.
-pub fn run_ui() -> std::result::Result<(), FlashError> {
+pub fn run_ui(initial_dir: Option<String>) -> std::result::Result<(), FlashError> {
     let (state_res, rx) = match setup_app() {
         Ok((state, rx)) => (Ok(state), rx),
         Err(e) => (Err(e.to_string()), flume::bounded(1).1),
     };
 
-    iced_ui::run_ui(&state_res, rx);
+    iced_ui::run_ui(&state_res, rx, initial_dir);
     Ok(())
 }
 
