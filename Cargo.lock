@@ -902,9 +902,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.2.61"
+version = "1.2.62"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d16d90359e986641506914ba71350897565610e87ce0ad9e6f28569db3dd5c6d"
+checksum = "a1dce859f0832a7d088c4f1119888ab94ef4b5d6795d1ce05afb7fe159d79f98"
 dependencies = [
  "find-msvc-tools",
  "jobserver",
@@ -2951,9 +2951,9 @@ dependencies = [
 
 [[package]]
 name = "html-to-markdown-rs"
-version = "3.3.3"
+version = "3.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9451a842dd9316c9762a1c2c1d496df9db4db29e702e22f7a3fca210636ed4f9"
+checksum = "42f856d5f5daa55ea8b81bd746f1e49170fe589eccd2f5020d9ea888417983ab"
 dependencies = [
  "ahash",
  "astral-tl",
@@ -2961,7 +2961,7 @@ dependencies = [
  "html-escape",
  "html5ever",
  "image",
- "lru 0.17.0",
+ "lru 0.18.0",
  "memchr",
  "once_cell",
  "regex",
@@ -3905,9 +3905,9 @@ dependencies = [
 
 [[package]]
 name = "kreuzberg"
-version = "4.9.7"
+version = "4.9.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a9b6e7118097d06f882f62427e6d8722eef31bc20bd0b2f434a8b8785d05c30c"
+checksum = "ef08d77d5b72b5c424acb86e297ea13fd9f3db9372d570dd4468011dfc8c3d53"
 dependencies = [
  "ahash",
  "async-trait",
@@ -3992,9 +3992,9 @@ dependencies = [
 
 [[package]]
 name = "kreuzberg-tesseract"
-version = "4.9.7"
+version = "4.9.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "550d1aedb28114013aa51767a1566318a7c6409b56605851c55c2ecd433ccf1b"
+checksum = "5f896204110548ad886f059e42bcc8b839dba64b95db2572ed2252acd72f22dc"
 dependencies = [
  "cc",
  "cmake",
@@ -4285,9 +4285,9 @@ dependencies = [
 
 [[package]]
 name = "lru"
-version = "0.17.0"
+version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e0b564323a0fb6d54b864f625ae139de9612e27edb944dda37c109f05aac531"
+checksum = "8a860605968fce16869fd239cf4237a82f3ac470723415db603b0e8b6c8d4fb9"
 dependencies = [
  "hashbrown 0.17.0",
 ]
@@ -6386,9 +6386,9 @@ checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
 
 [[package]]
 name = "reqwest"
-version = "0.13.2"
+version = "0.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab3f43e3283ab1488b624b44b0e988d0acea0b3214e694730a055cb6b2efa801"
+checksum = "62e0021ea2c22aed41653bc7e1419abb2c97e038ff2c33d0e1309e49a97deec0"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -7932,9 +7932,9 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.52.1"
+version = "1.52.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b67dee974fe86fd92cc45b7a95fdd2f99a36a6d7b0d431a231178d3d670bbcc6"
+checksum = "8fc7f01b389ac15039e4dc9531aa973a135d7a4135281b12d7c1bc79fd57fffe"
 dependencies = [
  "bytes",
  "libc",
@@ -8258,9 +8258,9 @@ checksum = "009994f150cc0cd50ff54917d5bc8bffe8cad10ca10d81c34da2ec421ae61782"
 
 [[package]]
 name = "tree-sitter-language-pack"
-version = "1.7.0"
+version = "1.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "925d3fdf2a7f2be09d354463119556ac092832d807a9533708ffd3b18bb712f1"
+checksum = "208658b27011901bb099b638e9ba25ad0a2063d5d6b7fcc6c07af0dcc94ffe10"
 dependencies = [
  "ahash",
  "cc",

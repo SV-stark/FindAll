@@ -357,7 +357,7 @@ impl App {
                 }
 
                 if let Some(dir) = initial_dir {
-                    app.search_query = format!("path:\"{}\" ", dir);
+                    app.search_query = format!("path:\"{dir}\" ");
                 }
 
                 app
@@ -766,7 +766,8 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                         tracing::error!("Failed to clear metadata DB: {e}");
                     }
                     if let Some(ref filename_index) = state.filename_index {
-                        if let Err(e) = filename_index.clear() {
+                        let clear_res = filename_index.clear();
+                        if let Err(e) = clear_res {
                             tracing::error!("Failed to clear filename index: {e}");
                         }
                     }
@@ -801,7 +802,7 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                 app.new_index_dir.clear();
                 if let Some(state) = &app.state {
                     let state = state.clone();
-                    let path_clone = dir.clone();
+                    let path_clone = dir;
                     let save_task = app.save_settings();
                     let scan_task = Task::future(async move {
                         let _ = state
@@ -903,7 +904,7 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                 app.settings.index_dirs.push(path.clone());
                 if let Some(state) = &app.state {
                     let state = state.clone();
-                    let path_clone = path.clone();
+                    let path_clone = path;
                     let save_task = app.save_settings();
                     let scan_task = Task::future(async move {
                         let _ = state
@@ -931,20 +932,24 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                 if let Some(state) = &app.state {
                     let state = state.clone();
                     let save_task = app.save_settings();
-                    
+
                     let cleanup_task = Task::future(async move {
                         if let Ok(all_paths) = state.metadata_db.get_all_file_paths() {
                             let mut removed_any = false;
                             for file_path in all_paths {
                                 let is_under = if file_path.starts_with(&removed_dir) {
                                     let remaining = &file_path[removed_dir.len()..];
-                                    remaining.is_empty() || remaining.starts_with('\\') || remaining.starts_with('/')
+                                    remaining.is_empty()
+                                        || remaining.starts_with('\\')
+                                        || remaining.starts_with('/')
                                 } else {
                                     false
                                 };
                                 if is_under {
                                     let _ = state.indexer.remove_document(&file_path);
-                                    let _ = state.metadata_db.remove_file(std::path::Path::new(&file_path));
+                                    let _ = state
+                                        .metadata_db
+                                        .remove_file(std::path::Path::new(&file_path));
                                     removed_any = true;
                                 }
                             }
@@ -955,7 +960,7 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                         }
                         Message::IndexRebuilt
                     });
-                    
+
                     return Task::batch(vec![save_task, cleanup_task]);
                 }
             }
@@ -1035,7 +1040,7 @@ pub fn run_ui(
 ) {
     let state_clone = state.clone();
     let progress_rx = Arc::new(Mutex::new(Some(progress_rx)));
-    let initial_dir_clone = initial_dir.clone();
+    let initial_dir_clone = initial_dir;
     if let Err(e) = iced::application(
         move || {
             let rx = progress_rx.lock().take();

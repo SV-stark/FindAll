@@ -291,9 +291,10 @@ impl MetadataDb {
         })?;
 
         let mut paths = Vec::new();
-        for entry in table.iter().map_err(|e| {
-            FlashError::database("database_operation", "files_table", e.to_string())
-        })? {
+        for entry in table
+            .iter()
+            .map_err(|e| FlashError::database("database_operation", "files_table", e.to_string()))?
+        {
             let (k, _) = entry.map_err(|e| {
                 FlashError::database("database_operation", "files_table", e.to_string())
             })?;

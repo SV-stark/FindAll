@@ -93,18 +93,16 @@ fn main() {
                 break;
             }
         }
-        
+
         let rt = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
             .expect("Failed to create tokio runtime");
-        
-        let run_result = rt.block_on(async {
-            flash_search::run_cli(query, is_json, None).await
-        });
-        
+
+        let run_result = rt.block_on(async { flash_search::run_cli(query, is_json, None).await });
+
         if let Err(e) = run_result {
-            eprintln!("CLI Error: {}", e);
+            eprintln!("CLI Error: {e}");
             std::process::exit(1);
         }
         std::process::exit(0);
