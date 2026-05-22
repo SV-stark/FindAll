@@ -81,6 +81,43 @@ fn spawn_update_checker() {
 }
 
 fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    let is_cli = args.iter().any(|arg| arg == "--cli" || arg == "-c");
+    if is_cli {
+        let is_json = args.iter().any(|arg| arg == "--json" || arg == "-j");
+        // Find the query
+        let mut query = None;
+        for i in 1..args.len() {
+            if (args[i] == "--cli" || args[i] == "-c") && i + 1 < args.len() {
+                query = Some(args[i + 1].clone());
+                break;
+            }
+        }
+        
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .expect("Failed to create tokio runtime");
+        
+        let run_result = rt.block_on(async {
+            flash_search::run_cli(query, is_json, None).await
+        });
+        
+        if let Err(e) = run_result {
+            eprintln!("CLI Error: {}", e);
+            std::process::exit(1);
+        }
+        std::process::exit(0);
+    }
+
+    let mut initial_dir = None;
+    if args.len() > 1 {
+        let first_arg = &args[1];
+        if std::path::Path::new(first_arg).is_dir() {
+            initial_dir = Some(first_arg.clone());
+        }
+    }
+
     let app_dir = dirs::data_local_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join("com.flashsearch");
@@ -158,7 +195,7 @@ fn main() {
     .expect("Error setting Ctrl-C handler");
 
     // Run the UI
-    if let Err(e) = flash_search::run_ui() {
+    if let Err(e) = flash_search::run_ui(initial_dir) {
         error!("Application error: {}", e);
         std::process::exit(1);
     }
