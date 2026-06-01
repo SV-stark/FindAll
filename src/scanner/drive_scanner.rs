@@ -399,10 +399,12 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use tracing::{info, warn};
 
 pub trait DriveScanner: Send + Sync {
+    #[allow(clippy::too_many_arguments)]
     fn scan(
         &self,
         root: PathBuf,
         exclude_patterns: Vec<String>,
+        use_gitignore: bool,
         path_tx: flume::Sender<PathBuf>,
         progress_tx: Option<flume::Sender<ProgressEvent>>,
         total_count: Arc<AtomicUsize>,
@@ -423,10 +425,12 @@ pub trait DriveScanner: Send + Sync {
 pub struct DefaultDriveScanner;
 
 impl DriveScanner for DefaultDriveScanner {
+    #[allow(clippy::too_many_arguments)]
     fn scan(
         &self,
         root: PathBuf,
         exclude_patterns: Vec<String>,
+        use_gitignore: bool,
         path_tx: flume::Sender<PathBuf>,
         progress_tx: Option<flume::Sender<ProgressEvent>>,
         total_count: Arc<AtomicUsize>,
@@ -445,7 +449,14 @@ impl DriveScanner for DefaultDriveScanner {
             builder.overrides(overrides);
         }
 
-        builder.follow_links(true).standard_filters(false);
+        builder
+            .follow_links(true)
+            .standard_filters(use_gitignore)
+            .git_ignore(use_gitignore)
+            .git_global(use_gitignore)
+            .git_exclude(use_gitignore)
+            .ignore(use_gitignore)
+            .hidden(!use_gitignore);
         builder.max_depth(Some(20));
 
         info!("Starting DefaultDriveScanner for {}", root.display());
@@ -512,10 +523,12 @@ pub struct WindowsDriveScanner;
 
 #[cfg(target_os = "windows")]
 impl DriveScanner for WindowsDriveScanner {
+    #[allow(clippy::too_many_arguments)]
     fn scan(
         &self,
         root: PathBuf,
         exclude_patterns: Vec<String>,
+        use_gitignore: bool,
         path_tx: flume::Sender<PathBuf>,
         progress_tx: Option<flume::Sender<ProgressEvent>>,
         total_count: Arc<AtomicUsize>,
@@ -566,6 +579,7 @@ impl DriveScanner for WindowsDriveScanner {
         fallback.scan(
             root,
             exclude_patterns,
+            use_gitignore,
             path_tx,
             progress_tx,
             total_count,
@@ -613,10 +627,12 @@ pub struct MacDriveScanner;
 
 #[cfg(target_os = "macos")]
 impl DriveScanner for MacDriveScanner {
+    #[allow(clippy::too_many_arguments)]
     fn scan(
         &self,
         root: PathBuf,
         exclude_patterns: Vec<String>,
+        use_gitignore: bool,
         path_tx: flume::Sender<PathBuf>,
         progress_tx: Option<flume::Sender<ProgressEvent>>,
         total_count: Arc<AtomicUsize>,
@@ -627,6 +643,7 @@ impl DriveScanner for MacDriveScanner {
         fallback.scan(
             root,
             exclude_patterns,
+            use_gitignore,
             path_tx,
             progress_tx,
             total_count,
@@ -640,10 +657,12 @@ pub struct LinuxDriveScanner;
 
 #[cfg(target_os = "linux")]
 impl DriveScanner for LinuxDriveScanner {
+    #[allow(clippy::too_many_arguments)]
     fn scan(
         &self,
         root: PathBuf,
         exclude_patterns: Vec<String>,
+        use_gitignore: bool,
         path_tx: flume::Sender<PathBuf>,
         progress_tx: Option<flume::Sender<ProgressEvent>>,
         total_count: Arc<AtomicUsize>,
@@ -654,6 +673,7 @@ impl DriveScanner for LinuxDriveScanner {
         fallback.scan(
             root,
             exclude_patterns,
+            use_gitignore,
             path_tx,
             progress_tx,
             total_count,

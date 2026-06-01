@@ -59,6 +59,9 @@ pub struct AppSettings {
     pub exclude_folders: Vec<String>, // Explicit folder paths to exclude
     #[default(true)]
     pub auto_index_on_startup: bool,
+    #[serde(default = "default_true")]
+    #[default(true)]
+    pub use_gitignore: bool,
     #[default(100)]
     pub index_file_size_limit_mb: u32,
     #[serde(default)]
@@ -128,6 +131,10 @@ pub struct DefaultFilters {
 
 fn default_global_hotkey() -> String {
     "Alt+Space".to_string()
+}
+
+const fn default_true() -> bool {
+    true
 }
 
 const fn default_settings_version() -> u32 {

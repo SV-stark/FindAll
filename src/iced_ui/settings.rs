@@ -68,6 +68,9 @@ fn settings_form(app: &App) -> Element<'_, Message> {
         Space::new().height(Length::Fixed(48.0)),
         section_header("database", "Data Management"),
         data_management_section(app),
+        Space::new().height(Length::Fixed(48.0)),
+        section_header("info", "Privacy & Local Security"),
+        privacy_security_section(),
         Space::new().height(Length::Fixed(64.0)),
         container(
             button(text("Save All Changes").size(16).font(Font {
@@ -219,6 +222,11 @@ fn system_integration_section(app: &App) -> Element<'_, Message> {
             .on_toggle(Message::ToggleContextMenu)
             .size(20)
             .text_size(14),
+        checkbox(app.settings.use_gitignore)
+            .label("Respect .gitignore rules during indexing")
+            .on_toggle(Message::ToggleGitignore)
+            .size(20)
+            .text_size(14),
     ]
     .spacing(16)
     .into()
@@ -247,6 +255,41 @@ fn data_management_section(_app: &App) -> Element<'_, Message> {
             .on_press(Message::RebuildIndex)
             .padding(Padding::from([10, 20]))
             .style(theme::secondary_button())
+    ]
+    .spacing(8)
+    .into()
+}
+
+fn privacy_security_section() -> Element<'static, Message> {
+    let app_dir_str = crate::get_app_data_dir().map_or_else(
+        |_| "Unknown".to_string(),
+        |p| p.to_string_lossy().to_string(),
+    );
+
+    column![
+        text("Flash Search operates entirely locally. No network connections are made, and no telemetry, analytical data, or search history is ever transmitted outside your machine.")
+            .size(13)
+            .style(theme::dim_text_style()),
+        Space::new().height(Length::Fixed(12.0)),
+        container(
+            column![
+                row![
+                    text("Local Data Folder: ").size(13).font(Font { weight: font::Weight::Bold, ..Font::default() }),
+                    text(app_dir_str.clone()).size(13).font(Font::MONOSPACE),
+                ].spacing(8),
+                row![
+                    text("Search Index Path: ").size(13).font(Font { weight: font::Weight::Bold, ..Font::default() }),
+                    text(format!("{app_dir_str}/index")).size(13).font(Font::MONOSPACE),
+                ].spacing(8),
+                row![
+                    text("Metadata Database: ").size(13).font(Font { weight: font::Weight::Bold, ..Font::default() }),
+                    text(format!("{app_dir_str}/metadata.redb")).size(13).font(Font::MONOSPACE),
+                ].spacing(8),
+            ].spacing(6)
+        )
+        .padding(14)
+        .style(theme::padded_card_container)
+        .width(Length::Fill),
     ]
     .spacing(8)
     .into()

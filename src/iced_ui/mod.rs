@@ -194,6 +194,7 @@ pub enum Message {
     ToggleMinimizeToTray(bool),
     ToggleAutoStart(bool),
     ToggleContextMenu(bool),
+    ToggleGitignore(bool),
     ToggleTheme,
     RebuildIndex,
     IndexDirAdded(String),
@@ -219,6 +220,7 @@ pub enum Message {
     FolderPicked(Option<String>),
     ExportResults(String), // format: "csv" or "json"
     WindowIdCaptured(iced::window::Id),
+    WindowUnfocused(iced::window::Id),
     DismissError,
     Quit,
     NoOp,
@@ -468,6 +470,7 @@ impl App {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn perform_search(&mut self) -> Task<Message> {
         let state = match &self.state {
             Some(s) => s.clone(),
@@ -498,12 +501,6 @@ impl App {
             extensions.insert(ext.clone());
         }
 
-        let extension: Option<Vec<String>> = if extensions.is_empty() {
-            None
-        } else {
-            Some(extensions.into_iter().collect())
-        };
-
         let multiplier: u64 = match self.size_unit.as_str() {
             "KB" => 1024,
             "GB" => 1024 * 1024 * 1024,
@@ -523,13 +520,27 @@ impl App {
             .ok()
             .map(|n| n * multiplier);
 
-        let (min_size, max_size) = if min_size.is_none() && max_size.is_none() {
+        let (mut min_size, mut max_size) = if min_size.is_none() && max_size.is_none() {
             Self::parse_size_filter(&self.filter_size)
         } else {
             (min_size, max_size)
         };
 
-        let min_modified = self.get_min_modified();
+        let mut min_modified = self.get_min_modified();
+
+        query = parse_inline_query_filters(
+            &query,
+            &mut min_size,
+            &mut max_size,
+            &mut min_modified,
+            &mut extensions,
+        );
+
+        let extension: Option<Vec<String>> = if extensions.is_empty() {
+            None
+        } else {
+            Some(extensions.into_iter().collect())
+        };
 
         self.is_searching = true;
         self.results.clear();
@@ -742,6 +753,10 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             app.settings.context_menu_enabled = b;
             Task::none()
         }
+        Message::ToggleGitignore(b) => {
+            app.settings.use_gitignore = b;
+            Task::none()
+        }
         Message::ToggleTheme => {
             app.is_dark = !app.is_dark;
             app.settings.theme = if app.is_dark {
@@ -885,6 +900,7 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             }
             Task::none()
         }
+        Message::WindowUnfocused(id) => iced::window::minimize(id, true),
         Message::DismissError => {
             app.error = None;
             app.search_error = None;
@@ -984,7 +1000,8 @@ pub fn view(app: &App) -> Element<'_, Message> {
 }
 
 pub fn subscription(app: &App) -> Subscription<Message> {
-    app.progress_rx
+    let progress_sub = app
+        .progress_rx
         .as_ref()
         .map_or_else(Subscription::none, |rx| {
             Subscription::run_with(SubscriptionData { rx: rx.clone() }, |data| {
@@ -1012,7 +1029,17 @@ pub fn subscription(app: &App) -> Subscription<Message> {
                     },
                 )
             })
-        })
+        });
+
+    let event_sub = iced::window::events().map(|(id, event)| match event {
+        iced::window::Event::Unfocused => Message::WindowUnfocused(id),
+        iced::window::Event::Opened { .. } | iced::window::Event::Focused => {
+            Message::WindowIdCaptured(id)
+        }
+        _ => Message::NoOp,
+    });
+
+    Subscription::batch(vec![progress_sub, event_sub])
 }
 
 pub const fn app_theme(app: &App) -> iced::Theme {
@@ -1065,6 +1092,88 @@ pub fn run_ui(
     }
 }
 
+fn parse_inline_query_filters(
+    query_str: &str,
+    min_size: &mut Option<u64>,
+    max_size: &mut Option<u64>,
+    min_modified: &mut Option<u64>,
+    extensions: &mut ahash::AHashSet<String>,
+) -> String {
+    let mut clean_words = Vec::new();
+
+    for word in query_str.split_whitespace() {
+        if let Some(ext) = word.strip_prefix("ext:") {
+            extensions.insert(ext.to_lowercase());
+        } else if let Some(size_filter) = word.strip_prefix("size:") {
+            if let Some(stripped) = size_filter.strip_prefix('>') {
+                if let Some(parsed) = parse_size_val(stripped) {
+                    *min_size = Some(parsed);
+                }
+            } else if let Some(stripped) = size_filter.strip_prefix('<') {
+                if let Some(parsed) = parse_size_val(stripped) {
+                    *max_size = Some(parsed);
+                }
+            } else if let Some(parsed) = parse_size_val(size_filter) {
+                *min_size = Some(parsed);
+            }
+        } else if let Some(mod_filter) = word.strip_prefix("modified:") {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let one_day = 86400;
+
+            match mod_filter.to_lowercase().as_str() {
+                "today" => {
+                    *min_modified = Some(now.saturating_sub(one_day));
+                }
+                "yesterday" => {
+                    *min_modified = Some(now.saturating_sub(one_day * 2));
+                }
+                "week" | "last-week" => {
+                    *min_modified = Some(now.saturating_sub(one_day * 7));
+                }
+                "month" | "last-month" => {
+                    *min_modified = Some(now.saturating_sub(one_day * 30));
+                }
+                "year" | "last-year" => {
+                    *min_modified = Some(now.saturating_sub(one_day * 365));
+                }
+                _ => {}
+            }
+        } else {
+            clean_words.push(word);
+        }
+    }
+
+    clean_words.join(" ")
+}
+
+fn parse_size_val(val: &str) -> Option<u64> {
+    let val = val.trim();
+    if val.is_empty() {
+        return None;
+    }
+
+    let (num_str, multiplier) = if val.ends_with("kb") || val.ends_with("KB") {
+        (&val[..val.len() - 2], 1024)
+    } else if val.ends_with("mb") || val.ends_with("MB") {
+        (&val[..val.len() - 2], 1024 * 1024)
+    } else if val.ends_with("gb") || val.ends_with("GB") {
+        (&val[..val.len() - 2], 1024 * 1024 * 1024)
+    } else if val.ends_with('k') || val.ends_with('K') {
+        (&val[..val.len() - 1], 1024)
+    } else if val.ends_with('m') || val.ends_with('M') {
+        (&val[..val.len() - 1], 1024 * 1024)
+    } else if val.ends_with('g') || val.ends_with('G') {
+        (&val[..val.len() - 1], 1024 * 1024 * 1024)
+    } else {
+        (val, 1)
+    };
+
+    num_str.parse::<u64>().ok().map(|n| n * multiplier)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1106,5 +1215,35 @@ mod tests {
         let (min, max) = App::parse_size_filter("< 10KB");
         assert_eq!(min, None);
         assert_eq!(max, Some(10 * 1024 - 1));
+    }
+
+    #[test]
+    fn test_parse_size_val() {
+        assert_eq!(parse_size_val("500"), Some(500));
+        assert_eq!(parse_size_val("10KB"), Some(10 * 1024));
+        assert_eq!(parse_size_val("5mb"), Some(5 * 1024 * 1024));
+        assert_eq!(parse_size_val("2g"), Some(2 * 1024 * 1024 * 1024));
+    }
+
+    #[test]
+    fn test_parse_inline_query_filters() {
+        let mut min_size = None;
+        let mut max_size = None;
+        let mut min_modified = None;
+        let mut extensions = ahash::AHashSet::new();
+
+        let clean = parse_inline_query_filters(
+            "hello world ext:pdf size:>2MB modified:today",
+            &mut min_size,
+            &mut max_size,
+            &mut min_modified,
+            &mut extensions,
+        );
+
+        assert_eq!(clean, "hello world");
+        assert_eq!(min_size, Some(2 * 1024 * 1024));
+        assert_eq!(max_size, None);
+        assert!(min_modified.is_some());
+        assert!(extensions.contains("pdf"));
     }
 }

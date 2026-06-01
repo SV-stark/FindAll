@@ -240,11 +240,13 @@ impl Scanner {
         let total = Arc::new(AtomicUsize::new(0));
         let total_for_scan = total.clone();
 
+        let use_gitignore = self.settings.use_gitignore;
         let cancel_flag_for_scan = cancel_flag.clone();
         let walker_handle = tokio::task::spawn_blocking(move || {
             scanner.scan(
                 root_clone,
                 exclude_patterns,
+                use_gitignore,
                 path_tx,
                 tx_clone,
                 total_for_scan,

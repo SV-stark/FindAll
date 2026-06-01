@@ -132,7 +132,10 @@ pub fn setup_app() -> std::result::Result<
 /// Returns a `FlashError` if the GUI fails to initialize or run.
 pub fn run_ui(initial_dir: Option<String>) -> std::result::Result<(), FlashError> {
     let (state_res, rx) = match setup_app() {
-        Ok((state, rx)) => (Ok(state), rx),
+        Ok((state, rx)) => {
+            tokio::spawn(start_ipc_server(state.clone()));
+            (Ok(state), rx)
+        }
         Err(e) => (Err(e.to_string()), flume::bounded(1).1),
     };
 
@@ -182,4 +185,69 @@ pub async fn run_cli(
         println!("Usage: flash-search --cli <query> [--json]");
     }
     Ok(())
+}
+
+async fn start_ipc_server(state: Arc<AppState>) {
+    let addr = "127.0.0.1:9095";
+    let listener = match tokio::net::TcpListener::bind(addr).await {
+        Ok(l) => l,
+        Err(e) => {
+            tracing::error!("Failed to bind IPC TCP listener at {}: {}", addr, e);
+            return;
+        }
+    };
+
+    tracing::info!("IPC TCP Server listening on {}", addr);
+
+    loop {
+        let Ok((mut socket, _)) = listener.accept().await else {
+            continue;
+        };
+
+        let state_clone = state.clone();
+        tokio::spawn(async move {
+            use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+            let (reader, mut writer) = socket.split();
+            let mut reader = BufReader::new(reader);
+            let mut line = String::new();
+
+            if reader.read_line(&mut line).await.is_ok() {
+                let query = line.trim();
+                if !query.is_empty() {
+                    let search_params = SearchParams::builder()
+                        .query(query)
+                        .limit(50)
+                        .case_sensitive(false)
+                        .build();
+
+                    match state_clone.indexer.search(search_params).await {
+                        Ok(results) => {
+                            let json_results: Vec<serde_json::Value> = results
+                                .into_iter()
+                                .map(|res| {
+                                    serde_json::json!({
+                                        "score": res.score,
+                                        "path": res.file_path,
+                                        "title": res.title
+                                    })
+                                })
+                                .collect();
+
+                            if let Ok(serialized) = serde_json::to_string(&json_results) {
+                                let _ = writer.write_all(serialized.as_bytes()).await;
+                                let _ = writer.write_all(b"\n").await;
+                            }
+                        }
+                        Err(e) => {
+                            let err_json = serde_json::json!({ "error": e.to_string() });
+                            if let Ok(serialized) = serde_json::to_string(&err_json) {
+                                let _ = writer.write_all(serialized.as_bytes()).await;
+                                let _ = writer.write_all(b"\n").await;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
 }
