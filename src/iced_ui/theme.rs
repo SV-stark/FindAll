@@ -153,28 +153,38 @@ pub fn header_container(theme: &Theme) -> container::Style {
 #[must_use]
 pub fn input_container(theme: &Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(surface_color(theme))),
+        background: Some(Background::Color(if is_dark_theme(theme) {
+            Color::from_rgb(0.09, 0.1, 0.12)
+        } else {
+            Color::from_rgb(0.96, 0.96, 0.98)
+        })),
         border: Border {
             color: if is_dark_theme(theme) {
-                Color::from_rgb(0.2, 0.21, 0.24)
+                Color::from_rgb(0.22, 0.23, 0.26)
             } else {
                 border_color(theme)
             },
             width: 1.0,
-            radius: Radius::from(10.0),
+            radius: Radius::from(14.0),
         },
         ..Default::default()
     }
 }
 
 #[must_use]
-pub fn result_card_normal(_theme: &Theme) -> container::Style {
+pub fn result_card_normal(theme: &Theme) -> container::Style {
+    let mut border_c = border_color(theme);
+    border_c.a = 0.35;
     container::Style {
-        background: Some(Background::Color(Color::TRANSPARENT)),
+        background: Some(Background::Color(if is_dark_theme(theme) {
+            Color::from_rgba(1.0, 1.0, 1.0, 0.015)
+        } else {
+            Color::from_rgba(0.0, 0.0, 0.0, 0.01)
+        })),
         border: Border {
-            color: Color::TRANSPARENT,
-            width: 0.0,
-            radius: Radius::from(0.0),
+            color: border_c,
+            width: 1.0,
+            radius: Radius::from(12.0),
         },
         ..Default::default()
     }
@@ -182,7 +192,9 @@ pub fn result_card_normal(_theme: &Theme) -> container::Style {
 
 #[must_use]
 pub fn result_card_hover(theme: &Theme) -> container::Style {
-    let alpha = if is_dark_theme(theme) { 0.05 } else { 0.1 };
+    let mut border_c = border_color(theme);
+    border_c.a = 0.6;
+    let alpha = if is_dark_theme(theme) { 0.045 } else { 0.03 };
     let bg_color = if is_dark_theme(theme) {
         Color::from_rgba(1.0, 1.0, 1.0, alpha)
     } else {
@@ -191,6 +203,11 @@ pub fn result_card_hover(theme: &Theme) -> container::Style {
 
     container::Style {
         background: Some(Background::Color(bg_color)),
+        border: Border {
+            color: border_c,
+            width: 1.0,
+            radius: Radius::from(12.0),
+        },
         ..Default::default()
     }
 }
@@ -199,14 +216,14 @@ pub fn result_card_hover(theme: &Theme) -> container::Style {
 pub fn result_card_selected(theme: &Theme) -> container::Style {
     container::Style {
         background: Some(Background::Color(if is_dark_theme(theme) {
-            Color::from_rgba(0.23, 0.51, 0.96, 0.12)
-        } else {
             Color::from_rgba(0.23, 0.51, 0.96, 0.08)
+        } else {
+            Color::from_rgba(0.23, 0.51, 0.96, 0.05)
         })),
         border: Border {
             color: ACCENT_BLUE,
             width: 1.0,
-            radius: Radius::from(10.0),
+            radius: Radius::from(12.0),
         },
         ..Default::default()
     }
@@ -413,24 +430,13 @@ pub fn icon_button() -> impl Fn(&Theme, button::Status) -> button::Style + use<>
 // --- Input Styles ---
 
 pub fn search_input() -> impl Fn(&Theme, text_input::Status) -> text_input::Style + use<> {
-    move |theme: &Theme, status: text_input::Status| {
-        let is_focused = matches!(status, text_input::Status::Focused { .. });
-        text_input::Style {
-            background: Background::Color(surface_color(theme)),
-            border: Border {
-                color: if is_focused {
-                    ACCENT_BLUE
-                } else {
-                    border_color(theme)
-                },
-                width: 1.0,
-                radius: Radius::from(8.0),
-            },
-            icon: text_dim_color(theme),
-            placeholder: text_dim_color(theme),
-            value: text_bright_color(theme),
-            selection: accent_color_light(),
-        }
+    move |theme: &Theme, _status: text_input::Status| text_input::Style {
+        background: Background::Color(Color::TRANSPARENT),
+        border: Border::default(),
+        icon: text_dim_color(theme),
+        placeholder: text_dim_color(theme),
+        value: text_bright_color(theme),
+        selection: accent_color_light(),
     }
 }
 
@@ -560,6 +566,21 @@ pub fn padded_card_container(theme: &Theme) -> container::Style {
             color: border_color(theme),
             width: 1.0,
             radius: Radius::from(8.0),
+        },
+        ..Default::default()
+    }
+}
+
+#[must_use]
+pub fn sidebar_panel_container(theme: &Theme) -> container::Style {
+    let mut border_c = border_color(theme);
+    border_c.a = 0.55;
+    container::Style {
+        background: Some(Background::Color(surface_color(theme))),
+        border: Border {
+            color: border_c,
+            width: 1.0,
+            radius: Radius::from(10.0),
         },
         ..Default::default()
     }

@@ -71,13 +71,19 @@ fn sidebar_section<'a>(
     content: impl Into<Element<'a, Message>>,
 ) -> Element<'a, Message> {
     column![
-        text(title).size(14).font(Font {
-            weight: font::Weight::Bold,
-            ..Font::default()
-        }),
-        content.into()
+        text(title)
+            .size(12)
+            .font(Font {
+                weight: font::Weight::Bold,
+                ..Font::default()
+            })
+            .style(theme::muted_text_style()),
+        container(content.into())
+            .padding(Padding::new(12.0))
+            .style(theme::sidebar_panel_container)
+            .width(Length::Fill)
     ]
-    .spacing(12)
+    .spacing(8)
     .into()
 }
 
@@ -204,21 +210,49 @@ fn top_navigation(app: &App) -> Element<'_, Message> {
                 .id(crate::iced_ui::get_search_input_id())
                 .on_input(Message::SearchQueryChanged)
                 .on_submit(Message::SearchSubmitted)
-                .padding(Padding::new(12.0))
+                .padding(Padding {
+                    top: 14.0,
+                    bottom: 14.0,
+                    left: 16.0,
+                    right: 8.0,
+                })
                 .size(16)
                 .style(theme::search_input())
                 .width(Length::Fill),
             if app.is_searching {
                 Element::from(
                     container(text("Searching...").size(12).style(theme::dim_text_style()))
-                        .padding(Padding::new(12.0)),
+                        .padding(Padding {
+                            top: 0.0,
+                            right: 16.0,
+                            bottom: 0.0,
+                            left: 0.0,
+                        }),
                 )
             } else {
                 Element::from(
-                    button(load_icon("arrow-right"))
-                        .on_press(Message::SearchSubmitted)
-                        .style(theme::search_button())
-                        .padding(Padding::new(10.0)),
+                    row![
+                        container(text("Alt+Space").size(11).style(theme::dim_text_style()))
+                            .padding(Padding {
+                                top: 4.0,
+                                right: 8.0,
+                                bottom: 4.0,
+                                left: 8.0,
+                            })
+                            .style(theme::badge_container),
+                        button(load_icon("arrow-right"))
+                            .on_press(Message::SearchSubmitted)
+                            .style(theme::search_button())
+                            .padding(Padding::new(10.0)),
+                    ]
+                    .spacing(8)
+                    .align_y(Alignment::Center)
+                    .padding(Padding {
+                        top: 0.0,
+                        right: 8.0,
+                        bottom: 0.0,
+                        left: 0.0,
+                    }),
                 )
             }
         ]
@@ -271,7 +305,9 @@ fn main_layout(app: &App) -> Element<'_, Message> {
             filter_chips(app),
             row![
                 results_panel(app),
-                container(right_panel(app)).width(Length::FillPortion(3)),
+                container(right_panel(app))
+                    .style(theme::sidebar_container)
+                    .width(Length::FillPortion(3)),
             ]
             .height(Length::Fill)
         ]
@@ -592,7 +628,36 @@ fn result_item_view<'a>(
     ]
     .spacing(8);
 
-    let mut item_area = container(card_content)
+    let card_body = if is_selected {
+        let accent_strip = container(Space::new().width(Length::Fixed(3.0)).height(Length::Fill))
+            .style(|_t| container::Style {
+                background: Some(iced::Background::Color(theme::ACCENT_BLUE)),
+                border: iced::Border {
+                    color: iced::Color::TRANSPARENT,
+                    width: 0.0,
+                    radius: iced::border::Radius::from(1.5),
+                },
+                ..Default::default()
+            });
+
+        row![
+            accent_strip,
+            container(card_content)
+                .padding(Padding {
+                    left: 12.0,
+                    ..Padding::default()
+                })
+                .width(Length::Fill)
+        ]
+        .align_y(Alignment::Center)
+        .width(Length::Fill)
+    } else {
+        row![container(card_content).width(Length::Fill)]
+            .align_y(Alignment::Center)
+            .width(Length::Fill)
+    };
+
+    let mut item_area = container(card_body)
         .padding(Padding::new(16.0))
         .style(if is_selected {
             theme::result_card_selected
@@ -690,78 +755,146 @@ fn right_panel(app: &App) -> Element<'_, Message> {
             .into()
         },
         |preview_result| {
-            let _ext = app
-                .selected_index
-                .and_then(|i| app.results.get(i))
-                .and_then(|r| r.extension.as_deref())
-                .unwrap_or("txt");
+            let res = app.selected_index.and_then(|i| app.results.get(i));
+
+            let ext = res.and_then(|r| r.extension.as_deref()).unwrap_or("txt");
+
+            let title = res.map_or("Document Preview", |r| &*r.title);
+
+            let file_icon = if ext == "pdf" {
+                "file-text"
+            } else if ext == "md" || ext == "txt" {
+                "file"
+            } else {
+                "file-code"
+            };
+
+            let quick_actions: Element<'_, Message> = res.map_or_else(
+                || row![].into(),
+                |r| {
+                    row![
+                        button(load_icon_size("external-link", 16.0))
+                            .on_press(Message::OpenFile(r.path.clone()))
+                            .style(theme::ghost_button())
+                            .padding(Padding::new(6.0)),
+                        button(load_icon_size("folder-open", 16.0))
+                            .on_press(Message::OpenFolder(r.path.clone()))
+                            .style(theme::ghost_button())
+                            .padding(Padding::new(6.0)),
+                        button(load_icon_size("copy", 16.0))
+                            .on_press(Message::CopyPath(r.path.clone()))
+                            .style(theme::ghost_button())
+                            .padding(Padding::new(6.0)),
+                    ]
+                    .spacing(4)
+                    .into()
+                },
+            );
+
+            let header = container(
+                row![
+                    load_icon_size(file_icon, 20.0),
+                    column![
+                        text(title).size(14).font(Font {
+                            weight: font::Weight::Bold,
+                            ..Font::default()
+                        }),
+                        text(res.map_or("", |r| &*r.path))
+                            .size(11)
+                            .style(theme::dim_text_style()),
+                    ]
+                    .spacing(2)
+                    .width(Length::Fill),
+                    quick_actions,
+                ]
+                .spacing(12)
+                .align_y(Alignment::Center),
+            )
+            .padding(Padding {
+                top: 14.0,
+                bottom: 14.0,
+                left: 20.0,
+                right: 20.0,
+            })
+            .style(theme::header_container)
+            .width(Length::Fill);
 
             let content: Element<'_, Message> =
                 column(preview_result.elements.iter().map(render_element))
                     .spacing(12)
                     .into();
 
-            let snippets: Element<'_, Message> = app
-                .selected_index
-                .and_then(|i| app.results.get(i))
-                .map_or_else(
-                    || column![].into(),
-                    |res| {
-                        if res.snippets.is_empty() {
-                            column![].into()
-                        } else {
-                            column![
-                                text("Context Highlights")
-                                    .size(14)
-                                    .font(Font {
-                                        weight: font::Weight::Bold,
-                                        ..Font::default()
-                                    })
-                                    .style(theme::dim_text_style()),
-                                column(
-                                    res.snippets
-                                        .iter()
-                                        .enumerate()
-                                        .map(|(i, s)| hit_row(i + 1, s))
-                                )
-                                .spacing(8)
-                            ]
-                            .spacing(12)
-                            .into()
-                        }
-                    },
-                );
+            let snippets: Element<'_, Message> = res.map_or_else(
+                || column![].into(),
+                |r| {
+                    if r.snippets.is_empty() {
+                        column![].into()
+                    } else {
+                        column![
+                            text("Context Highlights")
+                                .size(13)
+                                .font(Font {
+                                    weight: font::Weight::Bold,
+                                    ..Font::default()
+                                })
+                                .style(theme::muted_text_style()),
+                            column(
+                                r.snippets
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(i, s)| hit_row(i + 1, s))
+                            )
+                            .spacing(8)
+                        ]
+                        .spacing(10)
+                        .into()
+                    }
+                },
+            );
 
-            container(scrollable(
+            let body = scrollable(
                 column![
                     container(
                         row![
                             load_icon("file-text"),
-                            text(format!("{} elements", preview_result.elements.len())).size(12)
+                            text(format!(
+                                "{} structural elements found",
+                                preview_result.elements.len()
+                            ))
+                            .size(11)
                         ]
                         .spacing(8)
                         .align_y(Alignment::Center)
                     )
                     .style(theme::badge_container)
-                    .padding(8.0),
+                    .padding(Padding {
+                        top: 6.0,
+                        bottom: 6.0,
+                        left: 12.0,
+                        right: 12.0,
+                    }),
                     snippets,
-                    Space::new().height(16.0),
-                    text("Full File Preview")
-                        .size(14)
+                    Space::new().height(8.0),
+                    text("Full Content Preview")
+                        .size(13)
                         .font(Font {
                             weight: font::Weight::Bold,
                             ..Font::default()
                         })
-                        .style(theme::dim_text_style()),
+                        .style(theme::muted_text_style()),
                     container(content)
                         .padding(Padding::new(20.0))
                         .style(theme::main_content_container),
                 ]
                 .spacing(20)
-                .padding(Padding::new(24.0)),
-            ))
-            .height(Length::Fill)
-            .into()
+                .padding(Padding::new(20.0)),
+            )
+            .height(Length::Fill);
+
+            column![header, body]
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into()
         },
     )
 }
