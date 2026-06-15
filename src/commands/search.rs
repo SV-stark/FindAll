@@ -72,6 +72,71 @@ pub async fn get_file_preview_internal(
     }
 }
 
+fn highlight_search_matches(
+    spans: Vec<(String, Option<[f32; 4]>)>,
+    matched_terms: &[String],
+    case_sensitive: bool,
+) -> Vec<(String, Option<[f32; 4]>)> {
+    if matched_terms.is_empty() {
+        return spans;
+    }
+    let mut result = Vec::new();
+    for (text, color) in spans {
+        if text.is_empty() {
+            continue;
+        }
+        let lower_text = if case_sensitive {
+            text.clone()
+        } else {
+            text.to_lowercase()
+        };
+        let mut matches = Vec::new();
+        for term in matched_terms {
+            if term.is_empty() {
+                continue;
+            }
+            let term_to_match = if case_sensitive {
+                term.clone()
+            } else {
+                term.to_lowercase()
+            };
+            let mut start = 0;
+            while let Some(idx) = lower_text[start..].find(&term_to_match) {
+                let abs_idx = start + idx;
+                matches.push((abs_idx, abs_idx + term.len()));
+                start = abs_idx + term.len();
+            }
+        }
+        if matches.is_empty() {
+            result.push((text, color));
+            continue;
+        }
+        matches.sort_by_key(|r| r.0);
+        let mut merged: Vec<(usize, usize)> = Vec::new();
+        for m in matches {
+            if let Some(last) = merged.last_mut()
+                && m.0 <= last.1
+            {
+                last.1 = last.1.max(m.1);
+                continue;
+            }
+            merged.push(m);
+        }
+        let mut last_idx = 0;
+        for (start, end) in merged {
+            if start > last_idx {
+                result.push((text[last_idx..start].to_string(), color));
+            }
+            result.push((text[start..end].to_string(), Some([1.0, 0.75, 0.0, 1.0])));
+            last_idx = end;
+        }
+        if last_idx < text.len() {
+            result.push((text[last_idx..].to_string(), color));
+        }
+    }
+    result
+}
+
 /// Gets a highlighted preview of the file content.
 ///
 /// # Errors
@@ -100,80 +165,34 @@ pub async fn get_file_preview_highlighted_internal(
             let mut spans = Vec::new();
             let content = element.content;
 
-            if matched_terms_clone.is_empty() {
-                if element.element_type == crate::models::ElementType::CodeBlock {
-                    let extension = std::path::Path::new(&path)
-                        .extension()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("txt");
-                    let mut highlighter =
-                        iced_highlighter::Highlighter::new(&iced_highlighter::Settings {
-                            theme: iced_highlighter::Theme::Base16Ocean,
-                            token: extension.to_string(),
-                        });
-                    for line in content.lines() {
-                        for (range, highlight) in highlighter.highlight_line(line) {
-                            let color = highlight.color().map(|c| [c.r, c.g, c.b, c.a]);
-                            spans.push((line[range].to_string(), color));
-                        }
-                        spans.push(("\n".to_string(), None));
+            if element.element_type == crate::models::ElementType::CodeBlock {
+                let extension = std::path::Path::new(&path)
+                    .extension()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("txt");
+                let mut highlighter =
+                    iced_highlighter::Highlighter::new(&iced_highlighter::Settings {
+                        theme: iced_highlighter::Theme::Base16Ocean,
+                        token: extension.to_string(),
+                    });
+                for line in content.lines() {
+                    for (range, highlight) in highlighter.highlight_line(line) {
+                        let color = highlight.color().map(|c| [c.r, c.g, c.b, c.a]);
+                        spans.push((line[range].to_string(), color));
                     }
-                } else {
-                    spans.push((content, None));
+                    spans.push(("\n".to_string(), None));
                 }
             } else {
-                let lower_content = if case_sensitive {
-                    content.clone()
-                } else {
-                    content.to_lowercase()
-                };
-                let mut matches = Vec::new();
-
-                for term in &matched_terms_clone {
-                    if term.is_empty() {
-                        continue;
-                    }
-                    let term_to_match = if case_sensitive {
-                        term.clone()
-                    } else {
-                        term.to_lowercase()
-                    };
-                    let mut start = 0;
-                    while let Some(idx) = lower_content[start..].find(&term_to_match) {
-                        let abs_idx = start + idx;
-                        matches.push((abs_idx, abs_idx + term.len()));
-                        start = abs_idx + term.len();
-                    }
-                }
-
-                matches.sort_by_key(|r| r.0);
-                let mut merged: Vec<(usize, usize)> = Vec::new();
-                for m in matches {
-                    if let Some(last) = merged.last_mut()
-                        && m.0 <= last.1
-                    {
-                        last.1 = last.1.max(m.1);
-                        continue;
-                    }
-                    merged.push(m);
-                }
-
-                let mut last_idx = 0;
-                for (start, end) in merged {
-                    if start > last_idx {
-                        spans.push((content[last_idx..start].to_string(), None));
-                    }
-                    spans.push((content[start..end].to_string(), Some([1.0, 0.75, 0.0, 1.0])));
-                    last_idx = end;
-                }
-                if last_idx < content.len() {
-                    spans.push((content[last_idx..].to_string(), None));
-                }
+                spans.push((content, None));
             }
+
+            // Overlay search matches if any
+            let processed_spans =
+                highlight_search_matches(spans, &matched_terms_clone, case_sensitive);
 
             final_elements.push(crate::models::DocumentElementHighlight {
                 element_type: element.element_type,
-                spans,
+                spans: processed_spans,
             });
         }
         final_elements

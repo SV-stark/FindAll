@@ -122,7 +122,12 @@ impl FilenameIndex {
             name: CompactString::from(name),
         };
 
-        self.staging.lock().push(entry);
+        let mut staging = self.staging.lock();
+        staging.push(entry);
+        if staging.len() >= 10000 {
+            drop(staging);
+            let _ = self.commit();
+        }
         Ok(())
     }
 
@@ -131,7 +136,12 @@ impl FilenameIndex {
         if entries.is_empty() {
             return Ok(());
         }
-        self.staging.lock().extend(entries);
+        let mut staging = self.staging.lock();
+        staging.extend(entries);
+        if staging.len() >= 10000 {
+            drop(staging);
+            let _ = self.commit();
+        }
         Ok(())
     }
 
@@ -155,11 +165,17 @@ impl FilenameIndex {
 
         self.committed.store(Arc::new(current));
 
-        std::thread::spawn(move || {
+        let task = move || {
             let fst_bytes = Self::build_fst(&data_to_save);
             fst_map_clone.store(Arc::new(Arc::from(fst_bytes)));
             Self::save_to_disk_sync(&data_to_save, &data_path);
-        });
+        };
+
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn_blocking(task);
+        } else {
+            std::thread::spawn(task);
+        }
 
         Ok(())
     }
@@ -210,18 +226,26 @@ impl FilenameIndex {
 
         let entries_lock = self.committed.load();
 
-        let mut results = Vec::new();
+        // Collect matching candidates to sort them later
+        let mut candidates = Vec::new();
         while let Some((_, v)) = stream.next() {
-            if results.len() >= limit {
-                break;
-            }
             if let Some(entry) = entries_lock.get(usize::try_from(v).unwrap_or(usize::MAX)) {
-                results.push(FilenameSearchResult {
-                    file_path: entry.path.clone(),
-                    file_name: entry.name.clone(),
-                });
+                let score = calculate_match_score(&entry.name, &query_lower);
+                candidates.push((entry, score));
             }
         }
+
+        // Sort by score ascending (lower score means better match)
+        candidates.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        let results = candidates
+            .into_iter()
+            .take(limit)
+            .map(|(entry, _)| FilenameSearchResult {
+                file_path: entry.path.clone(),
+                file_name: entry.name.clone(),
+            })
+            .collect();
 
         Ok(results)
     }
@@ -233,10 +257,16 @@ impl FilenameIndex {
         self.staging.lock().clear();
 
         let data_path = self.data_path.clone();
-        std::thread::spawn(move || {
+        let task = move || {
             let _ = std::fs::remove_file(data_path.join(INDEX_FILENAME));
             let _ = std::fs::remove_file(data_path.join(LEGACY_INDEX_FILENAME));
-        });
+        };
+
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn_blocking(task);
+        } else {
+            std::thread::spawn(task);
+        }
 
         Ok(())
     }
@@ -272,10 +302,62 @@ impl FilenameIndex {
         self.committed.store(Arc::new(new_entries));
         self.staging.lock().clear();
 
-        std::thread::spawn(move || {
+        let task = move || {
             Self::save_to_disk_sync(&data, &data_path);
-        });
+        };
+
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn_blocking(task);
+        } else {
+            std::thread::spawn(task);
+        }
 
         Ok(())
     }
+}
+
+fn find_subsequence_span(name: &str, query: &str) -> Option<(usize, usize)> {
+    let mut query_chars = query.chars().peekable();
+    let mut first_match = None;
+    let mut last_match = 0;
+
+    for (i, c) in name.char_indices() {
+        if query_chars.peek() == Some(&c) {
+            if first_match.is_none() {
+                first_match = Some(i);
+            }
+            last_match = i;
+            let _ = query_chars.next();
+        }
+    }
+
+    if query_chars.peek().is_none() {
+        Some((first_match.unwrap_or(0), last_match))
+    } else {
+        None
+    }
+}
+
+#[allow(clippy::suboptimal_flops)]
+fn calculate_match_score(name: &str, query: &str) -> f32 {
+    let name_lower = name.to_lowercase();
+    let query_lower = query.to_lowercase();
+
+    if name_lower == query_lower {
+        return 0.0;
+    }
+    if name_lower.starts_with(&query_lower) {
+        return 1.0 + (name_lower.len() - query_lower.len()) as f32 * 0.001;
+    }
+    if let Some(idx) = name_lower.find(&query_lower) {
+        return 2.0 + idx as f32 * 0.01 + (name_lower.len() - query_lower.len()) as f32 * 0.001;
+    }
+
+    if let Some((start, end)) = find_subsequence_span(&name_lower, &query_lower) {
+        let span = end - start + 1;
+        let gap_penalty = (span - query_lower.len()) as f32;
+        return 3.0 + gap_penalty * 0.1 + start as f32 * 0.01 + name_lower.len() as f32 * 0.001;
+    }
+
+    100.0
 }

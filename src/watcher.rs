@@ -324,7 +324,32 @@ impl WatcherManager {
             }
         };
 
-        let content_hash: [u8; 32] = blake3::hash(parsed.content.as_bytes()).into();
+        let mut hasher = blake3::Hasher::new();
+        let content_hash: [u8; 32] = std::fs::File::open(path).map_or_else(
+            |_| blake3::hash(parsed.content.as_bytes()).into(),
+            |mut file| {
+                use std::io::Read;
+                let mut buf = [0; 16384];
+                let mut read_failed = false;
+                loop {
+                    match file.read(&mut buf) {
+                        Ok(0) => break,
+                        Ok(n) => {
+                            hasher.update(&buf[..n]);
+                        }
+                        Err(_) => {
+                            read_failed = true;
+                            break;
+                        }
+                    }
+                }
+                if read_failed {
+                    blake3::hash(parsed.content.as_bytes()).into()
+                } else {
+                    hasher.finalize().into()
+                }
+            },
+        );
 
         Ok(Some((parsed, modified, size, content_hash)))
     }

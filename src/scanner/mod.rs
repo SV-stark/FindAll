@@ -13,6 +13,24 @@ use std::time::Instant;
 use tokio::sync::mpsc;
 use tracing::{info, instrument, warn};
 
+fn get_file_hash(path: &std::path::Path) -> [u8; 32] {
+    let mut hasher = blake3::Hasher::new();
+    std::fs::File::open(path).map_or_else(
+        |_| blake3::hash(path.to_string_lossy().as_bytes()).into(),
+        |mut file| {
+            use std::io::Read;
+            let mut buf = [0; 16384];
+            while let Ok(n) = file.read(&mut buf) {
+                if n == 0 {
+                    break;
+                }
+                hasher.update(&buf[..n]);
+            }
+            hasher.finalize().into()
+        },
+    )
+}
+
 #[derive(Clone, Debug, serde::Serialize)]
 pub enum ProgressType {
     Content,
@@ -387,15 +405,45 @@ impl Scanner {
 
         let parser_handle = tokio::spawn(async move {
             info!("Stage 2b: Async Kreuzberg batch parsing");
+            let content_cache: moka::sync::Cache<[u8; 32], crate::parsers::ParsedDocument> =
+                moka::sync::Cache::builder()
+                    .max_capacity(500)
+                    .time_to_idle(std::time::Duration::from_mins(1))
+                    .build();
+
             while let Some(chunk) = chunk_rx.recv().await {
                 if cancel_flag_for_parser.load(Ordering::Relaxed) {
                     break;
                 }
-                let just_paths: Vec<PathBuf> = chunk.iter().map(|(p, _, _)| p.clone()).collect();
+
+                let mut paths_to_parse = Vec::new();
+                let mut chunk_hashes = Vec::new();
+
+                for (path, modified, size) in &chunk {
+                    let hash = get_file_hash(path);
+                    chunk_hashes.push(hash);
+
+                    if let Some(cached_doc) = content_cache.get(&hash) {
+                        let mut doc = cached_doc.clone();
+                        doc.path = path.to_string_lossy().to_string();
+                        let _ = task_tx_for_parser.send(IndexTask {
+                            doc,
+                            modified: *modified,
+                            size: *size,
+                            content_hash: hash,
+                        });
+                    } else {
+                        paths_to_parse.push(path.clone());
+                    }
+                }
+
+                if paths_to_parse.is_empty() {
+                    continue;
+                }
 
                 if let Some(tx) = &progress_tx_for_parser {
                     let current_total = total_files_for_parser.load(Ordering::Relaxed);
-                    let first_file = just_paths
+                    let first_file = paths_to_parse
                         .first()
                         .and_then(|p| p.file_name())
                         .map_or_else(String::new, |n| n.to_string_lossy().to_string());
@@ -404,61 +452,81 @@ impl Scanner {
                         ptype: ProgressType::Content,
                         current_file: first_file,
                         current_folder: String::new(),
-                        processed: 0, // We don't know the absolute processed count here easily
+                        processed: 0,
                         total: current_total,
-                        status: format!("Parsing batch of {} files...", just_paths.len()),
+                        status: format!("Parsing batch of {} files...", paths_to_parse.len()),
                         eta_seconds: 0,
                         files_per_second: 0.0,
                     });
                 }
 
-                match crate::parsers::parse_files_batch(&just_paths, indexing_threads, enable_ocr)
-                    .await
+                match crate::parsers::parse_files_batch(
+                    &paths_to_parse,
+                    indexing_threads,
+                    enable_ocr,
+                )
+                .await
                 {
                     Ok(results) => {
-                        for (parsed_res, (path, modified, size)) in
-                            results.into_iter().zip(chunk.into_iter())
+                        for (parsed_res, path) in
+                            results.into_iter().zip(paths_to_parse.into_iter())
                         {
-                            match parsed_res {
-                                Ok(parsed) => {
-                                    let content_hash: [u8; 32] =
-                                        blake3::hash(parsed.content.as_bytes()).into();
+                            if let Some(&(ref found_path, modified, size)) =
+                                chunk.iter().find(|(p, _, _)| *p == path)
+                            {
+                                let hash =
+                                    chunk.iter().position(|(p, _, _)| *p == path).map_or_else(
+                                        || get_file_hash(found_path),
+                                        |idx| chunk_hashes[idx],
+                                    );
 
-                                    let _ = task_tx_for_parser.send(IndexTask {
-                                        doc: parsed,
-                                        modified,
-                                        size,
-                                        content_hash,
-                                    });
-                                }
-                                Err(e) => {
-                                    warn!("Failed to parse file {:?}: {}", path, e);
+                                match parsed_res {
+                                    Ok(parsed) => {
+                                        content_cache.insert(hash, parsed.clone());
+
+                                        let _ = task_tx_for_parser.send(IndexTask {
+                                            doc: parsed,
+                                            modified,
+                                            size,
+                                            content_hash: hash,
+                                        });
+                                    }
+                                    Err(e) => {
+                                        warn!("Failed to parse file {:?}: {}", path, e);
+                                    }
                                 }
                             }
                         }
                     }
                     Err(e) => {
-                        // Batch-level crash: fall back to individual sync parsing.
                         warn!("Async batch crashed ({e}), falling back to per-file sync parsing");
-                        for (path, modified, size) in chunk {
-                            if let Ok(parsed) = parse_file(&path, enable_ocr) {
-                                let content_hash: [u8; 32] =
-                                    blake3::hash(parsed.content.as_bytes()).into();
+                        for path in paths_to_parse {
+                            if let Some(&(ref found_path, modified, size)) =
+                                chunk.iter().find(|(p, _, _)| *p == path)
+                            {
+                                let hash =
+                                    chunk.iter().position(|(p, _, _)| *p == path).map_or_else(
+                                        || get_file_hash(found_path),
+                                        |idx| chunk_hashes[idx],
+                                    );
 
-                                let _ = task_tx_for_parser.send(IndexTask {
-                                    doc: parsed,
-                                    modified,
-                                    size,
-                                    content_hash,
-                                });
-                            } else {
-                                warn!("Failed to parse file {:?}", path);
+                                if let Ok(parsed) = parse_file(&path, enable_ocr) {
+                                    content_cache.insert(hash, parsed.clone());
+
+                                    let _ = task_tx_for_parser.send(IndexTask {
+                                        doc: parsed,
+                                        modified,
+                                        size,
+                                        content_hash: hash,
+                                    });
+                                } else {
+                                    warn!("Failed to parse file {:?}", path);
+                                }
                             }
                         }
                     }
                 }
             }
-            // Drop task_tx clone so the writer sees EOF once filter also drops.
             drop(task_tx_for_parser);
         });
 

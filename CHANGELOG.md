@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.13.0] - 2026-06-15
+
+### Added
+- Pinned `kreuzberg` dependency to `=4.9.8` and `html-to-markdown-rs` to `3.5.7` to ensure stable compilation and resolve upstream type mismatch issues.
+
+### Fixed
+- Fixed all `cargo clippy` compiler warnings and errors under `-D warnings`.
+- Resolved stack overflow risk by reducing large stack-allocated array buffers from 64KB to 16KB in file scanner and directory watcher.
+- Eliminated redundant code structures, collapsed nested `if` statements, and simplified match patterns across the codebase.
+
+### Changed
+- Refactored `iced_ui` subscription event loop and hotkey registration to use idiomatic let-chains.
+- Updated all other package dependencies to their latest safe/compatible versions.
+
 ## [0.2.0] - 2024-03-01
 
 ### Added

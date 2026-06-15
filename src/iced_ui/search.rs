@@ -614,17 +614,20 @@ fn result_item_view<'a>(
             .style(theme::badge_container),
         ]
         .spacing(8),
-        res.snippets.first().map_or_else(
-            || Element::from(Space::new().height(0)),
-            |snippet| {
-                Element::from(
+        if res.snippets.is_empty() {
+            Element::from(Space::new().height(0))
+        } else {
+            let mut snippet_col = column![].spacing(6);
+            for snippet in res.snippets.iter().take(3) {
+                snippet_col = snippet_col.push(
                     container(parse_snippet(snippet))
                         .padding(Padding::new(8.0))
                         .width(Length::Fill)
                         .style(theme::hit_highlight_container),
-                )
-            },
-        ),
+                );
+            }
+            Element::from(snippet_col)
+        }
     ]
     .spacing(8);
 

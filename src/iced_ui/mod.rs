@@ -225,6 +225,8 @@ pub enum Message {
     Quit,
     NoOp,
     ToggleSidebar,
+    ToggleWindow,
+    RestoreWindow,
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -353,6 +355,10 @@ impl App {
                     progress_rx,
                     ..Default::default()
                 };
+
+                if settings.minimize_to_tray {
+                    app.tray_icon = crate::system::tray::create_tray_icon().ok();
+                }
 
                 for ext in &settings.default_filters.file_types {
                     app.filter_extensions.insert(ext.clone());
@@ -743,6 +749,13 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::AddFolder => Task::done(Message::PickFolder),
         Message::ToggleMinimizeToTray(b) => {
             app.settings.minimize_to_tray = b;
+            if b {
+                if app.tray_icon.is_none() {
+                    app.tray_icon = crate::system::tray::create_tray_icon().ok();
+                }
+            } else {
+                app.tray_icon = None;
+            }
             Task::none()
         }
         Message::ToggleAutoStart(b) => {
@@ -901,6 +914,9 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             Task::none()
         }
         Message::WindowUnfocused(id) => iced::window::minimize(id, true),
+        Message::ToggleWindow | Message::RestoreWindow => app
+            .window_id
+            .map_or_else(Task::none, |id| iced::window::minimize(id, false)),
         Message::DismissError => {
             app.error = None;
             app.search_error = None;
@@ -999,6 +1015,7 @@ pub fn view(app: &App) -> Element<'_, Message> {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 pub fn subscription(app: &App) -> Subscription<Message> {
     let progress_sub = app
         .progress_rx
@@ -1011,19 +1028,8 @@ pub fn subscription(app: &App) -> Subscription<Message> {
                     move |mut output: iced::futures::channel::mpsc::Sender<Message>| {
                         let rx = rx.clone();
                         async move {
-                            loop {
-                                match rx.try_recv() {
-                                    Ok(event) => {
-                                        let _ = output
-                                            .send(Message::PollProgressResult(Some(event)))
-                                            .await;
-                                    }
-                                    Err(flume::TryRecvError::Empty) => {
-                                        tokio::time::sleep(std::time::Duration::from_millis(100))
-                                            .await;
-                                    }
-                                    Err(flume::TryRecvError::Disconnected) => break,
-                                }
+                            while let Ok(event) = rx.recv_async().await {
+                                let _ = output.send(Message::PollProgressResult(Some(event))).await;
                             }
                         }
                     },
@@ -1039,7 +1045,78 @@ pub fn subscription(app: &App) -> Subscription<Message> {
         _ => Message::NoOp,
     });
 
-    Subscription::batch(vec![progress_sub, event_sub])
+    let hotkey_str = app.settings.global_hotkey.clone();
+    let minimize_to_tray = app.settings.minimize_to_tray;
+    let system_sub = Subscription::run_with(
+        SystemSubscriptionData {
+            hotkey_str,
+            minimize_to_tray,
+        },
+        |data| {
+            let hotkey_str = data.hotkey_str.clone();
+            iced::stream::channel(
+                10,
+                move |mut output: iced::futures::channel::mpsc::Sender<Message>| {
+                    let hotkey_str = hotkey_str.clone();
+                    async move {
+                        let (tx, mut rx) = tokio::sync::mpsc::channel(10);
+
+                        std::thread::spawn(move || {
+                            let manager = global_hotkey::GlobalHotKeyManager::new().ok();
+                            let registered_hotkey = if let Some(ref m) = manager
+                                && let Some(hk) = parse_hotkey(&hotkey_str)
+                                && m.register(hk).is_ok()
+                            {
+                                Some(hk)
+                            } else {
+                                None
+                            };
+
+                            loop {
+                                if let Ok(event) =
+                                    global_hotkey::GlobalHotKeyEvent::receiver().try_recv()
+                                    && let Some(hk) = registered_hotkey
+                                    && event.id == hk.id()
+                                    && event.state == global_hotkey::HotKeyState::Released
+                                {
+                                    let _ = tx.blocking_send(Message::ToggleWindow);
+                                }
+
+                                if let Ok(event) = tray_icon::menu::MenuEvent::receiver().try_recv()
+                                {
+                                    match event.id.0.as_str() {
+                                        "show" => {
+                                            let _ = tx.blocking_send(Message::RestoreWindow);
+                                        }
+                                        "quit" => {
+                                            let _ = tx.blocking_send(Message::Quit);
+                                        }
+                                        _ => {}
+                                    }
+                                }
+
+                                if let Ok(tray_icon::TrayIconEvent::Click {
+                                    button: tray_icon::MouseButton::Left,
+                                    ..
+                                }) = tray_icon::TrayIconEvent::receiver().try_recv()
+                                {
+                                    let _ = tx.blocking_send(Message::ToggleWindow);
+                                }
+
+                                std::thread::sleep(std::time::Duration::from_millis(50));
+                            }
+                        });
+
+                        while let Some(msg) = rx.recv().await {
+                            let _ = output.send(msg).await;
+                        }
+                    }
+                },
+            )
+        },
+    );
+
+    Subscription::batch(vec![progress_sub, event_sub, system_sub])
 }
 
 pub const fn app_theme(app: &App) -> iced::Theme {
@@ -1246,4 +1323,91 @@ mod tests {
         assert!(min_modified.is_some());
         assert!(extensions.contains("pdf"));
     }
+}
+
+#[derive(Debug, Clone)]
+struct SystemSubscriptionData {
+    hotkey_str: String,
+    minimize_to_tray: bool,
+}
+
+impl std::hash::Hash for SystemSubscriptionData {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.hotkey_str.hash(state);
+        self.minimize_to_tray.hash(state);
+    }
+}
+
+impl PartialEq for SystemSubscriptionData {
+    fn eq(&self, other: &Self) -> bool {
+        self.hotkey_str == other.hotkey_str && self.minimize_to_tray == other.minimize_to_tray
+    }
+}
+
+impl Eq for SystemSubscriptionData {}
+
+fn parse_hotkey(s: &str) -> Option<global_hotkey::hotkey::HotKey> {
+    use global_hotkey::hotkey::{Code, HotKey, Modifiers};
+    let parts: Vec<&str> = s.split('+').map(str::trim).collect();
+    if parts.is_empty() {
+        return None;
+    }
+    let mut modifiers = Modifiers::empty();
+    let mut key_code = None;
+
+    for part in parts {
+        match part.to_lowercase().as_str() {
+            "alt" => modifiers.insert(Modifiers::ALT),
+            "ctrl" | "control" => modifiers.insert(Modifiers::CONTROL),
+            "shift" => modifiers.insert(Modifiers::SHIFT),
+            "meta" | "win" | "super" | "command" => modifiers.insert(Modifiers::SUPER),
+            "space" => key_code = Some(Code::Space),
+            k => {
+                if k.len() == 1 {
+                    let c = k.chars().next().unwrap();
+                    key_code = match c.to_ascii_uppercase() {
+                        'A' => Some(Code::KeyA),
+                        'B' => Some(Code::KeyB),
+                        'C' => Some(Code::KeyC),
+                        'D' => Some(Code::KeyD),
+                        'E' => Some(Code::KeyE),
+                        'F' => Some(Code::KeyF),
+                        'G' => Some(Code::KeyG),
+                        'H' => Some(Code::KeyH),
+                        'I' => Some(Code::KeyI),
+                        'J' => Some(Code::KeyJ),
+                        'K' => Some(Code::KeyK),
+                        'L' => Some(Code::KeyL),
+                        'M' => Some(Code::KeyM),
+                        'N' => Some(Code::KeyN),
+                        'O' => Some(Code::KeyO),
+                        'P' => Some(Code::KeyP),
+                        'Q' => Some(Code::KeyQ),
+                        'R' => Some(Code::KeyR),
+                        'S' => Some(Code::KeyS),
+                        'T' => Some(Code::KeyT),
+                        'U' => Some(Code::KeyU),
+                        'V' => Some(Code::KeyV),
+                        'W' => Some(Code::KeyW),
+                        'X' => Some(Code::KeyX),
+                        'Y' => Some(Code::KeyY),
+                        'Z' => Some(Code::KeyZ),
+                        '0' => Some(Code::Digit0),
+                        '1' => Some(Code::Digit1),
+                        '2' => Some(Code::Digit2),
+                        '3' => Some(Code::Digit3),
+                        '4' => Some(Code::Digit4),
+                        '5' => Some(Code::Digit5),
+                        '6' => Some(Code::Digit6),
+                        '7' => Some(Code::Digit7),
+                        '8' => Some(Code::Digit8),
+                        '9' => Some(Code::Digit9),
+                        _ => None,
+                    };
+                }
+            }
+        }
+    }
+
+    key_code.map(|code| HotKey::new(Some(modifiers), code))
 }
