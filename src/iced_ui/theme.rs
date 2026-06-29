@@ -4,12 +4,12 @@ use iced::{
     widget::{button, container, text, text_input},
 };
 
-// --- Color Palette (Inspired by Zinc/Amber Premium Dark) ---
-pub const SURFACE_DARK: Color = Color::from_rgb(0.06, 0.06, 0.07); // #0f1115
-pub const PANEL_DARK: Color = Color::from_rgb(0.1, 0.11, 0.13); // #1a1c21
-pub const BORDER_DARK: Color = Color::from_rgb(0.16, 0.17, 0.2); // #292c33
-pub const ACCENT_BLUE: Color = Color::from_rgb(0.23, 0.51, 0.96); // #3b82f6
-pub const HIT_AMBER: Color = Color::from_rgb(0.96, 0.62, 0.04); // #f59e0b
+// --- Color Palette (Inspired by Obsidian/Zinc Premium Palette) ---
+pub const SURFACE_DARK: Color = Color::from_rgb(0.035, 0.035, 0.04); // #09090b
+pub const PANEL_DARK: Color = Color::from_rgb(0.09, 0.09, 0.10); // #18181b
+pub const BORDER_DARK: Color = Color::from_rgb(0.15, 0.15, 0.16); // #27272a
+pub const ACCENT_BLUE: Color = Color::from_rgb(0.14, 0.48, 0.96); // #2563eb
+pub const HIT_AMBER: Color = Color::from_rgb(0.96, 0.68, 0.12); // #f59e0b
 
 pub const TEXT_BRIGHT: Color = Color::from_rgb(0.98, 0.98, 0.98);
 pub const TEXT_MUTED: Color = Color::from_rgb(0.63, 0.64, 0.66);
@@ -17,8 +17,8 @@ pub const TEXT_DIM: Color = Color::from_rgb(0.40, 0.41, 0.43);
 
 // --- Color Palette (Light) ---
 pub const SURFACE_LIGHT: Color = Color::from_rgb(0.98, 0.98, 0.99); // #fafafa
-pub const PANEL_LIGHT: Color = Color::from_rgb(0.94, 0.94, 0.96); // #f4f4f5
-pub const BORDER_LIGHT: Color = Color::from_rgb(0.89, 0.90, 0.91); // #e4e4e7
+pub const PANEL_LIGHT: Color = Color::from_rgb(0.95, 0.95, 0.96); // #f4f4f5
+pub const BORDER_LIGHT: Color = Color::from_rgb(0.88, 0.88, 0.90); // #e4e4e7
 
 pub const TEXT_BRIGHT_LIGHT: Color = Color::from_rgb(0.09, 0.09, 0.11); // #18181b
 pub const TEXT_MUTED_LIGHT: Color = Color::from_rgb(0.45, 0.45, 0.50); // #71717a

@@ -35,7 +35,18 @@ mod windows_usn {
         total_count: &Arc<AtomicUsize>,
     ) -> Result<()> {
         let drive_letter = root.to_string_lossy();
-        let volume_path = format!("\\\\.\\{}", &drive_letter[..2]);
+        let mut chars = drive_letter.chars();
+        let (volume_path, drive_root) = match (chars.next(), chars.next()) {
+            (Some(c1), Some(':')) if c1.is_ascii_alphabetic() => {
+                (format!("\\\\.\\{c1}:"), format!("{c1}:\\"))
+            }
+            _ => {
+                return Err(FlashError::index(format!(
+                    "Invalid drive root path: {drive_letter}"
+                )));
+            }
+        };
+
         let mut volume_wide: Vec<u16> = volume_path.encode_utf16().collect();
         volume_wide.push(0);
 
@@ -51,13 +62,7 @@ mod windows_usn {
             )
             .map_err(|e| FlashError::index(format!("Failed to open volume handle: {e}")))?;
 
-            let result = iterate_mft(
-                handle,
-                &drive_letter[..3],
-                path_tx,
-                progress_tx,
-                total_count,
-            );
+            let result = iterate_mft(handle, &drive_root, path_tx, progress_tx, total_count);
             let _ = CloseHandle(handle);
             result
         }
@@ -122,32 +127,50 @@ mod windows_usn {
                 mft_enum_data.StartFileReferenceNumber = u64::try_from(next_usn).unwrap_or(0);
 
                 let mut offset = 8;
+                let record_header_size = std::mem::size_of::<USN_RECORD_V2>();
+
                 while offset < bytes_returned as usize {
+                    if offset + record_header_size > bytes_returned as usize {
+                        break;
+                    }
+
                     let record_ptr = buffer_ptr.add(offset);
                     #[allow(clippy::cast_ptr_alignment)]
                     let record = &*record_ptr.cast::<USN_RECORD_V2>();
 
+                    let record_len = record.RecordLength as usize;
+                    if record_len < record_header_size
+                        || offset + record_len > bytes_returned as usize
+                    {
+                        break;
+                    }
+
                     // Skip system files to clean up the output and increase performance
                     if (record.FileAttributes & FILE_ATTRIBUTE_SYSTEM.0) == 0 {
-                        #[allow(clippy::cast_ptr_alignment)]
-                        let name_ptr = record_ptr.add(record.FileNameOffset as usize).cast::<u16>();
-                        let name_len = (record.FileNameLength / 2) as usize;
-                        let name = CompactString::from_utf16_lossy(std::slice::from_raw_parts(
-                            name_ptr, name_len,
-                        ));
+                        let name_offset = record.FileNameOffset as usize;
+                        let name_len_bytes = record.FileNameLength as usize;
 
-                        let frn = record.FileReferenceNumber;
-                        let parent_frn = record.ParentFileReferenceNumber;
-                        let is_dir = (record.FileAttributes & 0x0000_0010) != 0; // FILE_ATTRIBUTE_DIRECTORY
+                        if name_offset + name_len_bytes <= record_len {
+                            #[allow(clippy::cast_ptr_alignment)]
+                            let name_ptr = record_ptr.add(name_offset).cast::<u16>();
+                            let name_len = name_len_bytes / 2;
+                            let name = CompactString::from_utf16_lossy(std::slice::from_raw_parts(
+                                name_ptr, name_len,
+                            ));
 
-                        if is_dir {
-                            dir_map.insert(frn, DirInfo { name, parent_frn });
-                        } else {
-                            files.push((name, parent_frn));
+                            let frn = record.FileReferenceNumber;
+                            let parent_frn = record.ParentFileReferenceNumber;
+                            let is_dir = (record.FileAttributes & 0x0000_0010) != 0; // FILE_ATTRIBUTE_DIRECTORY
+
+                            if is_dir {
+                                dir_map.insert(frn, DirInfo { name, parent_frn });
+                            } else {
+                                files.push((name, parent_frn));
+                            }
                         }
                     }
 
-                    offset += record.RecordLength as usize;
+                    offset += record_len;
                 }
             }
 
@@ -233,16 +256,25 @@ mod windows_usn {
             });
     }
 
+    #[allow(clippy::too_many_lines)]
     pub fn watch_volume(
         root: &Path,
         tx: tokio::sync::mpsc::Sender<(PathBuf, crate::watcher::WatcherAction)>,
     ) {
         let drive_letter = root.to_string_lossy();
-        let volume_path = format!("\\\\.\\{}", &drive_letter[..2]);
+        let mut chars = drive_letter.chars();
+        let (volume_path, drive_root_str) = match (chars.next(), chars.next()) {
+            (Some(c1), Some(':')) if c1.is_ascii_alphabetic() => {
+                (format!("\\\\.\\{c1}:"), format!("{c1}:\\"))
+            }
+            _ => {
+                error!("Invalid drive root path for watcher: {drive_letter}");
+                return;
+            }
+        };
+
         let mut volume_wide: Vec<u16> = volume_path.encode_utf16().collect();
         volume_wide.push(0);
-
-        let drive_root_str = drive_letter[..3].to_string();
 
         std::thread::spawn(move || {
             unsafe {
@@ -314,38 +346,55 @@ mod windows_usn {
                         read_data.StartUsn = next_usn;
 
                         let mut offset = 8;
+                        let record_header_size = std::mem::size_of::<USN_RECORD_V2>();
+
                         while offset < bytes_returned as usize {
+                            if offset + record_header_size > bytes_returned as usize {
+                                break;
+                            }
+
                             let record_ptr = buffer_ptr.add(offset);
                             #[allow(clippy::cast_ptr_alignment)]
                             let record = &*record_ptr.cast::<USN_RECORD_V2>();
 
-                            if (record.FileAttributes & FILE_ATTRIBUTE_SYSTEM.0) == 0 {
-                                #[allow(clippy::cast_ptr_alignment)]
-                                let name_ptr =
-                                    record_ptr.add(record.FileNameOffset as usize).cast::<u16>();
-                                let name_len = (record.FileNameLength / 2) as usize;
-                                let name = String::from_utf16_lossy(std::slice::from_raw_parts(
-                                    name_ptr, name_len,
-                                ));
-
-                                // Simplified path: In a full impl, we'd use the FRN map.
-                                // For now, we only support top-level changes or
-                                // we'd need to keep the fs_map in memory.
-                                // As a compromise for this prototype, we'll try to get the path
-                                // by using the parent FRN if we have a way to cache it.
-                                let mut changed_path = PathBuf::from(&drive_root_str);
-                                changed_path.push(name);
-
-                                let action = if (record.Reason & USN_REASON_FILE_DELETE) != 0 {
-                                    crate::watcher::WatcherAction::Remove
-                                } else {
-                                    crate::watcher::WatcherAction::Index
-                                };
-
-                                let _ = tx.blocking_send((changed_path, action));
+                            let record_len = record.RecordLength as usize;
+                            if record_len < record_header_size
+                                || offset + record_len > bytes_returned as usize
+                            {
+                                break;
                             }
 
-                            offset += record.RecordLength as usize;
+                            if (record.FileAttributes & FILE_ATTRIBUTE_SYSTEM.0) == 0 {
+                                let name_offset = record.FileNameOffset as usize;
+                                let name_len_bytes = record.FileNameLength as usize;
+
+                                if name_offset + name_len_bytes <= record_len {
+                                    #[allow(clippy::cast_ptr_alignment)]
+                                    let name_ptr = record_ptr.add(name_offset).cast::<u16>();
+                                    let name_len = name_len_bytes / 2;
+                                    let name = String::from_utf16_lossy(
+                                        std::slice::from_raw_parts(name_ptr, name_len),
+                                    );
+
+                                    // Simplified path: In a full impl, we'd use the FRN map.
+                                    // For now, we only support top-level changes or
+                                    // we'd need to keep the fs_map in memory.
+                                    // As a compromise for this prototype, we'll try to get the path
+                                    // by using the parent FRN if we have a way to cache it.
+                                    let mut changed_path = PathBuf::from(&drive_root_str);
+                                    changed_path.push(name);
+
+                                    let action = if (record.Reason & USN_REASON_FILE_DELETE) != 0 {
+                                        crate::watcher::WatcherAction::Remove
+                                    } else {
+                                        crate::watcher::WatcherAction::Index
+                                    };
+
+                                    let _ = tx.blocking_send((changed_path, action));
+                                }
+                            }
+
+                            offset += record_len;
                         }
                     } else {
                         std::thread::sleep(std::time::Duration::from_millis(500));
@@ -540,19 +589,28 @@ impl DriveScanner for WindowsDriveScanner {
 
         let mut is_local_drive = true;
         if is_root && !is_unc {
-            unsafe {
-                let drive_root = format!("{}\\", &root_str[..2]);
-                let mut wide_root: Vec<u16> = drive_root.encode_utf16().collect();
-                wide_root.push(0);
+            let mut chars = root_str.chars();
+            if let (Some(c1), Some(':')) = (chars.next(), chars.next()) {
+                if c1.is_ascii_alphabetic() {
+                    let drive_root = format!("{c1}:\\");
+                    unsafe {
+                        let mut wide_root: Vec<u16> = drive_root.encode_utf16().collect();
+                        wide_root.push(0);
 
-                let drive_type = windows::Win32::Storage::FileSystem::GetDriveTypeW(
-                    windows::core::PCWSTR(wide_root.as_ptr()),
-                );
+                        let drive_type = windows::Win32::Storage::FileSystem::GetDriveTypeW(
+                            windows::core::PCWSTR(wide_root.as_ptr()),
+                        );
 
-                if drive_type == 3 {
-                    // DRIVE_REMOTE
+                        if drive_type == 3 {
+                            // DRIVE_REMOTE
+                            is_local_drive = false;
+                        }
+                    }
+                } else {
                     is_local_drive = false;
                 }
+            } else {
+                is_local_drive = false;
             }
         }
 
@@ -598,19 +656,28 @@ impl DriveScanner for WindowsDriveScanner {
 
         let mut is_local_drive = true;
         if is_root && !is_unc {
-            unsafe {
-                let drive_root = format!("{}\\", &root_str[..2]);
-                let mut wide_root: Vec<u16> = drive_root.encode_utf16().collect();
-                wide_root.push(0);
+            let mut chars = root_str.chars();
+            if let (Some(c1), Some(':')) = (chars.next(), chars.next()) {
+                if c1.is_ascii_alphabetic() {
+                    let drive_root = format!("{c1}:\\");
+                    unsafe {
+                        let mut wide_root: Vec<u16> = drive_root.encode_utf16().collect();
+                        wide_root.push(0);
 
-                let drive_type = windows::Win32::Storage::FileSystem::GetDriveTypeW(
-                    windows::core::PCWSTR(wide_root.as_ptr()),
-                );
+                        let drive_type = windows::Win32::Storage::FileSystem::GetDriveTypeW(
+                            windows::core::PCWSTR(wide_root.as_ptr()),
+                        );
 
-                if drive_type == 3 {
-                    // DRIVE_REMOTE
+                        if drive_type == 3 {
+                            // DRIVE_REMOTE
+                            is_local_drive = false;
+                        }
+                    }
+                } else {
                     is_local_drive = false;
                 }
+            } else {
+                is_local_drive = false;
             }
         }
 

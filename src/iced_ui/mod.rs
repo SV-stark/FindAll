@@ -12,6 +12,7 @@ use iced::widget::Id;
 use iced::{Element, Subscription, Task};
 use parking_lot::Mutex;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub mod icons;
 pub mod search;
@@ -208,7 +209,7 @@ pub enum Message {
     // Lifecycle
     PollProgress,
     PollProgressResult(Option<ProgressEvent>),
-    PreviewLoaded(crate::models::PreviewResult),
+    PreviewLoaded(usize, crate::models::PreviewResult),
     IndexRebuilt,
     RebuildProgress(f32),
     StatusUpdate(String),
@@ -227,6 +228,9 @@ pub enum Message {
     ToggleSidebar,
     ToggleWindow,
     RestoreWindow,
+    SelectPreviousResult,
+    SelectNextResult,
+    OpenSelectedResult,
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -266,6 +270,8 @@ pub struct App {
     pub(crate) tray_icon: Option<tray_icon::TrayIcon>,
     pub(crate) window_id: Option<iced::window::Id>,
     pub(crate) progress_rx: Option<flume::Receiver<ProgressEvent>>,
+    pub(crate) active_search_id: Arc<AtomicUsize>,
+    pub(crate) active_preview_id: Arc<AtomicUsize>,
 }
 
 #[derive(Debug, Clone)]
@@ -326,6 +332,8 @@ impl Default for App {
             tray_icon: None,
             window_id: None,
             progress_rx: None,
+            active_search_id: Arc::new(AtomicUsize::new(0)),
+            active_preview_id: Arc::new(AtomicUsize::new(0)),
         }
     }
 }
@@ -442,13 +450,13 @@ impl App {
             DateFilter::Today => Some(
                 #[allow(clippy::cast_sign_loss)]
                 {
-                    jiff::Zoned::now()
-                        .with()
+                    let now = jiff::Zoned::now();
+                    now.with()
                         .hour(0)
                         .minute(0)
                         .second(0)
                         .build()
-                        .unwrap()
+                        .unwrap_or(now)
                         .timestamp()
                         .as_second() as u64
                 },
@@ -456,9 +464,9 @@ impl App {
             DateFilter::Last7Days => Some(
                 #[allow(clippy::cast_sign_loss)]
                 {
-                    jiff::Zoned::now()
-                        .checked_sub(jiff::SignedDuration::from_secs(7 * 24 * 3600))
-                        .unwrap()
+                    let now = jiff::Zoned::now();
+                    now.checked_sub(jiff::SignedDuration::from_secs(7 * 24 * 3600))
+                        .unwrap_or(now)
                         .timestamp()
                         .as_second() as u64
                 },
@@ -466,9 +474,9 @@ impl App {
             DateFilter::Last30Days => Some(
                 #[allow(clippy::cast_sign_loss)]
                 {
-                    jiff::Zoned::now()
-                        .checked_sub(jiff::SignedDuration::from_secs(30 * 24 * 3600))
-                        .unwrap()
+                    let now = jiff::Zoned::now();
+                    now.checked_sub(jiff::SignedDuration::from_secs(30 * 24 * 3600))
+                        .unwrap_or(now)
                         .timestamp()
                         .as_second() as u64
                 },
@@ -477,7 +485,7 @@ impl App {
     }
 
     #[allow(clippy::too_many_lines)]
-    fn perform_search(&mut self) -> Task<Message> {
+    fn perform_search(&mut self, debounce: bool) -> Task<Message> {
         let state = match &self.state {
             Some(s) => s.clone(),
             None => return Task::none(),
@@ -553,9 +561,20 @@ impl App {
         self.preview_result = None;
         self.search_id += 1;
         let current_search_id = self.search_id;
+        self.active_search_id
+            .store(current_search_id, Ordering::Relaxed);
+        let active_search_id = self.active_search_id.clone();
         let case_sensitive = self.settings.case_sensitive;
 
         Task::future(async move {
+            if debounce {
+                tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            }
+
+            if active_search_id.load(Ordering::Relaxed) != current_search_id {
+                return Message::NoOp;
+            }
+
             match mode {
                 SearchMode::Filename => {
                     match search_filenames_internal(query.clone(), max_results, &state).await {
@@ -620,9 +639,9 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
         }
         Message::SearchQueryChanged(q) => {
             app.search_query = q;
-            Task::none()
+            app.perform_search(true)
         }
-        Message::SearchSubmitted => app.perform_search(),
+        Message::SearchSubmitted => app.perform_search(false),
         Message::SearchResultsReceived(id, results) => {
             if id == app.search_id {
                 app.results = results;
@@ -644,20 +663,36 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                 if let Some(state) = &app.state {
                     let state = state.clone();
                     app.is_loading_preview = true;
+                    let next_preview_id = app.active_preview_id.fetch_add(1, Ordering::Relaxed) + 1;
+                    let active_preview_id = app.active_preview_id.clone();
                     return Task::future(async move {
                         match get_file_preview_highlighted_internal(item.path, query, &state).await
                         {
-                            Ok(preview) => Message::PreviewLoaded(preview),
-                            Err(e) => Message::StatusUpdate(format!("Preview error: {e}")),
+                            Ok(preview) => {
+                                if active_preview_id.load(Ordering::Relaxed) == next_preview_id {
+                                    Message::PreviewLoaded(next_preview_id, preview)
+                                } else {
+                                    Message::NoOp
+                                }
+                            }
+                            Err(e) => {
+                                if active_preview_id.load(Ordering::Relaxed) == next_preview_id {
+                                    Message::StatusUpdate(format!("Preview error: {e}"))
+                                } else {
+                                    Message::NoOp
+                                }
+                            }
                         }
                     });
                 }
             }
             Task::none()
         }
-        Message::PreviewLoaded(preview) => {
-            app.preview_result = Some(preview);
-            app.is_loading_preview = false;
+        Message::PreviewLoaded(id, preview) => {
+            if id == app.active_preview_id.load(Ordering::Relaxed) {
+                app.preview_result = Some(preview);
+                app.is_loading_preview = false;
+            }
             Task::none()
         }
         Message::ItemHovered(idx) => {
@@ -678,7 +713,7 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
         }
         Message::FilterExtensionChanged(ext) => {
             app.filter_extension = ext;
-            Task::none()
+            app.perform_search(true)
         }
         Message::ToggleFilterExtension(ext) => {
             if app.filter_extensions.contains(&ext) {
@@ -686,35 +721,35 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             } else {
                 app.filter_extensions.insert(ext);
             }
-            Task::none()
+            app.perform_search(false)
         }
         Message::MinSizeChanged(s) => {
             app.min_size = s;
-            Task::none()
+            app.perform_search(true)
         }
         Message::MaxSizeChanged(s) => {
             app.max_size = s;
-            Task::none()
+            app.perform_search(true)
         }
         Message::SizeUnitChanged(u) => {
             app.size_unit = u;
-            Task::none()
+            app.perform_search(false)
         }
         Message::DateFilterChanged(d) => {
             app.date_filter = d;
-            Task::none()
+            app.perform_search(false)
         }
         Message::SearchModeChanged(m) => {
             app.search_mode = m;
-            Task::none()
+            app.perform_search(false)
         }
         Message::ToggleCaseSensitive(b) => {
             app.settings.case_sensitive = b;
-            Task::none()
+            app.perform_search(false)
         }
         Message::ToggleWholeWord(b) => {
             app.settings.whole_word = b;
-            Task::none()
+            app.perform_search(false)
         }
         Message::ClearFilters => {
             app.filter_extension.clear();
@@ -722,7 +757,7 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             app.min_size.clear();
             app.max_size.clear();
             app.date_filter = DateFilter::Anytime;
-            Task::none()
+            app.perform_search(false)
         }
         Message::MaxResultsChanged(s) => {
             if let Ok(n) = s.parse::<usize>() {
@@ -1004,6 +1039,69 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             }
             Task::none()
         }
+        Message::ExportResults(format) => {
+            let results: Vec<crate::indexer::searcher::SearchResult> = app
+                .results
+                .iter()
+                .map(|item| crate::indexer::searcher::SearchResult {
+                    file_path: item.path.clone(),
+                    score: item.score,
+                    title: Some(compact_str::CompactString::from(item.title.clone())),
+                    extension: item.extension.clone(),
+                    modified: item.modified,
+                    size: item.size,
+                    matched_terms: Vec::new(),
+                    snippets: item.snippets.clone(),
+                })
+                .collect();
+            Task::future(async move {
+                match crate::commands::export_results_internal(results, format).await {
+                    Ok(()) => Message::StatusUpdate("Results exported successfully".to_string()),
+                    Err(e) => Message::StatusUpdate(format!("Export failed: {e}")),
+                }
+            })
+        }
+        Message::SelectPreviousResult => {
+            if !app.results.is_empty() {
+                let next_idx = match app.selected_index {
+                    Some(idx) => {
+                        if idx == 0 {
+                            app.results.len() - 1
+                        } else {
+                            idx - 1
+                        }
+                    }
+                    None => 0,
+                };
+                return Task::done(Message::ResultSelected(next_idx));
+            }
+            Task::none()
+        }
+        Message::SelectNextResult => {
+            if !app.results.is_empty() {
+                let next_idx = match app.selected_index {
+                    Some(idx) => {
+                        if idx == app.results.len() - 1 {
+                            0
+                        } else {
+                            idx + 1
+                        }
+                    }
+                    None => 0,
+                };
+                return Task::done(Message::ResultSelected(next_idx));
+            }
+            Task::none()
+        }
+        Message::OpenSelectedResult => {
+            if let Some(idx) = app.selected_index
+                && idx < app.results.len()
+            {
+                let path = app.results[idx].path.clone();
+                return Task::done(Message::OpenFile(path));
+            }
+            Task::none()
+        }
         _ => Task::none(),
     }
 }
@@ -1116,7 +1214,23 @@ pub fn subscription(app: &App) -> Subscription<Message> {
         },
     );
 
-    Subscription::batch(vec![progress_sub, event_sub, system_sub])
+    let keyboard_sub = iced::event::listen().map(|event| match event {
+        iced::Event::Keyboard(iced::keyboard::Event::KeyPressed { key, .. }) => match key {
+            iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowUp) => {
+                Message::SelectPreviousResult
+            }
+            iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowDown) => {
+                Message::SelectNextResult
+            }
+            iced::keyboard::Key::Named(iced::keyboard::key::Named::Enter) => {
+                Message::OpenSelectedResult
+            }
+            _ => Message::NoOp,
+        },
+        _ => Message::NoOp,
+    });
+
+    Subscription::batch(vec![progress_sub, event_sub, system_sub, keyboard_sub])
 }
 
 pub const fn app_theme(app: &App) -> iced::Theme {

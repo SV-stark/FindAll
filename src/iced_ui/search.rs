@@ -1,4 +1,4 @@
-use super::{App, DateFilter, Message, Tab, theme};
+use super::{App, DateFilter, Message, SearchMode, Tab, theme};
 use crate::models::{DocumentElementHighlight, ElementType};
 use iced::widget::{
     Space, TextInput, button, checkbox, column, container, mouse_area, rich_text, row, scrollable,
@@ -29,20 +29,28 @@ impl TermHighlighter {
             return Vec::new();
         }
 
-        let mut matches = Vec::new();
-        let lower_line = line.to_lowercase();
+        let pattern = self
+            .terms
+            .iter()
+            .filter(|t| !t.is_empty())
+            .map(|t| regex::escape(t))
+            .collect::<Vec<_>>()
+            .join("|");
 
-        for term in &self.terms {
-            if term.is_empty() {
-                continue;
-            }
-            let lower_term = term.to_lowercase();
-            let mut start = 0;
-            while let Some(idx) = lower_line[start..].find(&lower_term) {
-                let abs_idx = start + idx;
-                matches.push(abs_idx..abs_idx + term.len());
-                start = abs_idx + term.len();
-            }
+        if pattern.is_empty() {
+            return Vec::new();
+        }
+
+        let Ok(re) = regex::RegexBuilder::new(&format!("({pattern})"))
+            .case_insensitive(true)
+            .build()
+        else {
+            return Vec::new();
+        };
+
+        let mut matches = Vec::new();
+        for m in re.find_iter(line) {
+            matches.push(m.start()..m.end());
         }
 
         if matches.is_empty() {
@@ -193,6 +201,7 @@ pub fn search_view(app: &App) -> Element<'_, Message> {
         .into()
 }
 
+#[allow(clippy::too_many_lines)]
 fn top_navigation(app: &App) -> Element<'_, Message> {
     let logo = row![
         load_icon_size("search", 20.0),
@@ -206,19 +215,69 @@ fn top_navigation(app: &App) -> Element<'_, Message> {
 
     let search_bar = container(
         row![
-            TextInput::new("Type to search everything...", &app.search_query)
-                .id(crate::iced_ui::get_search_input_id())
-                .on_input(Message::SearchQueryChanged)
-                .on_submit(Message::SearchSubmitted)
-                .padding(Padding {
-                    top: 14.0,
-                    bottom: 14.0,
-                    left: 16.0,
-                    right: 8.0,
+            TextInput::new(
+                match app.search_mode {
+                    SearchMode::FullText => "Type to search everything...",
+                    SearchMode::Filename => "Type to search filenames...",
+                },
+                &app.search_query,
+            )
+            .id(crate::iced_ui::get_search_input_id())
+            .on_input(Message::SearchQueryChanged)
+            .on_submit(Message::SearchSubmitted)
+            .padding(Padding {
+                top: 14.0,
+                bottom: 14.0,
+                left: 16.0,
+                right: 8.0,
+            })
+            .size(16)
+            .style(theme::search_input())
+            .width(Length::Fill),
+            if app.search_query.is_empty() {
+                Element::from(Space::new().width(0).height(0))
+            } else {
+                Element::from(
+                    button(load_icon_size("x", 12.0))
+                        .on_press(Message::SearchQueryChanged(String::new()))
+                        .style(theme::ghost_button())
+                        .padding(Padding::new(6.0)),
+                )
+            },
+            button(text("Aa").size(11).font(Font {
+                weight: font::Weight::Bold,
+                ..Font::default()
+            }))
+            .on_press(Message::ToggleCaseSensitive(!app.settings.case_sensitive))
+            .style(move |t, s| theme::nav_button(app.settings.case_sensitive)(t, s))
+            .padding(Padding::from([6, 8])),
+            button(text("W").size(11).font(Font {
+                weight: font::Weight::Bold,
+                ..Font::default()
+            }))
+            .on_press(Message::ToggleWholeWord(!app.settings.whole_word))
+            .style(move |t, s| theme::nav_button(app.settings.whole_word)(t, s))
+            .padding(Padding::from([6, 8])),
+            button(
+                text(match app.search_mode {
+                    SearchMode::FullText => "Text",
+                    SearchMode::Filename => "File",
                 })
-                .size(16)
-                .style(theme::search_input())
-                .width(Length::Fill),
+                .size(11)
+                .font(Font {
+                    weight: font::Weight::Bold,
+                    ..Font::default()
+                })
+            )
+            .on_press(Message::SearchModeChanged(match app.search_mode {
+                SearchMode::FullText => SearchMode::Filename,
+                SearchMode::Filename => SearchMode::FullText,
+            }))
+            .style(move |t, s| {
+                let active = matches!(app.search_mode, SearchMode::Filename);
+                theme::nav_button(active)(t, s)
+            })
+            .padding(Padding::from([6, 8])),
             if app.is_searching {
                 Element::from(
                     container(text("Searching...").size(12).style(theme::dim_text_style()))
@@ -476,22 +535,70 @@ fn date_filter_section(app: &App) -> Element<'_, Message> {
 
 fn match_options_section(app: &App) -> iced::widget::Column<'_, Message> {
     column![
-        text("Match Options").size(14).font(Font {
-            weight: font::Weight::Bold,
-            ..Font::default()
-        }),
-        checkbox(app.settings.case_sensitive)
-            .label("Match Case")
-            .on_toggle(Message::ToggleCaseSensitive)
-            .size(18)
-            .text_size(13),
-        checkbox(app.settings.whole_word)
-            .label("Whole Word")
-            .on_toggle(Message::ToggleWholeWord)
-            .size(18)
-            .text_size(13),
+        text("Search Mode")
+            .size(12)
+            .font(Font {
+                weight: font::Weight::Bold,
+                ..Font::default()
+            })
+            .style(theme::muted_text_style()),
+        container(
+            row![
+                search_mode_button("Full Text", SearchMode::FullText, app),
+                search_mode_button("Filename", SearchMode::Filename, app),
+            ]
+            .spacing(4)
+        )
+        .padding(Padding::new(4.0))
+        .style(theme::sidebar_panel_container)
+        .width(Length::Fill),
+        Space::new().height(Length::Fixed(8.0)),
+        text("Match Options")
+            .size(12)
+            .font(Font {
+                weight: font::Weight::Bold,
+                ..Font::default()
+            })
+            .style(theme::muted_text_style()),
+        container(
+            column![
+                checkbox(app.settings.case_sensitive)
+                    .label("Match Case")
+                    .on_toggle(Message::ToggleCaseSensitive)
+                    .size(18)
+                    .text_size(13),
+                checkbox(app.settings.whole_word)
+                    .label("Whole Word")
+                    .on_toggle(Message::ToggleWholeWord)
+                    .size(18)
+                    .text_size(13),
+            ]
+            .spacing(8)
+        )
+        .padding(Padding::new(12.0))
+        .style(theme::sidebar_panel_container)
+        .width(Length::Fill),
     ]
     .spacing(8)
+}
+
+fn search_mode_button<'a>(label: &'a str, mode: SearchMode, app: &App) -> Element<'a, Message> {
+    let is_active = app.search_mode == mode;
+    button(text(label).size(11).font(Font {
+        weight: font::Weight::Bold,
+        ..Font::default()
+    }))
+    .on_press(Message::SearchModeChanged(mode))
+    .style(move |t: &iced::Theme, s| {
+        if is_active {
+            theme::primary_button()(t, s)
+        } else {
+            theme::secondary_button()(t, s)
+        }
+    })
+    .width(Length::Fill)
+    .padding(Padding::from([6, 12]))
+    .into()
 }
 
 fn results_panel(app: &App) -> Element<'_, Message> {
@@ -930,6 +1037,31 @@ fn status_bar(app: &App) -> Element<'_, Message> {
         text(&app.index_size).size(11),
         Space::new().width(Length::Fill),
     ];
+
+    if !app.results.is_empty() {
+        status_row = status_row.push(
+            row![
+                text("Export:").size(11).style(theme::dim_text_style()),
+                button(text("CSV").size(10).font(Font {
+                    weight: font::Weight::Bold,
+                    ..Font::default()
+                }))
+                .on_press(Message::ExportResults("csv".to_string()))
+                .style(theme::secondary_button())
+                .padding(Padding::from([2, 8])),
+                button(text("JSON").size(10).font(Font {
+                    weight: font::Weight::Bold,
+                    ..Font::default()
+                }))
+                .on_press(Message::ExportResults("json".to_string()))
+                .style(theme::secondary_button())
+                .padding(Padding::from([2, 8])),
+            ]
+            .spacing(6)
+            .align_y(Alignment::Center),
+        );
+        status_row = status_row.push(Space::new().width(Length::Fixed(16.0)));
+    }
 
     if let Some(p) = app.rebuild_progress {
         status_row = status_row

@@ -80,37 +80,43 @@ fn highlight_search_matches(
     if matched_terms.is_empty() {
         return spans;
     }
+
+    // Escape terms and build a pattern like: (term1|term2|...)
+    let pattern = matched_terms
+        .iter()
+        .filter(|t| !t.is_empty())
+        .map(|t| regex::escape(t))
+        .collect::<Vec<_>>()
+        .join("|");
+
+    if pattern.is_empty() {
+        return spans;
+    }
+
+    let regex_res = regex::RegexBuilder::new(&format!("({pattern})"))
+        .case_insensitive(!case_sensitive)
+        .build();
+
+    let Ok(re) = regex_res else {
+        return spans;
+    };
+
     let mut result = Vec::new();
     for (text, color) in spans {
         if text.is_empty() {
             continue;
         }
-        let lower_text = if case_sensitive {
-            text.clone()
-        } else {
-            text.to_lowercase()
-        };
+
         let mut matches = Vec::new();
-        for term in matched_terms {
-            if term.is_empty() {
-                continue;
-            }
-            let term_to_match = if case_sensitive {
-                term.clone()
-            } else {
-                term.to_lowercase()
-            };
-            let mut start = 0;
-            while let Some(idx) = lower_text[start..].find(&term_to_match) {
-                let abs_idx = start + idx;
-                matches.push((abs_idx, abs_idx + term.len()));
-                start = abs_idx + term.len();
-            }
+        for m in re.find_iter(&text) {
+            matches.push((m.start(), m.end()));
         }
+
         if matches.is_empty() {
             result.push((text, color));
             continue;
         }
+
         matches.sort_by_key(|r| r.0);
         let mut merged: Vec<(usize, usize)> = Vec::new();
         for m in matches {
@@ -122,6 +128,7 @@ fn highlight_search_matches(
             }
             merged.push(m);
         }
+
         let mut last_idx = 0;
         for (start, end) in merged {
             if start > last_idx {
