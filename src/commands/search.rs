@@ -3,7 +3,7 @@ use crate::indexer::searcher::{SearchParams, SearchResult};
 use crate::models::{FilenameIndexStats, FilenameSearchResult, PreviewResult};
 use crate::parsers::{PreviewElement, parse_file_preview};
 use iced::widget::text::Highlighter as _;
-use moka::sync::Cache;
+use mini_moka::sync::Cache;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
@@ -13,7 +13,7 @@ fn get_preview_cache() -> &'static Cache<(String, u64), Vec<PreviewElement>> {
     PREVIEW_CACHE.get_or_init(|| {
         Cache::builder()
             .max_capacity(100)
-            .time_to_live(Duration::from_mins(10))
+            .time_to_live(Duration::from_secs(600))
             .build()
     })
 }

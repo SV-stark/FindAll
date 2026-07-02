@@ -405,10 +405,10 @@ impl Scanner {
 
         let parser_handle = tokio::spawn(async move {
             info!("Stage 2b: Async Kreuzberg batch parsing");
-            let content_cache: moka::sync::Cache<[u8; 32], crate::parsers::ParsedDocument> =
-                moka::sync::Cache::builder()
+            let content_cache: mini_moka::sync::Cache<[u8; 32], crate::parsers::ParsedDocument> =
+                mini_moka::sync::Cache::builder()
                     .max_capacity(500)
-                    .time_to_idle(std::time::Duration::from_mins(1))
+                    .time_to_idle(std::time::Duration::from_secs(60))
                     .build();
 
             while let Some(chunk) = chunk_rx.recv().await {

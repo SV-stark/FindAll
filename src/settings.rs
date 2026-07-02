@@ -1,5 +1,4 @@
 use crate::error::{FlashError, Result};
-use config::{Config, Environment, File as ConfigFile};
 use serde::{Deserialize, Serialize};
 use smart_default::SmartDefault;
 use std::fs;
@@ -33,6 +32,7 @@ impl Clone for AllowedExtensionsCache {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, SmartDefault)]
+#[serde(default)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct AppSettings {
     #[serde(default = "default_settings_version")]
@@ -208,24 +208,88 @@ impl SettingsManager {
     }
 
     pub fn load(&self) -> Result<AppSettings> {
-        let builder = Config::builder()
-            // Start with default settings
-            .add_source(ConfigFile::from_str(
-                &serde_json::to_string(&AppSettings::default())
-                    .unwrap_or_else(|_| "{}".to_string()),
-                config::FileFormat::Json,
-            ))
-            // Add settings from file if it exists
-            .add_source(ConfigFile::from(self.path.clone()).required(false))
-            // Override with environment variables (e.g., FLASH_SEARCH_THEME=dark)
-            .add_source(Environment::with_prefix("FLASH_SEARCH").separator("__"));
+        let mut settings = if self.path.exists() {
+            let content = fs::read_to_string(&self.path)
+                .map_err(|e| FlashError::config("read_settings", e.to_string()))?;
+            serde_json::from_str(&content)
+                .map_err(|e| FlashError::config("parse_settings", e.to_string()))?
+        } else {
+            AppSettings::default()
+        };
 
-        match builder.build() {
-            Ok(config) => config
-                .try_deserialize()
-                .map_err(|e| FlashError::config("parse_settings", e.to_string())),
-            Err(e) => Err(FlashError::config("build_config", e.to_string())),
+        // Override with environment variables (e.g., FLASH_SEARCH__THEME=dark)
+        if let Ok(val) = std::env::var("FLASH_SEARCH__THEME") {
+            if let Ok(theme) = val.parse::<Theme>() {
+                settings.theme = theme;
+            }
         }
+        if let Ok(val) = std::env::var("FLASH_SEARCH__FONT_SIZE") {
+            if let Ok(font_size) = val.parse::<FontSize>() {
+                settings.font_size = font_size;
+            }
+        }
+        if let Ok(val) = std::env::var("FLASH_SEARCH__DOUBLE_CLICK_ACTION") {
+            if let Ok(action) = val.parse::<DoubleClickAction>() {
+                settings.double_click_action = action;
+            }
+        }
+        if let Ok(val) = std::env::var("FLASH_SEARCH__INDEXING_THREADS") {
+            if let Ok(threads) = val.parse::<u8>() {
+                settings.indexing_threads = threads;
+            }
+        }
+        if let Ok(val) = std::env::var("FLASH_SEARCH__MEMORY_LIMIT_MB") {
+            if let Ok(limit) = val.parse::<u32>() {
+                settings.memory_limit_mb = limit;
+            }
+        }
+        if let Ok(val) = std::env::var("FLASH_SEARCH__ENABLE_OCR") {
+            if let Ok(b) = val.parse::<bool>() {
+                settings.enable_ocr = b;
+            }
+        }
+        if let Ok(val) = std::env::var("FLASH_SEARCH__AUTO_INDEX_ON_STARTUP") {
+            if let Ok(b) = val.parse::<bool>() {
+                settings.auto_index_on_startup = b;
+            }
+        }
+        if let Ok(val) = std::env::var("FLASH_SEARCH__USE_GITIGNORE") {
+            if let Ok(b) = val.parse::<bool>() {
+                settings.use_gitignore = b;
+            }
+        }
+        if let Ok(val) = std::env::var("FLASH_SEARCH__MAX_RESULTS") {
+            if let Ok(limit) = val.parse::<usize>() {
+                settings.max_results = limit;
+            }
+        }
+        if let Ok(val) = std::env::var("FLASH_SEARCH__FUZZY_MATCHING") {
+            if let Ok(b) = val.parse::<bool>() {
+                settings.fuzzy_matching = b;
+            }
+        }
+        if let Ok(val) = std::env::var("FLASH_SEARCH__CASE_SENSITIVE") {
+            if let Ok(b) = val.parse::<bool>() {
+                settings.case_sensitive = b;
+            }
+        }
+        if let Ok(val) = std::env::var("FLASH_SEARCH__FILENAME_INDEX_ENABLED") {
+            if let Ok(b) = val.parse::<bool>() {
+                settings.filename_index_enabled = b;
+            }
+        }
+        if let Ok(val) = std::env::var("FLASH_SEARCH__MINIMIZE_TO_TRAY") {
+            if let Ok(b) = val.parse::<bool>() {
+                settings.minimize_to_tray = b;
+            }
+        }
+        if let Ok(val) = std::env::var("FLASH_SEARCH__AUTO_START_ON_BOOT") {
+            if let Ok(b) = val.parse::<bool>() {
+                settings.auto_start_on_boot = b;
+            }
+        }
+
+        Ok(settings)
     }
 
     pub fn save(&self, settings: &AppSettings) -> Result<()> {

@@ -153,8 +153,11 @@ fn main() {
                 && let Ok(pid) = pid_str.trim().parse::<u32>()
             {
                 use sysinfo::System;
-                let mut sys = System::new_all();
-                sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+                let mut sys = System::new();
+                sys.refresh_processes(
+                    sysinfo::ProcessesToUpdate::Some(&[sysinfo::Pid::from_u32(pid)]),
+                    true,
+                );
                 if let Some(process) = sys.process(sysinfo::Pid::from_u32(pid))
                     && process.name().to_string_lossy().contains("flash-search")
                 {

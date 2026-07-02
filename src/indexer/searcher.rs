@@ -1,7 +1,7 @@
 use super::query_parser::{ParsedQuery, extract_highlight_terms};
 use crate::error::{FlashError, Result};
 use compact_str::CompactString;
-use moka::sync::Cache;
+use mini_moka::sync::Cache;
 use serde::{Deserialize, Serialize};
 use std::ops::Bound;
 use std::time::Duration;
@@ -277,7 +277,7 @@ impl QueryCache {
         Self {
             cache: Cache::builder()
                 .max_capacity(100)
-                .time_to_live(Duration::from_mins(5)) // 5 minutes TTL
+                .time_to_live(Duration::from_secs(300)) // 5 minutes TTL
                 .build(),
         }
     }
