@@ -1,3 +1,5 @@
+#![allow(clippy::large_futures)]
+
 use flash_search::error::Result;
 use flash_search::indexer::searcher::SearchParams;
 use flash_search::{indexer::IndexManager, metadata::MetadataDb};

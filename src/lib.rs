@@ -3,6 +3,7 @@
 #![allow(clippy::cast_precision_loss)]
 #![allow(clippy::similar_names)]
 #![allow(clippy::module_name_repetitions)]
+#![allow(clippy::large_futures)]
 
 pub mod commands;
 pub mod error;
