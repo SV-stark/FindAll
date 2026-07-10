@@ -312,9 +312,7 @@ impl WatcherManager {
         }
 
         let path_buf = path.to_path_buf();
-        let parsed_res = tokio::task::spawn_blocking(move || parse_file(&path_buf, enable_ocr))
-            .await
-            .map_err(|e| FlashError::parse(path, format!("Parse task failed: {e}")))?;
+        let parsed_res = parse_file(&path_buf, enable_ocr).await;
 
         let parsed = match parsed_res {
             Ok(p) => p,

@@ -44,7 +44,7 @@ pub fn create_schema() -> Schema {
         .set_stored();
     schema_builder.add_text_field("keywords", keywords_options);
 
-    // Optional advanced fields from Kreuzberg 4.8.0
+    // Optional advanced fields from Xberg 4.8.0
     schema_builder.add_text_field("layout", STRING | STORED);
     schema_builder.add_text_field("code_metadata", STRING | STORED);
 

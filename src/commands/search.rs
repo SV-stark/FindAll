@@ -13,7 +13,7 @@ fn get_preview_cache() -> &'static Cache<(String, u64), Vec<PreviewElement>> {
     PREVIEW_CACHE.get_or_init(|| {
         Cache::builder()
             .max_capacity(100)
-            .time_to_live(Duration::from_secs(600))
+            .time_to_live(Duration::from_mins(10))
             .build()
     })
 }
@@ -59,9 +59,7 @@ pub async fn get_file_preview_internal(
         return Ok(cached);
     }
 
-    let result = tokio::task::spawn_blocking(move || parse_file_preview(&path_buf, enable_ocr))
-        .await
-        .map_err(|e| format!("Preview task failed: {e}"))?;
+    let result = parse_file_preview(&path_buf, enable_ocr).await;
 
     match result {
         Ok(elements) => {

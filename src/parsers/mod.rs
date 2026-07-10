@@ -23,8 +23,8 @@ pub struct PreviewElement {
     pub content: String,
 }
 
-/// Detect file type and route to appropriate parser using Kreuzberg
-pub fn parse_file(path: &Path, enable_ocr: bool) -> Result<ParsedDocument> {
+/// Detect file type and route to appropriate parser using Xberg
+pub async fn parse_file(path: &Path, enable_ocr: bool) -> Result<ParsedDocument> {
     // Log the file extension for debugging
     let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("none");
     tracing::debug!(
@@ -33,58 +33,79 @@ pub fn parse_file(path: &Path, enable_ocr: bool) -> Result<ParsedDocument> {
         extension
     );
 
-    let mime = kreuzberg::detect_mime_type(path, true)
+    let mime = xberg::detect_mime_type(path.to_string_lossy().into_owned(), true)
         .map_err(|e| FlashError::parse(path, format!("Mime detection failed: {e}")))?;
 
     // Disable cache to prevent unbounded memory growth during deep directory scans.
-    let config = kreuzberg::ExtractionConfig {
+    let config = xberg::ExtractionConfig {
         use_cache: false,
         disable_ocr: !enable_ocr,
         ..Default::default()
     };
 
     let file_data = memory_map::read_file(path)?;
-    let result = kreuzberg::extract_bytes_sync(&file_data, &mime, &config).map_err(|e| {
+    let input = xberg::ExtractInput::from_bytes(
+        file_data.to_vec(),
+        mime,
+        path.file_name().map(|n| n.to_string_lossy().into_owned()),
+    );
+
+    let result = xberg::extract(input, &config).await.map_err(|e| {
         tracing::error!("Failed to extract file {}: {}", path.display(), e);
         FlashError::parse(path, format!("Extraction failed: {e}"))
     })?;
 
     tracing::debug!("Successfully parsed file: {}", path.display());
 
-    Ok(map_extraction_result(path, result))
+    let doc = result.results.into_iter().next().ok_or_else(|| {
+        FlashError::parse(path, "Extraction returned empty results list".to_string())
+    })?;
+
+    Ok(map_extracted_document(path, doc))
 }
 
-pub fn parse_file_preview(path: &Path, enable_ocr: bool) -> Result<Vec<PreviewElement>> {
-    let mime = kreuzberg::detect_mime_type(path, true)
+pub async fn parse_file_preview(path: &Path, enable_ocr: bool) -> Result<Vec<PreviewElement>> {
+    let mime = xberg::detect_mime_type(path.to_string_lossy().into_owned(), true)
         .map_err(|e| FlashError::parse(path, format!("Mime detection failed: {e}")))?;
 
-    let config = kreuzberg::ExtractionConfig {
+    let config = xberg::ExtractionConfig {
         use_cache: false,
         disable_ocr: !enable_ocr,
-        result_format: kreuzberg::types::OutputFormat::ElementBased,
+        result_format: xberg::ResultFormat::ElementBased,
         ..Default::default()
     };
 
     let file_data = memory_map::read_file(path)?;
-    let result = kreuzberg::extract_bytes_sync(&file_data, &mime, &config)
+    let input = xberg::ExtractInput::from_bytes(
+        file_data.to_vec(),
+        mime,
+        path.file_name().map(|n| n.to_string_lossy().into_owned()),
+    );
+
+    let result = xberg::extract(input, &config)
+        .await
         .map_err(|e| FlashError::parse(path, format!("Preview extraction failed: {e}")))?;
 
-    let elements = result
+    let doc = result.results.into_iter().next().ok_or_else(|| {
+        FlashError::parse(path, "Preview extraction returned empty results list".to_string())
+    })?;
+
+    let elements = doc
         .elements
         .unwrap_or_default()
         .into_iter()
         .map(|e| {
             let element_type = match e.element_type {
-                kreuzberg::types::ElementType::Title => crate::models::ElementType::Title,
-                kreuzberg::types::ElementType::Heading => crate::models::ElementType::Heading,
-                kreuzberg::types::ElementType::NarrativeText => {
+                xberg::types::ElementType::Title => crate::models::ElementType::Title,
+                xberg::types::ElementType::Heading => crate::models::ElementType::Heading,
+                xberg::types::ElementType::NarrativeText => {
                     crate::models::ElementType::NarrativeText
                 }
-                kreuzberg::types::ElementType::ListItem => crate::models::ElementType::ListItem,
-                kreuzberg::types::ElementType::CodeBlock => crate::models::ElementType::CodeBlock,
-                kreuzberg::types::ElementType::Table => crate::models::ElementType::Table,
-                kreuzberg::types::ElementType::Image => crate::models::ElementType::Image,
-                kreuzberg::types::ElementType::PageBreak => crate::models::ElementType::PageBreak,
+                xberg::types::ElementType::ListItem => crate::models::ElementType::ListItem,
+                xberg::types::ElementType::CodeBlock => crate::models::ElementType::CodeBlock,
+                xberg::types::ElementType::Table => crate::models::ElementType::Table,
+                xberg::types::ElementType::Image => crate::models::ElementType::Image,
+                xberg::types::ElementType::PageBreak => crate::models::ElementType::PageBreak,
                 _ => crate::models::ElementType::Unknown,
             };
             PreviewElement {
@@ -97,9 +118,9 @@ pub fn parse_file_preview(path: &Path, enable_ocr: bool) -> Result<Vec<PreviewEl
     Ok(elements)
 }
 
-/// Process a batch of files using Kreuzberg's native async concurrent batch extraction.
+/// Process a batch of files using Xberg's native async concurrent batch extraction.
 ///
-/// This is `async` — it must be called from within a Tokio async context. Kreuzberg
+/// This is `async` — it must be called from within a Tokio async context. Xberg
 /// manages its own semaphore-gated `JoinSet` internally.
 pub async fn parse_files_batch(
     paths: &[PathBuf],
@@ -107,60 +128,94 @@ pub async fn parse_files_batch(
     enable_ocr: bool,
 ) -> Result<Vec<Result<ParsedDocument>>> {
     tracing::debug!(
-        "Async batch parsing {} files via kreuzberg (max_threads: {})",
+        "Async batch parsing {} files via xberg (max_threads: {})",
         paths.len(),
         max_threads
     );
 
-    let config = kreuzberg::ExtractionConfig {
+    let config = xberg::ExtractionConfig {
         use_cache: false,
         max_concurrent_extractions: Some(max_threads as usize),
         disable_ocr: !enable_ocr,
         ..Default::default()
     };
 
-    let batched_paths: Vec<(PathBuf, Option<kreuzberg::FileExtractionConfig>)> =
-        paths.iter().map(|p| (p.clone(), None)).collect();
+    let inputs: Vec<xberg::ExtractInput> = paths
+        .iter()
+        .map(|p| xberg::ExtractInput::from_uri(p.to_string_lossy().into_owned()))
+        .collect();
 
-    let batch_results = kreuzberg::batch_extract_file(batched_paths, &config)
+    let batch_results = xberg::extract_batch(inputs, &config)
         .await
         .map_err(|e| {
-            tracing::error!("Kreuzberg async batch extraction failed entirely: {}", e);
+            tracing::error!("Xberg async batch extraction failed entirely: {}", e);
             FlashError::parse(Path::new("batch"), format!("Batch extraction crashed: {e}"))
         })?;
 
-    let results = batch_results
+    let mut slots: Vec<Option<Result<ParsedDocument>>> = vec![None; paths.len()];
+
+    for result in batch_results.results {
+        let index = result
+            .metadata
+            .additional
+            .get("source_index")
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|v| usize::try_from(v).ok());
+
+        if let Some(idx) = index
+            && idx < paths.len() {
+                slots[idx] = Some(Ok(map_extracted_document(&paths[idx], result)));
+            }
+    }
+
+    for error in batch_results.errors {
+        if error.index < paths.len() {
+            slots[error.index] = Some(Err(FlashError::parse(
+                &paths[error.index],
+                format!("Extraction failed: {}", error.message),
+            )));
+        }
+    }
+
+    let results = slots
         .into_iter()
-        .zip(paths.iter())
-        .map(|(extraction_result, path)| Ok(map_extraction_result(path, extraction_result)))
+        .enumerate()
+        .map(|(idx, opt)| {
+            opt.unwrap_or_else(|| {
+                Err(FlashError::parse(
+                    &paths[idx],
+                    "No output returned for file".to_string(),
+                ))
+            })
+        })
         .collect();
 
     Ok(results)
 }
 
-/// Maps a `kreuzberg::ExtractionResult` into a `ParsedDocument`.
-fn map_extraction_result(path: &Path, result: kreuzberg::ExtractionResult) -> ParsedDocument {
-    let language = result
+/// Maps a `xberg::ExtractedDocument` into a `ParsedDocument`.
+fn map_extracted_document(path: &Path, doc: xberg::ExtractedDocument) -> ParsedDocument {
+    let language = doc
         .detected_languages
         .as_ref()
         .and_then(|langs| langs.first().map(CompactString::from));
 
-    let keywords = result.extracted_keywords.as_ref().map(|kws| {
+    let keywords = doc.metadata.keywords.as_ref().map(|kws| {
         kws.iter()
-            .map(|k| k.text.as_str())
+            .map(std::string::String::as_str)
             .collect::<Vec<_>>()
             .join(" ")
     });
 
     ParsedDocument {
         path: path.to_string_lossy().to_string(),
-        content: result.content,
-        title: result.metadata.title.map(CompactString::from),
+        content: doc.content,
+        title: doc.metadata.title.as_ref().map(|t| CompactString::from(t.as_str())),
         language,
         keywords,
-        layout: result.structured_output.map(|l| format!("{l:?}")),
-        code_metadata: result.annotations.map(|c| format!("{c:?}")),
-        embeddings: result
+        layout: doc.structured_output.map(|l| format!("{l:?}")),
+        code_metadata: doc.annotations.map(|c| format!("{c:?}")),
+        embeddings: doc
             .chunks
             .and_then(|c| c.into_iter().find_map(|chunk| chunk.embedding)),
     }
@@ -185,27 +240,27 @@ mod tests {
         assert!(!extension_matches(OsStr::new("pdf"), "docx"));
     }
 
-    #[test]
-    fn test_parse_file_txt() {
+    #[tokio::test]
+    async fn test_parse_file_txt() {
         use std::io::Write;
         let dir = tempfile::tempdir().unwrap();
         let file_path = dir.path().join("test.txt");
         let mut file = std::fs::File::create(&file_path).unwrap();
         writeln!(file, "Hello, world!").unwrap();
 
-        let result = parse_file(&file_path, false);
+        let result = parse_file(&file_path, false).await;
         assert!(result.is_ok());
         let doc = result.unwrap();
         assert!(doc.content.contains("Hello, world!"));
     }
 
-    #[test]
-    fn test_parse_file_unknown() {
+    #[tokio::test]
+    async fn test_parse_file_unknown() {
         let dir = tempfile::tempdir().unwrap();
         let file_path = dir.path().join("test.unknown");
         std::fs::File::create(&file_path).unwrap();
 
-        let result = parse_file(&file_path, false);
+        let result = parse_file(&file_path, false).await;
         assert!(result.is_err());
     }
 }

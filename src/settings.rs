@@ -218,76 +218,62 @@ impl SettingsManager {
         };
 
         // Override with environment variables (e.g., FLASH_SEARCH__THEME=dark)
-        if let Ok(val) = std::env::var("FLASH_SEARCH__THEME") {
-            if let Ok(theme) = val.parse::<Theme>() {
+        if let Ok(val) = std::env::var("FLASH_SEARCH__THEME")
+            && let Ok(theme) = val.parse::<Theme>() {
                 settings.theme = theme;
             }
-        }
-        if let Ok(val) = std::env::var("FLASH_SEARCH__FONT_SIZE") {
-            if let Ok(font_size) = val.parse::<FontSize>() {
+        if let Ok(val) = std::env::var("FLASH_SEARCH__FONT_SIZE")
+            && let Ok(font_size) = val.parse::<FontSize>() {
                 settings.font_size = font_size;
             }
-        }
-        if let Ok(val) = std::env::var("FLASH_SEARCH__DOUBLE_CLICK_ACTION") {
-            if let Ok(action) = val.parse::<DoubleClickAction>() {
+        if let Ok(val) = std::env::var("FLASH_SEARCH__DOUBLE_CLICK_ACTION")
+            && let Ok(action) = val.parse::<DoubleClickAction>() {
                 settings.double_click_action = action;
             }
-        }
-        if let Ok(val) = std::env::var("FLASH_SEARCH__INDEXING_THREADS") {
-            if let Ok(threads) = val.parse::<u8>() {
+        if let Ok(val) = std::env::var("FLASH_SEARCH__INDEXING_THREADS")
+            && let Ok(threads) = val.parse::<u8>() {
                 settings.indexing_threads = threads;
             }
-        }
-        if let Ok(val) = std::env::var("FLASH_SEARCH__MEMORY_LIMIT_MB") {
-            if let Ok(limit) = val.parse::<u32>() {
+        if let Ok(val) = std::env::var("FLASH_SEARCH__MEMORY_LIMIT_MB")
+            && let Ok(limit) = val.parse::<u32>() {
                 settings.memory_limit_mb = limit;
             }
-        }
-        if let Ok(val) = std::env::var("FLASH_SEARCH__ENABLE_OCR") {
-            if let Ok(b) = val.parse::<bool>() {
+        if let Ok(val) = std::env::var("FLASH_SEARCH__ENABLE_OCR")
+            && let Ok(b) = val.parse::<bool>() {
                 settings.enable_ocr = b;
             }
-        }
-        if let Ok(val) = std::env::var("FLASH_SEARCH__AUTO_INDEX_ON_STARTUP") {
-            if let Ok(b) = val.parse::<bool>() {
+        if let Ok(val) = std::env::var("FLASH_SEARCH__AUTO_INDEX_ON_STARTUP")
+            && let Ok(b) = val.parse::<bool>() {
                 settings.auto_index_on_startup = b;
             }
-        }
-        if let Ok(val) = std::env::var("FLASH_SEARCH__USE_GITIGNORE") {
-            if let Ok(b) = val.parse::<bool>() {
+        if let Ok(val) = std::env::var("FLASH_SEARCH__USE_GITIGNORE")
+            && let Ok(b) = val.parse::<bool>() {
                 settings.use_gitignore = b;
             }
-        }
-        if let Ok(val) = std::env::var("FLASH_SEARCH__MAX_RESULTS") {
-            if let Ok(limit) = val.parse::<usize>() {
+        if let Ok(val) = std::env::var("FLASH_SEARCH__MAX_RESULTS")
+            && let Ok(limit) = val.parse::<usize>() {
                 settings.max_results = limit;
             }
-        }
-        if let Ok(val) = std::env::var("FLASH_SEARCH__FUZZY_MATCHING") {
-            if let Ok(b) = val.parse::<bool>() {
+        if let Ok(val) = std::env::var("FLASH_SEARCH__FUZZY_MATCHING")
+            && let Ok(b) = val.parse::<bool>() {
                 settings.fuzzy_matching = b;
             }
-        }
-        if let Ok(val) = std::env::var("FLASH_SEARCH__CASE_SENSITIVE") {
-            if let Ok(b) = val.parse::<bool>() {
+        if let Ok(val) = std::env::var("FLASH_SEARCH__CASE_SENSITIVE")
+            && let Ok(b) = val.parse::<bool>() {
                 settings.case_sensitive = b;
             }
-        }
-        if let Ok(val) = std::env::var("FLASH_SEARCH__FILENAME_INDEX_ENABLED") {
-            if let Ok(b) = val.parse::<bool>() {
+        if let Ok(val) = std::env::var("FLASH_SEARCH__FILENAME_INDEX_ENABLED")
+            && let Ok(b) = val.parse::<bool>() {
                 settings.filename_index_enabled = b;
             }
-        }
-        if let Ok(val) = std::env::var("FLASH_SEARCH__MINIMIZE_TO_TRAY") {
-            if let Ok(b) = val.parse::<bool>() {
+        if let Ok(val) = std::env::var("FLASH_SEARCH__MINIMIZE_TO_TRAY")
+            && let Ok(b) = val.parse::<bool>() {
                 settings.minimize_to_tray = b;
             }
-        }
-        if let Ok(val) = std::env::var("FLASH_SEARCH__AUTO_START_ON_BOOT") {
-            if let Ok(b) = val.parse::<bool>() {
+        if let Ok(val) = std::env::var("FLASH_SEARCH__AUTO_START_ON_BOOT")
+            && let Ok(b) = val.parse::<bool>() {
                 settings.auto_start_on_boot = b;
             }
-        }
 
         Ok(settings)
     }

@@ -279,7 +279,7 @@ impl Scanner {
         //   - Valid, filtered file paths are grouped into chunks of CHUNK_SIZE and
         //     sent through an async mpsc channel (chunk_tx -> chunk_rx).
         //   - An async Tokio task receives chunks and awaits parse_files_batch(),
-        //     which uses kreuzberg's native JoinSet-based concurrency internally —
+        //     which uses xberg's native JoinSet-based concurrency internally —
         //     no manual Rayon pool needed.
         //   - Parsed IndexTasks are forwarded to a sync writer via crossbeam.
         const CHUNK_SIZE: usize = 200;
@@ -394,8 +394,8 @@ impl Scanner {
             // chunk_tx drops here, closing chunk_rx.
         });
 
-        // --- Stage 2b: Async Kreuzberg batch parser ---
-        // Receives chunks over the mpsc channel and awaits kreuzberg's native
+        // --- Stage 2b: Async Xberg batch parser ---
+        // Receives chunks over the mpsc channel and awaits xberg's native
         // concurrent JoinSet-based batch extractor directly on the Tokio runtime.
         let task_tx_for_parser = task_tx.clone();
         let progress_tx_for_parser = self.progress_tx.clone();
@@ -404,11 +404,11 @@ impl Scanner {
         let cancel_flag_for_parser = cancel_flag.clone();
 
         let parser_handle = tokio::spawn(async move {
-            info!("Stage 2b: Async Kreuzberg batch parsing");
+            info!("Stage 2b: Async Xberg batch parsing");
             let content_cache: mini_moka::sync::Cache<[u8; 32], crate::parsers::ParsedDocument> =
                 mini_moka::sync::Cache::builder()
                     .max_capacity(500)
-                    .time_to_idle(std::time::Duration::from_secs(60))
+                    .time_to_idle(std::time::Duration::from_mins(1))
                     .build();
 
             while let Some(chunk) = chunk_rx.recv().await {
@@ -510,7 +510,7 @@ impl Scanner {
                                         |idx| chunk_hashes[idx],
                                     );
 
-                                if let Ok(parsed) = parse_file(&path, enable_ocr) {
+                                if let Ok(parsed) = parse_file(&path, enable_ocr).await {
                                     content_cache.insert(hash, parsed.clone());
 
                                     let _ = task_tx_for_parser.send(IndexTask {

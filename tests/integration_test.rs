@@ -29,20 +29,8 @@ async fn test_end_to_end_search() -> Result<()> {
     let metadata_db_path = index_dir.join("metadata.redb");
     let _metadata_db = Arc::new(MetadataDb::open(&metadata_db_path)?.0);
 
-    let txt_path_clone = txt_path.clone();
-    let md_path_clone = md_path.clone();
-
-    let txt_doc = tokio::task::spawn_blocking(move || {
-        flash_search::parsers::parse_file(&txt_path_clone, false)
-    })
-    .await
-    .map_err(|e| flash_search::error::FlashError::parse(&txt_path, e.to_string()))??;
-
-    let md_doc = tokio::task::spawn_blocking(move || {
-        flash_search::parsers::parse_file(&md_path_clone, false)
-    })
-    .await
-    .map_err(|e| flash_search::error::FlashError::parse(&md_path, e.to_string()))??;
+    let txt_doc = flash_search::parsers::parse_file(&txt_path, false).await?;
+    let md_doc = flash_search::parsers::parse_file(&md_path, false).await?;
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

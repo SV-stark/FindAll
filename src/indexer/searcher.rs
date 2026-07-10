@@ -277,7 +277,7 @@ impl QueryCache {
         Self {
             cache: Cache::builder()
                 .max_capacity(100)
-                .time_to_live(Duration::from_secs(300)) // 5 minutes TTL
+                .time_to_live(Duration::from_mins(5)) // 5 minutes TTL
                 .build(),
         }
     }
