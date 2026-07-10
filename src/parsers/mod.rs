@@ -87,7 +87,10 @@ pub async fn parse_file_preview(path: &Path, enable_ocr: bool) -> Result<Vec<Pre
         .map_err(|e| FlashError::parse(path, format!("Preview extraction failed: {e}")))?;
 
     let doc = result.results.into_iter().next().ok_or_else(|| {
-        FlashError::parse(path, "Preview extraction returned empty results list".to_string())
+        FlashError::parse(
+            path,
+            "Preview extraction returned empty results list".to_string(),
+        )
     })?;
 
     let elements = doc
@@ -145,12 +148,10 @@ pub async fn parse_files_batch(
         .map(|p| xberg::ExtractInput::from_uri(p.to_string_lossy().into_owned()))
         .collect();
 
-    let batch_results = xberg::extract_batch(inputs, &config)
-        .await
-        .map_err(|e| {
-            tracing::error!("Xberg async batch extraction failed entirely: {}", e);
-            FlashError::parse(Path::new("batch"), format!("Batch extraction crashed: {e}"))
-        })?;
+    let batch_results = xberg::extract_batch(inputs, &config).await.map_err(|e| {
+        tracing::error!("Xberg async batch extraction failed entirely: {}", e);
+        FlashError::parse(Path::new("batch"), format!("Batch extraction crashed: {e}"))
+    })?;
 
     let mut slots: Vec<Option<Result<ParsedDocument>>> = vec![None; paths.len()];
 
@@ -163,9 +164,10 @@ pub async fn parse_files_batch(
             .and_then(|v| usize::try_from(v).ok());
 
         if let Some(idx) = index
-            && idx < paths.len() {
-                slots[idx] = Some(Ok(map_extracted_document(&paths[idx], result)));
-            }
+            && idx < paths.len()
+        {
+            slots[idx] = Some(Ok(map_extracted_document(&paths[idx], result)));
+        }
     }
 
     for error in batch_results.errors {
@@ -210,7 +212,11 @@ fn map_extracted_document(path: &Path, doc: xberg::ExtractedDocument) -> ParsedD
     ParsedDocument {
         path: path.to_string_lossy().to_string(),
         content: doc.content,
-        title: doc.metadata.title.as_ref().map(|t| CompactString::from(t.as_str())),
+        title: doc
+            .metadata
+            .title
+            .as_ref()
+            .map(|t| CompactString::from(t.as_str())),
         language,
         keywords,
         layout: doc.structured_output.map(|l| format!("{l:?}")),
