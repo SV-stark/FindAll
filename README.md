@@ -165,12 +165,12 @@ Benchmarks on standard desktop hardware (e.g., AMD Ryzen 7 / Apple M-series):
 
 | Metric | Value | Notes |
 |:---|:---|:---|
-| **Text Extraction Speed** | Up to **9x-40x** faster | Compared to traditional Python-based parsers (e.g. Unstructured) |
-| **Indexing Throughput** | **~50-100 MB/s** | Highly parallelized via Rayon |
-| **Search Latency (p50)** | **< 15ms** | Instant retrieval on million-document datasets |
-| **Search Latency (p99)** | **< 50ms** | Thanks to Tantivy's optimized index |
+| **Text Extraction Speed** | Up to **9x-40x** faster | Powered by [Kreuzberg](https://github.com/kreuzberg-dev/kreuzberg) native extraction |
+| **Indexing Throughput** | **~50-100 MB/s** | Highly parallelized via Rayon & zero-allocation path filtering |
+| **Search Latency (p50)** | **< 10ms** | Zero-copy `rkyv` binary indices + lock-free FST lookups |
+| **Search Latency (p99)** | **< 35ms** | Optimized Tantivy full-text index with debounced commits |
 | **Idle RAM Usage** | **~25-30 MB** | Minimal background footprint securely controlled via Rust |
-| **Peak RAM (Indexing)** | **~150-200 MB** | Gracefully bounded by streaming architecture and zero-copy patterns |
+| **Peak RAM (Indexing)** | **~150-200 MB** | Bounded streaming architecture & smart `blake3` watcher hashing |
 
 <h3 align="center">Comparison</h3>
 

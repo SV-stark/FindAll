@@ -49,14 +49,13 @@ fd-lock = "4.0"
 
 # Document Parsing
 # Simplified with Xberg
-xberg = { version = "1.0.0-rc.20", features = [
+xberg = { version = "1.0.0-rc.30", features = [
     "tokio-runtime",
     "pdf",
     "ocr",
     "language-detection",
     "keywords-yake",
     "chunking",
-    "tree-sitter",
 ] }
 
 
@@ -89,7 +88,6 @@ image = { version = "0.25", default-features = false, features = [
 ] }
 global-hotkey = "0.7"
 self_update = { version = "0.44", features = ["rustls"] }
-itertools = "0.14"
 strum = { version = "0.26", features = ["derive"] }
 iced_highlighter = "0.14"
 arc-swap = "1.6"

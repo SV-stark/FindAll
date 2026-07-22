@@ -320,11 +320,16 @@ impl Scanner {
                     break;
                 }
 
-                // Extension filter
+                // Extension filter (zero-allocation stack check via SmallVec)
                 let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
                     continue;
                 };
-                if !allowed_extensions.contains(&ext.to_ascii_lowercase()) {
+                let mut ext_buf = smallvec::SmallVec::<[u8; 16]>::new();
+                ext_buf.extend_from_slice(ext.as_bytes());
+                ext_buf.make_ascii_lowercase();
+                let is_allowed = std::str::from_utf8(&ext_buf)
+                    .is_ok_and(|ext_lower| allowed_extensions.contains(ext_lower));
+                if !is_allowed {
                     continue;
                 }
 
@@ -352,14 +357,10 @@ impl Scanner {
                 chunk.push((path, modified, size));
 
                 if chunk.len() >= CHUNK_SIZE {
-                    // Batch-check staleness against the metadata DB before sending.
-                    let entries: Vec<_> = chunk
-                        .iter()
-                        .map(|(p, m, s)| (p.to_string_lossy().to_string(), *m, *s))
-                        .collect();
+                    // Batch-check staleness directly against the metadata DB without allocating Strings
                     let needs: Vec<bool> = metadata_db_for_filter
-                        .batch_needs_reindex(&entries)
-                        .unwrap_or_else(|_| vec![true; entries.len()]);
+                        .batch_needs_reindex_paths(&chunk)
+                        .unwrap_or_else(|_| vec![true; chunk.len()]);
                     let current_chunk = std::mem::take(&mut chunk);
                     let stale: Vec<_> = current_chunk
                         .into_iter()
@@ -375,13 +376,9 @@ impl Scanner {
 
             // Flush remainder
             if !chunk.is_empty() {
-                let entries: Vec<_> = chunk
-                    .iter()
-                    .map(|(p, m, s)| (p.to_string_lossy().to_string(), *m, *s))
-                    .collect();
                 let needs: Vec<bool> = metadata_db_for_filter
-                    .batch_needs_reindex(&entries)
-                    .unwrap_or_else(|_| vec![true; entries.len()]);
+                    .batch_needs_reindex_paths(&chunk)
+                    .unwrap_or_else(|_| vec![true; chunk.len()]);
                 let stale: Vec<_> = chunk
                     .into_iter()
                     .zip(needs)

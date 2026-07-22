@@ -60,11 +60,13 @@ impl FilenameIndex {
                             &aligned_bytes,
                         ) {
                             Ok(archived) => {
-                                let entries: Vec<FilenameEntry> =
-                                    rkyv::deserialize::<Vec<FilenameEntry>, rkyv::rancor::Error>(
-                                        archived,
-                                    )
-                                    .unwrap_or_default();
+                                let entries: Vec<FilenameEntry> = archived
+                                    .iter()
+                                    .map(|item| FilenameEntry {
+                                        path: item.path.as_str().to_string(),
+                                        name: CompactString::from(item.name.as_str()),
+                                    })
+                                    .collect();
                                 tracing::info!(
                                     "Loaded {} filenames from rkyv index",
                                     entries.len()

@@ -320,8 +320,13 @@ impl MetadataDb {
             .and_then(|metadata| {
                 let bytes = metadata.value();
                 rkyv::access::<rkyv::Archived<FileMetadata>, rkyv::rancor::Error>(bytes)
-                    .map_or(None, |meta| {
-                        rkyv::deserialize::<FileMetadata, rkyv::rancor::Error>(meta).ok()
+                    .ok()
+                    .map(|meta| FileMetadata {
+                        path: meta.path.as_str().to_string(),
+                        modified: meta.modified.to_native(),
+                        size: meta.size.to_native(),
+                        content_hash: meta.content_hash,
+                        indexed_at: meta.indexed_at.to_native(),
                     })
             });
 
@@ -404,6 +409,41 @@ impl MetadataDb {
             .iter()
             .map(|(path, modified, size)| {
                 table.get(path.as_str()).ok().is_none_or(|opt_metadata| {
+                    opt_metadata.is_none_or(|metadata| {
+                        let bytes = metadata.value();
+                        rkyv::access::<rkyv::Archived<FileMetadata>, rkyv::rancor::Error>(bytes)
+                            .ok()
+                            .is_none_or(|meta| meta.modified != *modified || meta.size != *size)
+                    })
+                })
+            })
+            .collect();
+
+        Ok(results)
+    }
+
+    /// Batch check which files need reindexing directly from `PathBuf` references without allocating Strings
+    pub fn batch_needs_reindex_paths(
+        &self,
+        entries: &[(std::path::PathBuf, u64, u64)], // (path, modified, size)
+    ) -> Result<Vec<bool>> {
+        if entries.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let txn = self.db.begin_read().map_err(|e| {
+            FlashError::database("database_operation", "files_table", e.to_string())
+        })?;
+
+        let table = txn.open_table(FILES_TABLE).map_err(|e| {
+            FlashError::database("database_operation", "files_table", e.to_string())
+        })?;
+
+        let results: Vec<bool> = entries
+            .iter()
+            .map(|(path, modified, size)| {
+                let path_str = path.to_str().unwrap_or("");
+                table.get(path_str).ok().is_none_or(|opt_metadata| {
                     opt_metadata.is_none_or(|metadata| {
                         let bytes = metadata.value();
                         rkyv::access::<rkyv::Archived<FileMetadata>, rkyv::rancor::Error>(bytes)

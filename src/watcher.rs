@@ -311,21 +311,10 @@ impl WatcherManager {
             return Ok(None);
         }
 
-        let path_buf = path.to_path_buf();
-        let parsed_res = parse_file(&path_buf, enable_ocr).await;
-
-        let parsed = match parsed_res {
-            Ok(p) => p,
-            Err(e) => {
-                warn!("Failed to parse file {:?}: {}", path, e);
-                return Ok(None);
-            }
-        };
-
+        // Fast hash check before calling heavy parser
         let mut hasher = blake3::Hasher::new();
-        let content_hash: [u8; 32] = std::fs::File::open(path).map_or_else(
-            |_| blake3::hash(parsed.content.as_bytes()).into(),
-            |mut file| {
+        let content_hash: [u8; 32] = match std::fs::File::open(path) {
+            Ok(mut file) => {
                 use std::io::Read;
                 let mut buf = [0; 16384];
                 let mut read_failed = false;
@@ -342,12 +331,30 @@ impl WatcherManager {
                     }
                 }
                 if read_failed {
-                    blake3::hash(parsed.content.as_bytes()).into()
-                } else {
-                    hasher.finalize().into()
+                    return Ok(None);
                 }
-            },
-        );
+                hasher.finalize().into()
+            }
+            Err(_) => return Ok(None),
+        };
+
+        if let Ok(Some(existing)) = metadata_db.get_metadata(path)
+            && existing.content_hash == content_hash
+        {
+            let _ = metadata_db.update_metadata(path, modified, size, content_hash);
+            return Ok(None);
+        }
+
+        let path_buf = path.to_path_buf();
+        let parsed_res = parse_file(&path_buf, enable_ocr).await;
+
+        let parsed = match parsed_res {
+            Ok(p) => p,
+            Err(e) => {
+                warn!("Failed to parse file {:?}: {}", path, e);
+                return Ok(None);
+            }
+        };
 
         Ok(Some((parsed, modified, size, content_hash)))
     }
