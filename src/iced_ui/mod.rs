@@ -660,8 +660,7 @@ impl App {
                     .sort_by_key(|b| std::cmp::Reverse(b.size.unwrap_or(0)));
             }
             SortBy::Name => {
-                self.results
-                    .sort_by_key(|a| a.title.to_lowercase());
+                self.results.sort_by_key(|a| a.title.to_lowercase());
             }
         }
     }
