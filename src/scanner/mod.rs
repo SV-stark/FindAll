@@ -19,7 +19,7 @@ fn get_file_hash(path: &std::path::Path) -> [u8; 32] {
         |_| blake3::hash(path.to_string_lossy().as_bytes()).into(),
         |mut file| {
             use std::io::Read;
-            let mut buf = [0; 16384];
+            let mut buf = vec![0u8; 65536];
             while let Ok(n) = file.read(&mut buf) {
                 if n == 0 {
                     break;

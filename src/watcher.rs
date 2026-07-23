@@ -116,7 +116,11 @@ impl WatcherManager {
                         if elapsed >= MAX_DEBOUNCE_WAIT {
                             Duration::from_millis(0) // Force flush immediately
                         } else {
-                            DEBOUNCE_GAP.min(MAX_DEBOUNCE_WAIT.checked_sub(elapsed).unwrap())
+                            DEBOUNCE_GAP.min(
+                                MAX_DEBOUNCE_WAIT
+                                    .checked_sub(elapsed)
+                                    .unwrap_or(Duration::ZERO),
+                            )
                         }
                     },
                 );
