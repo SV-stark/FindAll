@@ -138,6 +138,12 @@ pub(crate) struct CacheKey {
     pub(crate) case_sensitive: bool,
 }
 
+impl CacheKey {
+    pub fn compute_hash(&self) -> u64 {
+        ahash::RandomState::with_seeds(0x46, 0x4C, 0x41, 0x53).hash_one(self)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SearchParams<'a> {
     pub query: &'a str,
@@ -263,7 +269,7 @@ impl<'a> SearchParamsBuilder<'a> {
 /// LRU-style query result cache using moka + ahash
 #[derive(Clone)]
 pub struct QueryCache {
-    cache: Cache<CacheKey, Vec<SearchResult>>,
+    cache: Cache<u64, Vec<SearchResult>>,
 }
 
 impl Default for QueryCache {
@@ -283,11 +289,11 @@ impl QueryCache {
     }
 
     pub(crate) fn get(&self, key: &CacheKey) -> Option<Vec<SearchResult>> {
-        self.cache.get(key)
+        self.cache.get(&key.compute_hash())
     }
 
-    pub(crate) fn insert(&self, key: CacheKey, results: Vec<SearchResult>) {
-        self.cache.insert(key, results);
+    pub(crate) fn insert(&self, key: &CacheKey, results: Vec<SearchResult>) {
+        self.cache.insert(key.compute_hash(), results);
     }
 
     pub fn invalidate(&self) {
@@ -564,6 +570,16 @@ impl IndexSearcher {
     ) -> Result<Vec<SearchResult>> {
         let mut results = Vec::with_capacity(top_docs.len().min(cache_key.limit));
 
+        let snippet_generator = if query.is_empty() || query == "*" {
+            None
+        } else {
+            let query_parser =
+                tantivy::query::QueryParser::for_index(searcher.index(), vec![self.content_field]);
+            query_parser.parse_query(query).ok().and_then(|q| {
+                tantivy::snippet::SnippetGenerator::create(searcher, &*q, self.content_field).ok()
+            })
+        };
+
         for (score, doc_address) in top_docs {
             let doc: tantivy::TantivyDocument = searcher
                 .doc(doc_address)
@@ -576,6 +592,7 @@ impl IndexSearcher {
                 doc_address,
                 &doc,
                 highlight_terms,
+                snippet_generator.as_ref(),
             );
             results.push(result);
 
@@ -584,10 +601,11 @@ impl IndexSearcher {
             }
         }
 
-        self.cache.insert(cache_key.clone(), results.clone());
+        self.cache.insert(cache_key, results.clone());
         Ok(results)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn retrieve_result_with_doc(
         &self,
         searcher: &tantivy::Searcher,
@@ -596,6 +614,7 @@ impl IndexSearcher {
         doc_address: tantivy::DocAddress,
         tantivy_doc: &tantivy::TantivyDocument,
         highlight_terms: &[String],
+        snippet_generator: Option<&tantivy::snippet::SnippetGenerator>,
     ) -> SearchResult {
         let file_path = tantivy_doc
             .get_first(self.path_field)
@@ -613,9 +632,18 @@ impl IndexSearcher {
             .and_then(|v| v.as_str())
             .map(CompactString::from);
 
-        let size = tantivy_doc
-            .get_first(self.size_field)
-            .and_then(|v| v.as_u64());
+        let size = searcher
+            .segment_reader(doc_address.segment_ord)
+            .fast_fields()
+            .u64("size")
+            .ok()
+            .map(|f| f.values.get_val(doc_address.doc_id))
+            .filter(|&s| s > 0)
+            .or_else(|| {
+                tantivy_doc
+                    .get_first(self.size_field)
+                    .and_then(|v| v.as_u64())
+            });
 
         let modified = searcher
             .segment_reader(doc_address.segment_ord)
@@ -627,6 +655,18 @@ impl IndexSearcher {
                 u64::try_from(date.into_timestamp_secs()).unwrap_or(0)
             });
 
+        let snippets = snippet_generator
+            .map(|sg| {
+                let snip = sg.snippet_from_doc(tantivy_doc);
+                let html = snip.to_html();
+                if html.trim().is_empty() {
+                    Vec::new()
+                } else {
+                    vec![html]
+                }
+            })
+            .unwrap_or_default();
+
         SearchResult {
             file_path,
             score,
@@ -635,7 +675,7 @@ impl IndexSearcher {
             modified,
             size,
             matched_terms: highlight_terms.to_vec(),
-            snippets: Vec::new(),
+            snippets,
         }
     }
 
@@ -675,7 +715,8 @@ impl IndexSearcher {
         let mut results = Vec::new();
         for (_mod_time, doc_address) in top_docs {
             if let Ok(doc) = searcher.doc(doc_address) {
-                let res = self.retrieve_result_with_doc(&searcher, "", 0.0, doc_address, &doc, &[]);
+                let res =
+                    self.retrieve_result_with_doc(&searcher, "", 0.0, doc_address, &doc, &[], None);
                 results.push(res);
             }
         }

@@ -49,37 +49,41 @@ impl FilenameIndex {
             let json_path = data_path.join(LEGACY_INDEX_FILENAME);
 
             if bin_path.exists() {
-                std::fs::read(&bin_path).map_or_else(
-                    |_| Vec::new(),
-                    |bytes| {
-                        // Ensure byte alignment for rkyv
-                        let mut aligned_bytes = rkyv::util::AlignedVec::<16>::new();
-                        aligned_bytes.extend_from_slice(&bytes);
+                std::fs::File::open(&bin_path)
+                    .and_then(|file| unsafe { memmap2::MmapOptions::new().map(&file) })
+                    .map_or_else(
+                        |_| Vec::new(),
+                        |mmap| {
+                            // Ensure byte alignment for rkyv
+                            let mut aligned_bytes = rkyv::util::AlignedVec::<16>::new();
+                            aligned_bytes.extend_from_slice(&mmap);
 
-                        match rkyv::access::<rkyv::Archived<Vec<FilenameEntry>>, rkyv::rancor::Error>(
-                            &aligned_bytes,
-                        ) {
-                            Ok(archived) => {
-                                let entries: Vec<FilenameEntry> = archived
-                                    .iter()
-                                    .map(|item| FilenameEntry {
-                                        path: item.path.as_str().to_string(),
-                                        name: CompactString::from(item.name.as_str()),
-                                    })
-                                    .collect();
-                                tracing::info!(
-                                    "Loaded {} filenames from rkyv index",
-                                    entries.len()
-                                );
-                                entries
+                            match rkyv::access::<
+                                rkyv::Archived<Vec<FilenameEntry>>,
+                                rkyv::rancor::Error,
+                            >(&aligned_bytes)
+                            {
+                                Ok(archived) => {
+                                    let entries: Vec<FilenameEntry> = archived
+                                        .iter()
+                                        .map(|item| FilenameEntry {
+                                            path: item.path.as_str().to_string(),
+                                            name: CompactString::from(item.name.as_str()),
+                                        })
+                                        .collect();
+                                    tracing::info!(
+                                        "Loaded {} filenames from rkyv index (mmap)",
+                                        entries.len()
+                                    );
+                                    entries
+                                }
+                                Err(e) => {
+                                    tracing::warn!("Failed to parse rkyv filename index: {}", e);
+                                    Vec::new()
+                                }
                             }
-                            Err(e) => {
-                                tracing::warn!("Failed to parse rkyv filename index: {}", e);
-                                Vec::new()
-                            }
-                        }
-                    },
-                )
+                        },
+                    )
             } else if json_path.exists() {
                 // Migrate from legacy JSON
                 std::fs::read_to_string(&json_path).map_or_else(
