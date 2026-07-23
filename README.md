@@ -138,7 +138,7 @@ Flash Search automatically manages its index database and rolling background log
 | **Language** | Rust | Zero-overhead, memory-safe core |
 | **GUI** | Iced | High-performance, cross-platform UI framework (<30MB RAM) |
 | **Search Engine** | Tantivy | Full-text indexing with BM25 scoring |
-| **Document Intelligence** | [Xberg](https://github.com/kreuzberg-dev/kreuzberg) | Universal text extraction (75+ formats) + OCR |
+| **Document Intelligence** | [Xberg](https://github.com/xberg-io/xberg) | Universal text extraction (75+ formats) + OCR |
 | **Metadata DB** | redb | Pure Rust key-value storage |
 | **Concurrency** | Rayon + Tokio | Parallel processing + async I/O |
 
@@ -158,7 +158,7 @@ Flash Search automatically manages its index database and rolling background log
 
 <div align="center">
 
-Flash Search leverages **[Xberg](https://github.com/kreuzberg-dev/kreuzberg)**'s Rust-native text extraction engine to bypass traditional parsing bottlenecks. 
+Flash Search leverages **[Xberg](https://github.com/xberg-io/xberg)**'s Rust-native text extraction engine to bypass traditional parsing bottlenecks. 
 
 Benchmarks on standard desktop hardware (e.g., AMD Ryzen 7 / Apple M-series):
 
@@ -166,7 +166,7 @@ Benchmarks on standard desktop hardware (e.g., AMD Ryzen 7 / Apple M-series):
 
 | Metric | Value | Notes |
 |:---|:---|:---|
-| **Text Extraction Speed** | Up to **9x-40x** faster | Powered by [Xberg](https://github.com/kreuzberg-dev/kreuzberg) native extraction |
+| **Text Extraction Speed** | Up to **9x-40x** faster | Powered by [Xberg](https://github.com/xberg-io/xberg) native extraction |
 | **Indexing Throughput** | **~50-100 MB/s** | Highly parallelized via Rayon & zero-allocation path filtering |
 | **Search Latency (p50)** | **< 10ms** | Zero-copy `rkyv` binary indices + lock-free FST lookups |
 | **Search Latency (p99)** | **< 35ms** | Optimized Tantivy full-text index with debounced commits |
@@ -250,7 +250,7 @@ This project is licensed under the GNU General Public License v3 - see the [LICE
 
 Flash Search is built on the shoulders of giants. We are deeply grateful to the following projects:
 
-- **[Xberg](https://github.com/kreuzberg-dev/kreuzberg)** - Our secret weapon for universal document parsing and high-performance OCR.
+- **[Xberg](https://github.com/xberg-io/xberg)** - Our secret weapon for universal document parsing and high-performance OCR.
 - **[Tantivy](https://github.com/quickwit-oss/tantivy)** - The blazing-fast, index-based search engine that powers our core.
 - **[Iced](https://iced.rs/)** - A battery-included, type-safe GUI library that keeps our RAM usage minimal.
 - **[Redb](https://github.com/cberner/redb)** - A simple, portable, and high-performance embedded key-value store.
