@@ -1,4 +1,4 @@
-use super::{App, DateFilter, Message, SearchMode, Tab, theme};
+use super::{App, DateFilter, Message, SearchMode, SortBy, Tab, theme};
 use crate::models::{DocumentElementHighlight, ElementType};
 use iced::widget::{
     Space, TextInput, button, checkbox, column, container, mouse_area, rich_text, row, scrollable,
@@ -114,22 +114,22 @@ fn render_element(element: &DocumentElementHighlight) -> Element<'_, Message> {
     let content = rich_text(spans);
 
     match element.element_type {
-        ElementType::Title => container(content.size(24).font(Font {
+        ElementType::Title => container(content.size(22).font(Font {
             weight: font::Weight::Bold,
             ..Font::default()
         }))
         .padding(Padding {
-            bottom: 16.0,
+            bottom: 14.0,
             ..Padding::default()
         })
         .into(),
-        ElementType::Heading => container(content.size(18).font(Font {
+        ElementType::Heading => container(content.size(16).font(Font {
             weight: font::Weight::Bold,
             ..Font::default()
         }))
         .padding(Padding {
-            top: 12.0,
-            bottom: 8.0,
+            top: 10.0,
+            bottom: 6.0,
             ..Padding::default()
         })
         .into(),
@@ -140,7 +140,7 @@ fn render_element(element: &DocumentElementHighlight) -> Element<'_, Message> {
             .width(Length::Fill)
             .into(),
         ElementType::Table => container(content)
-            .padding(8)
+            .padding(10)
             .style(theme::badge_container)
             .width(Length::Fill)
             .into(),
@@ -156,37 +156,43 @@ pub fn search_view(app: &App) -> Element<'_, Message> {
         && !app.db_corrupted_dismissed
     {
         col = col.push(
-                container(
-                    row![
-                        text("⚠️ Metadata database was corrupted and has been reset. Full re-index recommended.")
-                            .size(14)
-                            .style(theme::danger_text_style()),
-                        Space::new().width(Length::Fill),
-                        button(text("Dismiss").size(12))
-                            .on_press(Message::DismissError)
-                            .padding(Padding::from([4, 8]))
-                    ]
-                    .align_y(Alignment::Center)
-                )
-                .padding(10)
-                .style(theme::warning_banner)
-                .width(Length::Fill)
-            );
+            container(
+                row![
+                    load_icon_size("warning", 16.0),
+                    text(" Metadata database was corrupted and has been reset. Full re-index recommended.")
+                        .size(13)
+                        .style(theme::danger_text_style()),
+                    Space::new().width(Length::Fill),
+                    button(text("Dismiss").size(12))
+                        .on_press(Message::DismissError)
+                        .padding(Padding::from([4, 8]))
+                        .style(theme::ghost_button())
+                ]
+                .align_y(Alignment::Center)
+                .spacing(8)
+            )
+            .padding(10)
+            .style(theme::warning_banner)
+            .width(Length::Fill)
+        );
     }
 
     if let Some(err) = &app.search_error {
         col = col.push(
             container(
                 row![
+                    load_icon_size("warning", 16.0),
                     text(format!("Error: {err}"))
-                        .size(14)
+                        .size(13)
                         .style(theme::danger_text_style()),
                     Space::new().width(Length::Fill),
                     button(text("Dismiss").size(12))
                         .on_press(Message::DismissError)
                         .padding(Padding::from([4, 8]))
+                        .style(theme::ghost_button())
                 ]
-                .align_y(Alignment::Center),
+                .align_y(Alignment::Center)
+                .spacing(8),
             )
             .padding(10)
             .style(theme::error_banner)
@@ -204,21 +210,31 @@ pub fn search_view(app: &App) -> Element<'_, Message> {
 #[allow(clippy::too_many_lines)]
 fn top_navigation(app: &App) -> Element<'_, Message> {
     let logo = row![
-        load_icon_size("search", 20.0),
-        text("Flash Search").size(18).font(Font {
-            weight: font::Weight::Bold,
-            ..Font::default()
-        }),
+        container(load_icon_size("sparkles", 18.0))
+            .padding(6)
+            .style(theme::accent_badge_container),
+        column![
+            text("FindAll").size(17).font(Font {
+                weight: font::Weight::Bold,
+                ..Font::default()
+            }),
+            text("Instant Local Search")
+                .size(10)
+                .style(theme::dim_text_style()),
+        ]
+        .spacing(1),
     ]
-    .spacing(12)
+    .spacing(10)
     .align_y(Alignment::Center);
 
     let search_bar = container(
         row![
+            load_icon_size("search", 16.0),
+            Space::new().width(Length::Fixed(4.0)),
             TextInput::new(
                 match app.search_mode {
-                    SearchMode::FullText => "Type to search everything...",
-                    SearchMode::Filename => "Type to search filenames...",
+                    SearchMode::FullText => "Search everything (text, documents, code)...",
+                    SearchMode::Filename => "Search filenames...",
                 },
                 &app.search_query,
             )
@@ -226,48 +242,62 @@ fn top_navigation(app: &App) -> Element<'_, Message> {
             .on_input(Message::SearchQueryChanged)
             .on_submit(Message::SearchSubmitted)
             .padding(Padding {
-                top: 14.0,
-                bottom: 14.0,
-                left: 16.0,
+                top: 10.0,
+                bottom: 10.0,
+                left: 8.0,
                 right: 8.0,
             })
-            .size(16)
+            .size(15)
             .style(theme::search_input())
             .width(Length::Fill),
             if app.search_query.is_empty() {
                 Element::from(Space::new().width(0).height(0))
             } else {
                 Element::from(
-                    button(load_icon_size("x", 12.0))
+                    button(load_icon_size("x", 14.0))
                         .on_press(Message::SearchQueryChanged(String::new()))
                         .style(theme::ghost_button())
                         .padding(Padding::new(6.0)),
                 )
             },
-            button(text("Aa").size(11).font(Font {
+            // Case Match Toggle Button ("Aa")
+            button(text("Aa").size(12).font(Font {
                 weight: font::Weight::Bold,
                 ..Font::default()
             }))
             .on_press(Message::ToggleCaseSensitive(!app.settings.case_sensitive))
             .style(move |t, s| theme::nav_button(app.settings.case_sensitive)(t, s))
-            .padding(Padding::from([6, 8])),
-            button(text("W").size(11).font(Font {
+            .padding(Padding::from([5, 8])),
+            // Whole Word Toggle Button ("W")
+            button(text("W").size(12).font(Font {
                 weight: font::Weight::Bold,
                 ..Font::default()
             }))
             .on_press(Message::ToggleWholeWord(!app.settings.whole_word))
             .style(move |t, s| theme::nav_button(app.settings.whole_word)(t, s))
-            .padding(Padding::from([6, 8])),
+            .padding(Padding::from([5, 8])),
+            // Search Mode Toggle Button
             button(
-                text(match app.search_mode {
-                    SearchMode::FullText => "Text",
-                    SearchMode::Filename => "File",
-                })
-                .size(11)
-                .font(Font {
-                    weight: font::Weight::Bold,
-                    ..Font::default()
-                })
+                row![
+                    load_icon_size(
+                        match app.search_mode {
+                            SearchMode::FullText => "file-text",
+                            SearchMode::Filename => "file",
+                        },
+                        12.0
+                    ),
+                    text(match app.search_mode {
+                        SearchMode::FullText => "Text",
+                        SearchMode::Filename => "File",
+                    })
+                    .size(11)
+                    .font(Font {
+                        weight: font::Weight::Bold,
+                        ..Font::default()
+                    })
+                ]
+                .spacing(4)
+                .align_y(Alignment::Center)
             )
             .on_press(Message::SearchModeChanged(match app.search_mode {
                 SearchMode::FullText => SearchMode::Filename,
@@ -277,58 +307,55 @@ fn top_navigation(app: &App) -> Element<'_, Message> {
                 let active = matches!(app.search_mode, SearchMode::Filename);
                 theme::nav_button(active)(t, s)
             })
-            .padding(Padding::from([6, 8])),
+            .padding(Padding::from([5, 10])),
             if app.is_searching {
                 Element::from(
                     container(text("Searching...").size(12).style(theme::dim_text_style()))
-                        .padding(Padding {
-                            top: 0.0,
-                            right: 16.0,
-                            bottom: 0.0,
-                            left: 0.0,
-                        }),
+                        .padding(Padding::from([4, 12])),
                 )
             } else {
                 Element::from(
-                    row![
-                        container(text("Alt+Space").size(11).style(theme::dim_text_style()))
-                            .padding(Padding {
-                                top: 4.0,
-                                right: 8.0,
-                                bottom: 4.0,
-                                left: 8.0,
+                    button(
+                        row![
+                            load_icon_size("arrow-right", 14.0),
+                            text("Search").size(12).font(Font {
+                                weight: font::Weight::Bold,
+                                ..Font::default()
                             })
-                            .style(theme::badge_container),
-                        button(load_icon("arrow-right"))
-                            .on_press(Message::SearchSubmitted)
-                            .style(theme::search_button())
-                            .padding(Padding::new(10.0)),
-                    ]
-                    .spacing(8)
-                    .align_y(Alignment::Center)
-                    .padding(Padding {
-                        top: 0.0,
-                        right: 8.0,
-                        bottom: 0.0,
-                        left: 0.0,
-                    }),
+                        ]
+                        .spacing(6)
+                        .align_y(Alignment::Center),
+                    )
+                    .on_press(Message::SearchSubmitted)
+                    .style(theme::search_button())
+                    .padding(Padding::from([6, 14])),
                 )
             }
         ]
-        .spacing(8)
+        .spacing(6)
+        .padding(Padding::from([4, 12]))
         .align_y(Alignment::Center),
     )
     .style(theme::input_container)
-    .width(Length::FillPortion(2))
-    .max_width(800.0);
+    .width(Length::FillPortion(3))
+    .max_width(850.0);
 
     let menu_items = row![
+        // Direct Client Theme Switcher (Dark 🌙 / Light ☀️)
+        button(load_icon_size(
+            if app.is_dark { "sun" } else { "moon" },
+            18.0
+        ))
+        .on_press(Message::ToggleTheme)
+        .style(theme::ghost_button())
+        .padding(10.0),
+        // Settings Button
         button(load_icon_size("settings", 18.0))
             .on_press(Message::TabChanged(Tab::Settings))
             .style(theme::ghost_button())
             .padding(10.0),
     ]
-    .spacing(8);
+    .spacing(6);
 
     container(
         row![
@@ -339,10 +366,10 @@ fn top_navigation(app: &App) -> Element<'_, Message> {
             menu_items,
         ]
         .padding(Padding {
-            top: 12.0,
-            bottom: 12.0,
-            left: 20.0,
-            right: 20.0,
+            top: 10.0,
+            bottom: 10.0,
+            left: 18.0,
+            right: 18.0,
         })
         .align_y(Alignment::Center),
     )
@@ -382,27 +409,38 @@ fn filter_chips(app: &App) -> Element<'_, Message> {
         return Space::new().height(0).into();
     }
 
-    let mut chips_row = row![].spacing(8).padding(Padding {
-        top: 8.0,
-        bottom: 8.0,
+    let mut chips_row = row![
+        load_icon_size("filter", 14.0),
+        text("Active Filters:")
+            .size(12)
+            .style(theme::dim_text_style())
+    ]
+    .spacing(8)
+    .padding(Padding {
+        top: 6.0,
+        bottom: 6.0,
         left: 16.0,
         right: 16.0,
-    });
+    })
+    .align_y(Alignment::Center);
 
     for ext in &app.filter_extensions {
         let ext_clone = ext.clone();
         chips_row = chips_row.push(
             container(
                 row![
-                    text(ext).size(12),
+                    text(ext).size(11).font(Font {
+                        weight: font::Weight::Bold,
+                        ..Font::default()
+                    }),
                     mouse_area(load_icon_size("x", 12.0))
                         .on_press(Message::ToggleFilterExtension(ext_clone))
                 ]
-                .spacing(8)
+                .spacing(6)
                 .align_y(Alignment::Center),
             )
-            .padding(Padding::from([4, 8]))
-            .style(theme::badge_container),
+            .padding(Padding::from([3, 8]))
+            .style(|t| theme::file_badge_container(t, Some(ext))),
         );
     }
 
@@ -432,7 +470,8 @@ fn collapsed_sidebar(_app: &App) -> Element<'_, Message> {
 
 fn left_sidebar(app: &App) -> Element<'_, Message> {
     let filter_header = row![
-        text("Search Filters").size(16).font(Font {
+        load_icon_size("filter", 16.0),
+        text("Filter Options").size(15).font(Font {
             weight: font::Weight::Bold,
             ..Font::default()
         }),
@@ -442,36 +481,46 @@ fn left_sidebar(app: &App) -> Element<'_, Message> {
             .style(theme::ghost_button())
             .padding(Padding::new(6.0))
     ]
-    .align_y(Alignment::Center);
+    .align_y(Alignment::Center)
+    .spacing(8);
 
     let filter_content = scrollable(
         column![
+            category_filter_section(app),
+            sort_order_section(app),
             extension_filter_section(app),
             size_filter_section(app),
             date_filter_section(app),
             match_options_section(app),
             Space::new().height(Length::Fill),
-            button(text("Clear Filters").size(13))
-                .on_press(Message::ClearFilters)
-                .style(theme::secondary_button())
-                .width(Length::Fill)
-                .padding(Padding::new(10.0)),
+            button(
+                row![
+                    load_icon_size("x", 14.0),
+                    text("Reset All Filters").size(12)
+                ]
+                .spacing(6)
+                .align_y(Alignment::Center)
+            )
+            .on_press(Message::ClearFilters)
+            .style(theme::secondary_button())
+            .width(Length::Fill)
+            .padding(Padding::new(8.0)),
         ]
-        .spacing(24),
+        .spacing(20),
     )
     .height(Length::Fill);
 
     let filter_panel = column![
         filter_header,
-        Space::new().height(Length::Fixed(8.0)),
+        Space::new().height(Length::Fixed(4.0)),
         filter_content,
     ]
-    .spacing(16)
-    .padding(Padding::new(20.0));
+    .spacing(14)
+    .padding(Padding::new(18.0));
 
     container(filter_panel)
         .style(theme::sidebar_container)
-        .width(Length::Fixed(300.0))
+        .width(Length::Fixed(290.0))
         .height(Length::Fill)
         .into()
 }
@@ -480,11 +529,27 @@ fn extension_filter_section(app: &App) -> Element<'_, Message> {
     sidebar_section(
         "File Extension",
         column![
-            extension_checkbox("pdf", app),
-            extension_checkbox("md", app),
-            extension_checkbox("txt", app),
-            extension_checkbox("py", app),
-            extension_checkbox("json", app),
+            row![
+                extension_checkbox("pdf", app),
+                extension_checkbox("docx", app),
+            ]
+            .spacing(12),
+            row![
+                extension_checkbox("md", app),
+                extension_checkbox("txt", app),
+            ]
+            .spacing(12),
+            row![extension_checkbox("rs", app), extension_checkbox("py", app),].spacing(12),
+            row![
+                extension_checkbox("json", app),
+                extension_checkbox("csv", app),
+            ]
+            .spacing(12),
+            row![
+                extension_checkbox("log", app),
+                extension_checkbox("cpp", app),
+            ]
+            .spacing(12),
         ]
         .spacing(8),
     )
@@ -497,17 +562,19 @@ fn size_filter_section(app: &App) -> Element<'_, Message> {
             row![
                 TextInput::new("Min", &app.min_size)
                     .on_input(Message::MinSizeChanged)
-                    .padding(Padding::new(8.0))
-                    .size(13)
+                    .padding(Padding::new(7.0))
+                    .size(12)
+                    .style(theme::search_input())
                     .width(Length::Fill),
-                text("-").size(14),
+                text("-").size(14).style(theme::dim_text_style()),
                 TextInput::new("Max", &app.max_size)
                     .on_input(Message::MaxSizeChanged)
-                    .padding(Padding::new(8.0))
-                    .size(13)
+                    .padding(Padding::new(7.0))
+                    .size(12)
+                    .style(theme::search_input())
                     .width(Length::Fill),
             ]
-            .spacing(8)
+            .spacing(6)
             .align_y(Alignment::Center),
             row![
                 size_unit_button("KB", app),
@@ -516,7 +583,7 @@ fn size_filter_section(app: &App) -> Element<'_, Message> {
             ]
             .spacing(4)
         ]
-        .spacing(12),
+        .spacing(10),
     )
 }
 
@@ -529,13 +596,13 @@ fn date_filter_section(app: &App) -> Element<'_, Message> {
             date_filter_button("Past Week", DateFilter::Last7Days, app),
             date_filter_button("Past Month", DateFilter::Last30Days, app),
         ]
-        .spacing(6),
+        .spacing(4),
     )
 }
 
 fn match_options_section(app: &App) -> iced::widget::Column<'_, Message> {
     column![
-        text("Search Mode")
+        text("Search Scope")
             .size(12)
             .font(Font {
                 weight: font::Weight::Bold,
@@ -552,8 +619,8 @@ fn match_options_section(app: &App) -> iced::widget::Column<'_, Message> {
         .padding(Padding::new(4.0))
         .style(theme::sidebar_panel_container)
         .width(Length::Fill),
-        Space::new().height(Length::Fixed(8.0)),
-        text("Match Options")
+        Space::new().height(Length::Fixed(6.0)),
+        text("Match Flags")
             .size(12)
             .font(Font {
                 weight: font::Weight::Bold,
@@ -565,21 +632,21 @@ fn match_options_section(app: &App) -> iced::widget::Column<'_, Message> {
                 checkbox(app.settings.case_sensitive)
                     .label("Match Case")
                     .on_toggle(Message::ToggleCaseSensitive)
-                    .size(18)
-                    .text_size(13),
+                    .size(16)
+                    .text_size(12),
                 checkbox(app.settings.whole_word)
                     .label("Whole Word")
                     .on_toggle(Message::ToggleWholeWord)
-                    .size(18)
-                    .text_size(13),
+                    .size(16)
+                    .text_size(12),
             ]
             .spacing(8)
         )
-        .padding(Padding::new(12.0))
+        .padding(Padding::new(10.0))
         .style(theme::sidebar_panel_container)
         .width(Length::Fill),
     ]
-    .spacing(8)
+    .spacing(6)
 }
 
 fn search_mode_button<'a>(label: &'a str, mode: SearchMode, app: &App) -> Element<'a, Message> {
@@ -597,30 +664,16 @@ fn search_mode_button<'a>(label: &'a str, mode: SearchMode, app: &App) -> Elemen
         }
     })
     .width(Length::Fill)
-    .padding(Padding::from([6, 12]))
+    .padding(Padding::from([5, 10]))
     .into()
 }
 
 fn results_panel(app: &App) -> Element<'_, Message> {
     if app.results.is_empty() {
-        let (icon, msg) = if app.search_query.is_empty() {
-            ("search", "Type something to begin searching...")
-        } else {
-            ("warning", "No results found for your query.")
-        };
-
-        return container(
-            column![
-                load_icon_size(icon, 48.0),
-                text(msg).size(18).style(theme::dim_text_style()),
-            ]
-            .spacing(16)
-            .align_x(Alignment::Center),
-        )
-        .center_x(Length::Fill)
-        .center_y(Length::Fill)
-        .width(Length::FillPortion(2))
-        .into();
+        if app.search_query.is_empty() {
+            return welcome_hero_view(app);
+        }
+        return no_results_view(app);
     }
 
     let results = scrollable(column(
@@ -638,6 +691,184 @@ fn results_panel(app: &App) -> Element<'_, Message> {
         .into()
 }
 
+fn welcome_hero_view(app: &App) -> Element<'_, Message> {
+    let hero = column![
+        Space::new().height(Length::Fixed(16.0)),
+        row![
+            container(load_icon_size("sparkles", 32.0))
+                .padding(14)
+                .style(theme::accent_badge_container),
+            column![
+                text("FindAll Instant Search").size(22).font(Font {
+                    weight: font::Weight::Bold,
+                    ..Font::default()
+                }),
+                text("Ultrafast local text, document, and filename search engine")
+                    .size(13)
+                    .style(theme::dim_text_style()),
+            ]
+            .spacing(4),
+        ]
+        .spacing(16)
+        .align_y(Alignment::Center),
+        Space::new().height(Length::Fixed(24.0)),
+        // Client Feature & Shortcut Cards
+        row![
+            // Shortcuts Card
+            container(
+                column![
+                    row![
+                        load_icon_size("keyboard", 16.0),
+                        text("Keyboard Shortcuts").size(14).font(Font {
+                            weight: font::Weight::Bold,
+                            ..Font::default()
+                        }),
+                    ]
+                    .spacing(8)
+                    .align_y(Alignment::Center),
+                    Space::new().height(Length::Fixed(8.0)),
+                    shortcut_row("Alt + Space", "Global Search Window"),
+                    shortcut_row("Ctrl + F", "Focus Search Input"),
+                    shortcut_row("↑ / ↓", "Navigate Results"),
+                    shortcut_row("Enter", "Open Selected File"),
+                ]
+                .spacing(8)
+            )
+            .padding(18)
+            .style(theme::padded_card_container)
+            .width(Length::FillPortion(1)),
+            // Features Card
+            container(
+                column![
+                    row![
+                        load_icon_size("star", 16.0),
+                        text("Pro Search Capabilities").size(14).font(Font {
+                            weight: font::Weight::Bold,
+                            ..Font::default()
+                        }),
+                    ]
+                    .spacing(8)
+                    .align_y(Alignment::Center),
+                    Space::new().height(Length::Fixed(8.0)),
+                    feature_tip("Full Text vs Filename", "Toggle search scope in top bar"),
+                    feature_tip(
+                        "Extension Filter",
+                        "Filter PDF, MD, RS, TXT, Code in sidebar"
+                    ),
+                    feature_tip("Exact & Case Match", "Use 'Aa' and 'W' flags for precision"),
+                    feature_tip(
+                        "Instant Document Preview",
+                        "Inspect text snippets & tables live"
+                    ),
+                ]
+                .spacing(8)
+            )
+            .padding(18)
+            .style(theme::padded_card_container)
+            .width(Length::FillPortion(1)),
+        ]
+        .spacing(16)
+        .width(Length::Fill),
+        Space::new().height(Length::Fixed(20.0)),
+        // System Index Status Pill
+        container(
+            row![
+                load_icon_size("database", 16.0),
+                text(format!(
+                    "Index Status: {} files indexed ({})",
+                    app.files_indexed, app.index_size
+                ))
+                .size(12)
+                .style(theme::muted_text_style()),
+            ]
+            .spacing(10)
+            .align_y(Alignment::Center)
+        )
+        .padding(Padding::from([8, 16]))
+        .style(theme::badge_container),
+    ]
+    .spacing(12)
+    .padding(Padding::new(28.0))
+    .max_width(740.0)
+    .align_x(Alignment::Center);
+
+    container(scrollable(hero))
+        .center_x(Length::Fill)
+        .center_y(Length::Fill)
+        .width(Length::FillPortion(2))
+        .into()
+}
+
+fn shortcut_row<'a>(key: &'a str, desc: &'a str) -> Element<'a, Message> {
+    row![
+        container(text(key).size(11).font(Font {
+            weight: font::Weight::Bold,
+            ..Font::default()
+        }))
+        .padding(Padding::from([3, 8]))
+        .style(theme::badge_container),
+        text(desc).size(12).style(theme::muted_text_style()),
+    ]
+    .spacing(10)
+    .align_y(Alignment::Center)
+    .into()
+}
+
+fn feature_tip<'a>(title: &'a str, desc: &'a str) -> Element<'a, Message> {
+    column![
+        text(title).size(12).font(Font {
+            weight: font::Weight::Bold,
+            ..Font::default()
+        }),
+        text(desc).size(11).style(theme::dim_text_style()),
+    ]
+    .spacing(2)
+    .into()
+}
+
+fn no_results_view(_app: &App) -> Element<'_, Message> {
+    container(
+        column![
+            load_icon_size("warning", 40.0),
+            text("No matching results found").size(17).font(Font {
+                weight: font::Weight::Bold,
+                ..Font::default()
+            }),
+            text("Try adjusting your query or expanding search filters")
+                .size(13)
+                .style(theme::dim_text_style()),
+            Space::new().height(Length::Fixed(12.0)),
+            container(
+                column![
+                    text("Troubleshooting Suggestions:").size(12).font(Font {
+                        weight: font::Weight::Bold,
+                        ..Font::default()
+                    }),
+                    text("• Check spelling or try simpler keywords")
+                        .size(12)
+                        .style(theme::muted_text_style()),
+                    text("• Switch between Full Text and Filename search modes")
+                        .size(12)
+                        .style(theme::muted_text_style()),
+                    text("• Clear active file extension filters in the left sidebar")
+                        .size(12)
+                        .style(theme::muted_text_style()),
+                ]
+                .spacing(6)
+            )
+            .padding(16)
+            .style(theme::padded_card_container)
+            .max_width(500.0)
+        ]
+        .spacing(12)
+        .align_x(Alignment::Center),
+    )
+    .center_x(Length::Fill)
+    .center_y(Length::Fill)
+    .width(Length::FillPortion(2))
+    .into()
+}
+
 #[allow(clippy::too_many_lines)]
 #[allow(clippy::elidable_lifetime_names)]
 fn result_item_view<'a>(
@@ -649,38 +880,50 @@ fn result_item_view<'a>(
     let is_selected = selected_index == Some(i);
     let is_hovered = hovered_item_index == Some(i);
 
-    let mut actions_row = row![].spacing(10);
+    let mut actions_row = row![].spacing(8);
     if is_hovered || is_selected {
         actions_row = actions_row.push(
             row![
-                button(load_icon_size("external-link", 16.0))
-                    .on_press(Message::OpenFile(res.path.clone()))
-                    .style(theme::ghost_button())
-                    .padding(Padding::new(6.0)),
-                button(load_icon_size("folder-open", 16.0))
-                    .on_press(Message::OpenFolder(res.path.clone()))
-                    .style(theme::ghost_button())
-                    .padding(Padding::new(6.0)),
-                button(load_icon_size("copy", 16.0))
+                button(
+                    row![load_icon_size("external-link", 13.0), text("Open").size(11)]
+                        .spacing(4)
+                        .align_y(Alignment::Center)
+                )
+                .on_press(Message::OpenFile(res.path.clone()))
+                .style(theme::ghost_button())
+                .padding(Padding::from([4, 8])),
+                button(
+                    row![load_icon_size("folder-open", 13.0), text("Folder").size(11)]
+                        .spacing(4)
+                        .align_y(Alignment::Center)
+                )
+                .on_press(Message::OpenFolder(res.path.clone()))
+                .style(theme::ghost_button())
+                .padding(Padding::from([4, 8])),
+                button(load_icon_size("copy", 14.0))
                     .on_press(Message::CopyPath(res.path.clone()))
                     .style(theme::ghost_button())
-                    .padding(Padding::new(6.0)),
+                    .padding(Padding::new(5.0)),
             ]
             .spacing(4),
         );
     }
 
+    let ext_str = res.extension.as_deref().unwrap_or("FILE");
+    let file_icon_name = match ext_str.to_lowercase().as_str() {
+        "pdf" | "txt" | "md" | "doc" | "docx" => "file-text",
+        "rs" | "py" | "js" | "ts" | "cpp" | "c" | "cs" | "java" | "go" | "html" | "css"
+        | "json" | "toml" => "file-code",
+        "png" | "jpg" | "jpeg" | "svg" | "gif" => "file-image",
+        "mp4" | "mkv" | "avi" => "file-video",
+        "mp3" | "wav" | "flac" => "file-audio",
+        _ => "file",
+    };
+
     let card_content = column![
         row![
-            load_icon_size(
-                if res.extension.as_deref() == Some("pdf") {
-                    "file-text"
-                } else {
-                    "file"
-                },
-                18.0
-            ),
-            text(&*res.title).size(15).font(Font {
+            load_icon_size(file_icon_name, 18.0),
+            text(&*res.title).size(14).font(Font {
                 weight: font::Weight::Bold,
                 ..Font::default()
             }),
@@ -691,20 +934,16 @@ fn result_item_view<'a>(
         .align_y(Alignment::Center),
         text(&res.path).size(12).style(theme::dim_text_style()),
         row![
-            container(
-                text(res.extension.as_deref().unwrap_or("FILE"))
-                    .size(10)
-                    .font(Font {
-                        weight: font::Weight::Bold,
-                        ..Font::default()
-                    })
-            )
+            container(text(ext_str.to_uppercase()).size(10).font(Font {
+                weight: font::Weight::Bold,
+                ..Font::default()
+            }))
             .padding(Padding::from([2, 6]))
-            .style(theme::accent_badge_container),
+            .style(|t| theme::file_badge_container(t, res.extension.as_deref())),
             container(
                 text(
                     res.size
-                        .map_or_else(|| "Unknown".to_string(), crate::iced_ui::format_size)
+                        .map_or_else(|| "Unknown size".to_string(), crate::iced_ui::format_size)
                 )
                 .size(10)
             )
@@ -713,14 +952,14 @@ fn result_item_view<'a>(
             container(
                 text(
                     res.modified
-                        .map_or_else(|| "Unknown".to_string(), crate::iced_ui::format_date)
+                        .map_or_else(|| "Unknown date".to_string(), crate::iced_ui::format_date)
                 )
                 .size(10)
             )
             .padding(Padding::from([2, 6]))
             .style(theme::badge_container),
         ]
-        .spacing(8),
+        .spacing(6),
         if res.snippets.is_empty() {
             Element::from(Space::new().height(0))
         } else {
@@ -739,13 +978,13 @@ fn result_item_view<'a>(
     .spacing(8);
 
     let card_body = if is_selected {
-        let accent_strip = container(Space::new().width(Length::Fixed(3.0)).height(Length::Fill))
+        let accent_strip = container(Space::new().width(Length::Fixed(4.0)).height(Length::Fill))
             .style(|_t| container::Style {
                 background: Some(iced::Background::Color(theme::ACCENT_BLUE)),
                 border: iced::Border {
                     color: iced::Color::TRANSPARENT,
                     width: 0.0,
-                    radius: iced::border::Radius::from(1.5),
+                    radius: iced::border::Radius::from(2.0),
                 },
                 ..Default::default()
             });
@@ -754,7 +993,7 @@ fn result_item_view<'a>(
             accent_strip,
             container(card_content)
                 .padding(Padding {
-                    left: 12.0,
+                    left: 10.0,
                     ..Padding::default()
                 })
                 .width(Length::Fill)
@@ -768,7 +1007,7 @@ fn result_item_view<'a>(
     };
 
     let mut item_area = container(card_body)
-        .padding(Padding::new(16.0))
+        .padding(Padding::new(14.0))
         .style(if is_selected {
             theme::result_card_selected
         } else {
@@ -788,10 +1027,10 @@ fn result_item_view<'a>(
 
     container(mouse_wrapper)
         .padding(Padding {
-            top: 2.0,
-            bottom: 2.0,
-            left: 12.0,
-            right: 12.0,
+            top: 3.0,
+            bottom: 3.0,
+            left: 10.0,
+            right: 10.0,
         })
         .into()
 }
@@ -818,7 +1057,7 @@ fn parse_snippet<'a>(content: &'a str) -> Element<'a, Message> {
                         weight: font::Weight::Bold,
                         ..Font::default()
                     })
-                    .color(iced::Color::from_rgb8(234, 179, 8)),
+                    .color(theme::HIT_AMBER),
             );
             current_pos = absolute_end + 4;
         } else {
@@ -848,16 +1087,22 @@ fn right_panel(app: &App) -> Element<'_, Message> {
         || {
             container(
                 column![
-                    load_icon_size("file-text", 48.0),
+                    load_icon_size("file-text", 44.0),
                     text(if app.is_loading_preview {
                         "Loading document contents..."
                     } else {
-                        "Select a file to preview"
+                        "Select a search result to preview"
                     })
-                    .size(18)
-                    .style(theme::dim_text_style()),
+                    .size(16)
+                    .font(Font {
+                        weight: font::Weight::Bold,
+                        ..Font::default()
+                    }),
+                    text("Snippets and document preview will appear here")
+                        .size(12)
+                        .style(theme::dim_text_style()),
                 ]
-                .spacing(16)
+                .spacing(12)
                 .align_x(Alignment::Center),
             )
             .center_x(Length::Fill)
@@ -868,33 +1113,39 @@ fn right_panel(app: &App) -> Element<'_, Message> {
             let res = app.selected_index.and_then(|i| app.results.get(i));
 
             let ext = res.and_then(|r| r.extension.as_deref()).unwrap_or("txt");
-
             let title = res.map_or("Document Preview", |r| &*r.title);
 
-            let file_icon = if ext == "pdf" {
-                "file-text"
-            } else if ext == "md" || ext == "txt" {
-                "file"
-            } else {
-                "file-code"
+            let file_icon = match ext.to_lowercase().as_str() {
+                "pdf" | "txt" | "md" | "doc" => "file-text",
+                "rs" | "py" | "js" | "ts" | "cpp" | "c" | "json" => "file-code",
+                "png" | "jpg" | "jpeg" | "svg" => "file-image",
+                _ => "file",
             };
 
             let quick_actions: Element<'_, Message> = res.map_or_else(
                 || row![].into(),
                 |r| {
                     row![
-                        button(load_icon_size("external-link", 16.0))
-                            .on_press(Message::OpenFile(r.path.clone()))
-                            .style(theme::ghost_button())
-                            .padding(Padding::new(6.0)),
-                        button(load_icon_size("folder-open", 16.0))
-                            .on_press(Message::OpenFolder(r.path.clone()))
-                            .style(theme::ghost_button())
-                            .padding(Padding::new(6.0)),
-                        button(load_icon_size("copy", 16.0))
+                        button(
+                            row![load_icon_size("external-link", 13.0), text("Open").size(11)]
+                                .spacing(4)
+                                .align_y(Alignment::Center)
+                        )
+                        .on_press(Message::OpenFile(r.path.clone()))
+                        .style(theme::ghost_button())
+                        .padding(Padding::from([4, 8])),
+                        button(
+                            row![load_icon_size("folder-open", 13.0), text("Folder").size(11)]
+                                .spacing(4)
+                                .align_y(Alignment::Center)
+                        )
+                        .on_press(Message::OpenFolder(r.path.clone()))
+                        .style(theme::ghost_button())
+                        .padding(Padding::from([4, 8])),
+                        button(load_icon_size("copy", 14.0))
                             .on_press(Message::CopyPath(r.path.clone()))
                             .style(theme::ghost_button())
-                            .padding(Padding::new(6.0)),
+                            .padding(Padding::new(5.0)),
                     ]
                     .spacing(4)
                     .into()
@@ -921,17 +1172,17 @@ fn right_panel(app: &App) -> Element<'_, Message> {
                 .align_y(Alignment::Center),
             )
             .padding(Padding {
-                top: 14.0,
-                bottom: 14.0,
-                left: 20.0,
-                right: 20.0,
+                top: 12.0,
+                bottom: 12.0,
+                left: 18.0,
+                right: 18.0,
             })
             .style(theme::header_container)
             .width(Length::Fill);
 
             let content: Element<'_, Message> =
                 column(preview_result.elements.iter().map(render_element))
-                    .spacing(12)
+                    .spacing(10)
                     .into();
 
             let snippets: Element<'_, Message> = res.map_or_else(
@@ -941,13 +1192,18 @@ fn right_panel(app: &App) -> Element<'_, Message> {
                         column![].into()
                     } else {
                         column![
-                            text("Context Highlights")
-                                .size(13)
-                                .font(Font {
-                                    weight: font::Weight::Bold,
-                                    ..Font::default()
-                                })
-                                .style(theme::muted_text_style()),
+                            row![
+                                load_icon_size("sparkles", 14.0),
+                                text("Matching Snippets")
+                                    .size(13)
+                                    .font(Font {
+                                        weight: font::Weight::Bold,
+                                        ..Font::default()
+                                    })
+                                    .style(theme::muted_text_style()),
+                            ]
+                            .spacing(6)
+                            .align_y(Alignment::Center),
                             column(
                                 r.snippets
                                     .iter()
@@ -968,7 +1224,7 @@ fn right_panel(app: &App) -> Element<'_, Message> {
                         row![
                             load_icon("file-text"),
                             text(format!(
-                                "{} structural elements found",
+                                "{} structural elements parsed",
                                 preview_result.elements.len()
                             ))
                             .size(11)
@@ -978,14 +1234,14 @@ fn right_panel(app: &App) -> Element<'_, Message> {
                     )
                     .style(theme::badge_container)
                     .padding(Padding {
-                        top: 6.0,
-                        bottom: 6.0,
-                        left: 12.0,
-                        right: 12.0,
+                        top: 5.0,
+                        bottom: 5.0,
+                        left: 10.0,
+                        right: 10.0,
                     }),
                     snippets,
-                    Space::new().height(8.0),
-                    text("Full Content Preview")
+                    Space::new().height(6.0),
+                    text("Document Content")
                         .size(13)
                         .font(Font {
                             weight: font::Weight::Bold,
@@ -993,11 +1249,11 @@ fn right_panel(app: &App) -> Element<'_, Message> {
                         })
                         .style(theme::muted_text_style()),
                     container(content)
-                        .padding(Padding::new(20.0))
+                        .padding(Padding::new(18.0))
                         .style(theme::main_content_container),
                 ]
-                .spacing(20)
-                .padding(Padding::new(20.0)),
+                .spacing(18)
+                .padding(Padding::new(18.0)),
             )
             .height(Length::Fill);
 
@@ -1021,10 +1277,10 @@ fn hit_row(idx: usize, content: &str) -> Element<'_, Message> {
                 .style(theme::dim_text_style()),
             container(parse_snippet(content)).width(Length::Fill),
         ]
-        .spacing(12)
+        .spacing(10)
         .align_y(Alignment::Start),
     )
-    .padding(Padding::new(12.0))
+    .padding(Padding::new(10.0))
     .style(theme::hit_highlight_container)
     .width(Length::Fill)
     .into()
@@ -1032,15 +1288,28 @@ fn hit_row(idx: usize, content: &str) -> Element<'_, Message> {
 
 fn status_bar(app: &App) -> Element<'_, Message> {
     let mut status_row = row![
-        text(format!("{} files indexed", app.files_indexed)).size(11),
+        container(
+            row![
+                load_icon_size("database", 12.0),
+                text(format!("{} files indexed", app.files_indexed)).size(11),
+            ]
+            .spacing(6)
+            .align_y(Alignment::Center)
+        ),
         Space::new().width(Length::Fixed(16.0)),
-        text(&app.index_size).size(11),
+        text(&app.index_size)
+            .size(11)
+            .style(theme::dim_text_style()),
         Space::new().width(Length::Fill),
     ];
 
     if !app.results.is_empty() {
         status_row = status_row.push(
             row![
+                text(format!("{} results found", app.results.len()))
+                    .size(11)
+                    .style(theme::dim_text_style()),
+                Space::new().width(Length::Fixed(12.0)),
                 text("Export:").size(11).style(theme::dim_text_style()),
                 button(text("CSV").size(10).font(Font {
                     weight: font::Weight::Bold,
@@ -1088,8 +1357,8 @@ fn status_bar(app: &App) -> Element<'_, Message> {
     container(status_row.padding(Padding {
         top: 6.0,
         bottom: 6.0,
-        left: 20.0,
-        right: 20.0,
+        left: 18.0,
+        right: 18.0,
     }))
     .style(theme::top_bar_container)
     .width(Length::Fill)
@@ -1100,8 +1369,8 @@ fn extension_checkbox<'a>(ext: &'a str, app: &App) -> Element<'a, Message> {
     checkbox(app.filter_extensions.contains(ext))
         .label(ext)
         .on_toggle(move |_| Message::ToggleFilterExtension(ext.to_string()))
-        .size(18)
-        .text_size(13)
+        .size(16)
+        .text_size(12)
         .into()
 }
 
@@ -1135,6 +1404,70 @@ fn date_filter_button<'a>(label: &'a str, filter: DateFilter, app: &App) -> Elem
             }
         })
         .width(Length::Fill)
-        .padding(Padding::new(8.0))
+        .padding(Padding::new(7.0))
+        .into()
+}
+
+fn sort_order_section(app: &App) -> Element<'_, Message> {
+    sidebar_section(
+        "Sort Results By",
+        column![
+            sort_button("Relevance Score", SortBy::Relevance, app),
+            sort_button("Date Modified", SortBy::DateModified, app),
+            sort_button("File Size", SortBy::Size, app),
+            sort_button("File Name", SortBy::Name, app),
+        ]
+        .spacing(4),
+    )
+}
+
+fn sort_button<'a>(label: &'a str, sort: SortBy, app: &App) -> Element<'a, Message> {
+    let is_active = app.sort_by == sort;
+    button(text(label).size(12))
+        .on_press(Message::SortByChanged(sort))
+        .style(move |t: &iced::Theme, s| {
+            if is_active {
+                theme::nav_button(true)(t, s)
+            } else {
+                theme::ghost_button()(t, s)
+            }
+        })
+        .width(Length::Fill)
+        .padding(Padding::new(7.0))
+        .into()
+}
+
+fn category_filter_section(app: &App) -> Element<'_, Message> {
+    sidebar_section(
+        "Quick Categories",
+        column![
+            category_preset_button("📄 Documents", &["pdf", "docx", "md", "txt"], app),
+            category_preset_button("💻 Source Code", &["rs", "py", "js", "ts", "cpp"], app),
+            category_preset_button("📊 Data & Logs", &["json", "csv", "log", "xml"], app),
+            category_preset_button("🖼️ Images", &["png", "jpg", "jpeg", "svg"], app),
+        ]
+        .spacing(4),
+    )
+}
+
+fn category_preset_button<'a>(
+    label: &'a str,
+    exts: &'static [&'static str],
+    app: &App,
+) -> Element<'a, Message> {
+    let is_active = exts.iter().all(|e| app.filter_extensions.contains(*e));
+    let exts_vec: Vec<String> = exts.iter().map(|s| (*s).to_string()).collect();
+
+    button(text(label).size(12))
+        .on_press(Message::ToggleCategory(exts_vec))
+        .style(move |t: &iced::Theme, s| {
+            if is_active {
+                theme::nav_button(true)(t, s)
+            } else {
+                theme::ghost_button()(t, s)
+            }
+        })
+        .width(Length::Fill)
+        .padding(Padding::new(7.0))
         .into()
 }

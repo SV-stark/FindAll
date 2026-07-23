@@ -124,6 +124,31 @@ pub enum SearchMode {
     Filename,
 }
 
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+    strum::Display,
+    strum::EnumIter,
+    strum::EnumString,
+)]
+pub enum SortBy {
+    #[default]
+    #[strum(serialize = "Relevance")]
+    Relevance,
+    #[strum(serialize = "Date Modified")]
+    DateModified,
+    #[strum(serialize = "Size")]
+    Size,
+    #[strum(serialize = "Name")]
+    Name,
+}
+
 pub fn get_search_input_id() -> Id {
     static ID: std::sync::OnceLock<Id> = std::sync::OnceLock::new();
     ID.get_or_init(Id::unique).clone()
@@ -177,11 +202,13 @@ pub enum Message {
     // Filters
     FilterExtensionChanged(String),
     ToggleFilterExtension(String),
+    ToggleCategory(Vec<String>),
     MinSizeChanged(String),
     MaxSizeChanged(String),
     SizeUnitChanged(String),
     DateFilterChanged(DateFilter),
     SearchModeChanged(SearchMode),
+    SortByChanged(SortBy),
     ToggleCaseSensitive(bool),
     ToggleWholeWord(bool),
     ClearFilters,
@@ -253,6 +280,7 @@ pub struct App {
     pub(crate) size_unit: String,
     pub(crate) date_filter: DateFilter,
     pub(crate) search_mode: SearchMode,
+    pub(crate) sort_by: SortBy,
     pub(crate) filter_size: String,
     pub(crate) files_indexed: i32,
     pub(crate) index_size: String,
@@ -316,6 +344,7 @@ impl Default for App {
             size_unit: "MB".to_string(),
             date_filter: DateFilter::Anytime,
             search_mode: SearchMode::FullText,
+            sort_by: SortBy::default(),
             filter_size: String::new(),
             files_indexed: 0,
             index_size: "0 MB".to_string(),
@@ -613,6 +642,30 @@ impl App {
         })
     }
 
+    pub fn sort_results(&mut self) {
+        match self.sort_by {
+            SortBy::Relevance => {
+                self.results.sort_by(|a, b| {
+                    b.score
+                        .partial_cmp(&a.score)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
+            }
+            SortBy::DateModified => {
+                self.results
+                    .sort_by_key(|b| std::cmp::Reverse(b.modified.unwrap_or(0)));
+            }
+            SortBy::Size => {
+                self.results
+                    .sort_by_key(|b| std::cmp::Reverse(b.size.unwrap_or(0)));
+            }
+            SortBy::Name => {
+                self.results
+                    .sort_by_key(|a| a.title.to_lowercase());
+            }
+        }
+    }
+
     fn save_settings(&self) -> Task<Message> {
         if let Some(state) = &self.state {
             let settings = self.settings.clone();
@@ -645,9 +698,15 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::SearchResultsReceived(id, results) => {
             if id == app.search_id {
                 app.results = results;
+                app.sort_results();
                 app.is_searching = false;
                 app.selected_index = None;
             }
+            Task::none()
+        }
+        Message::SortByChanged(sort) => {
+            app.sort_by = sort;
+            app.sort_results();
             Task::none()
         }
         Message::SearchError(e) => {
@@ -720,6 +779,19 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                 app.filter_extensions.remove(&ext);
             } else {
                 app.filter_extensions.insert(ext);
+            }
+            app.perform_search(false)
+        }
+        Message::ToggleCategory(exts) => {
+            let all_present = exts.iter().all(|e| app.filter_extensions.contains(e));
+            if all_present {
+                for e in &exts {
+                    app.filter_extensions.remove(e);
+                }
+            } else {
+                for e in exts {
+                    app.filter_extensions.insert(e);
+                }
             }
             app.perform_search(false)
         }

@@ -27,18 +27,19 @@
 
 <h2 align="center">🚀 Features</h2>
 
-- **⚡ Blazing Fast**: Sub-50ms search results across millions of documents
-- **📂 Filename Search**: Instant filename-only search mode for ultra-fast navigation
-- **💾 Minimal Footprint**: <30MB RAM usage at idle (vs 200MB+ for Electron apps)
-- **📄 Universal Format Support**: Native support for **75+ formats** (PDF, Office, Images, Archives, Ebooks, etc.)
-- **🔍 Full-Text Search**: BM25 scoring, boolean queries, exact phrase matching
-- **📸 Integrated OCR**: Search text within images and scanned PDFs via Kreuzberg
-- **📊 Advanced Filters**: Filter by size (`size:>1MB`), extension (`ext:rs`), or path (`path:src`)
-- **🔄 Live Indexing**: Automatic file watching and incremental updates
-- **🎯 Smart Filtering**: .gitignore support, custom exclude patterns
-- **🌙 Native UI**: Beautiful dark/light themes using Iced's high-performance renderer.
-- **🔄 Auto-Update**: Seamlessly checks for and installs new updates in the background.
-- **🚀 Auto-Launch**: Configurable to launch quietly on system startup so search is always ready.
+- **⚡ Blazing Fast**: Sub-10ms search queries across millions of indexed local documents
+- **🎨 Windows 11 Fluent UI 2**: Glassmorphic top bar, dark/light theme toggle, rounded geometry, and category color badges
+- **📂 Filename & Full-Text Modes**: Toggle instantly between full-text document search and filename-only search
+- **💾 Minimal Footprint**: Asynchronous Tokio + Rayon + Mimalloc runtime with minimal idle memory usage
+- **📄 Universal Format Support**: Native text & structural extraction for **75+ formats** (PDF, Office, Images, Archives, Ebooks, Code, etc.)
+- **🔍 Structural Preview**: Live document preview featuring extracted headings, code callouts, tables, and amber match tags
+- **📸 Integrated OCR Pipeline**: Search scanned PDFs and image files via Kreuzberg & Tesseract
+- **🏷️ Category Presets & Filters**: 1-click presets for **Documents**, **Source Code**, **Data & Logs**, and **Images**, plus extension/size/date filters
+- **📊 Dynamic Result Sorting**: Re-order results on the fly by **Relevance Score**, **Date Modified**, **File Size**, or **File Name**
+- **🔄 Live File Watching**: Real-time index updates via `notify` event watcher
+- **🎯 Smart Control**: `.gitignore` rule parsing, custom exclude patterns, and global `Alt+Space` hotkey
+- **🌙 Instant Theme Switcher**: 1-click direct header toggle between Dark 🌙 and Light ☀️ modes
+- **🔒 Guaranteed Privacy**: 100% local processing with zero network calls and zero telemetry
 
 
 <h2 align="center">📥 Installation</h2>
