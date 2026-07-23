@@ -258,6 +258,8 @@ pub enum Message {
     SelectPreviousResult,
     SelectNextResult,
     OpenSelectedResult,
+    ShowSelectedInFolder,
+    CopySelectedPath,
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -1173,6 +1175,24 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             }
             Task::none()
         }
+        Message::ShowSelectedInFolder => {
+            if let Some(idx) = app.selected_index
+                && idx < app.results.len()
+            {
+                let path = app.results[idx].path.clone();
+                return Task::done(Message::OpenFolder(path));
+            }
+            Task::none()
+        }
+        Message::CopySelectedPath => {
+            if let Some(idx) = app.selected_index
+                && idx < app.results.len()
+            {
+                let path = app.results[idx].path.clone();
+                return Task::done(Message::CopyPath(path));
+            }
+            Task::none()
+        }
         _ => Task::none(),
     }
 }
@@ -1286,18 +1306,29 @@ pub fn subscription(app: &App) -> Subscription<Message> {
     );
 
     let keyboard_sub = iced::event::listen().map(|event| match event {
-        iced::Event::Keyboard(iced::keyboard::Event::KeyPressed { key, .. }) => match key {
-            iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowUp) => {
-                Message::SelectPreviousResult
+        iced::Event::Keyboard(iced::keyboard::Event::KeyPressed { key, modifiers, .. }) => {
+            match key {
+                iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowUp) => {
+                    Message::SelectPreviousResult
+                }
+                iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowDown) => {
+                    Message::SelectNextResult
+                }
+                iced::keyboard::Key::Named(iced::keyboard::key::Named::Enter) => {
+                    if modifiers.control() {
+                        Message::ShowSelectedInFolder
+                    } else {
+                        Message::OpenSelectedResult
+                    }
+                }
+                iced::keyboard::Key::Character(ref c)
+                    if c.eq_ignore_ascii_case("c") && modifiers.control() =>
+                {
+                    Message::CopySelectedPath
+                }
+                _ => Message::NoOp,
             }
-            iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowDown) => {
-                Message::SelectNextResult
-            }
-            iced::keyboard::Key::Named(iced::keyboard::key::Named::Enter) => {
-                Message::OpenSelectedResult
-            }
-            _ => Message::NoOp,
-        },
+        }
         _ => Message::NoOp,
     });
 

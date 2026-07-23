@@ -106,10 +106,12 @@ cargo run
 | Shortcut | Action |
 |:---|:---|
 | `Alt+Space` | Toggle search window (Global Hotkey, configurable in Settings) |
-| `Ctrl+Enter` | Open selected file |
-| `Ctrl+C` | Copy file path |
+| `Ctrl+F` | Focus search input bar |
+| `↑` / `↓` | Navigate search results list with live preview rendering |
+| `Enter` | Open selected file in default desktop application |
+| `Ctrl+Enter` | Open containing folder in Windows File Explorer |
+| `Ctrl+C` | Copy selected file's absolute path to clipboard |
 | `Esc` | Close search window |
-| `↑/↓` | Navigate results |
 
 <h3 align="center">Command-Line Interface</h3>
 

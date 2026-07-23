@@ -691,6 +691,7 @@ fn results_panel(app: &App) -> Element<'_, Message> {
         .into()
 }
 
+#[allow(clippy::too_many_lines)]
 fn welcome_hero_view(app: &App) -> Element<'_, Message> {
     let hero = column![
         Space::new().height(Length::Fixed(16.0)),
@@ -731,6 +732,8 @@ fn welcome_hero_view(app: &App) -> Element<'_, Message> {
                     shortcut_row("Ctrl + F", "Focus Search Input"),
                     shortcut_row("↑ / ↓", "Navigate Results"),
                     shortcut_row("Enter", "Open Selected File"),
+                    shortcut_row("Ctrl + Enter", "Open Containing Folder"),
+                    shortcut_row("Ctrl + C", "Copy File Path"),
                 ]
                 .spacing(8)
             )
