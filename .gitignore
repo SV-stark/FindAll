@@ -9,3 +9,11 @@
 
 # Desloppify (code health tool)
 /.desloppify/
+
+# Tool Caches & Temporary Artifacts
+/.context-builder/
+/.antigravitycli/
+*.scip
+review_result.json
+lucide_debug.json
+
