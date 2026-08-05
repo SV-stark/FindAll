@@ -60,24 +60,19 @@ fn prune_old_logs(log_dir: &std::path::Path) {
 fn spawn_update_checker() {
     tokio::task::spawn_blocking(|| {
         tracing::info!("Checking for updates...");
-        // Placeholder repo config for self_update
-        let result = self_update::backends::github::Update::configure()
-            .repo_owner("SV-stark")
-            .repo_name("findall")
-            .bin_name("flash-search")
-            .show_download_progress(true)
-            .current_version(env!("CARGO_PKG_VERSION"))
-            .build();
-
-        if let Ok(updater) = result {
-            match updater.update() {
-                Ok(status) => {
-                    if status.updated() {
-                        tracing::info!("Updated to version: {}", status.version());
-                    }
+        match flash_search::system::updater::check_for_updates() {
+            Ok(check) => {
+                if check.update_available {
+                    tracing::info!(
+                        "Update available: current={}, latest={}",
+                        check.current_version,
+                        check.latest_version
+                    );
+                } else {
+                    tracing::info!("Running latest version ({})", check.current_version);
                 }
-                Err(e) => tracing::warn!("Update check failed: {}", e),
             }
+            Err(e) => tracing::warn!("Update check failed: {}", e),
         }
     });
 }

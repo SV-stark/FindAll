@@ -18,6 +18,9 @@ pub struct ParsedQuery {
     /// Size filters
     pub min_size: Option<u64>,
     pub max_size: Option<u64>,
+    /// Date/Modified filters
+    pub min_modified: Option<u64>,
+    pub max_modified: Option<u64>,
     /// Whether fuzzy matching is enabled
     pub fuzzy: bool,
     pub case_sensitive: bool,
@@ -36,11 +39,13 @@ impl ParsedQuery {
         let mut title_filter = None;
         let mut min_size = None;
         let mut max_size = None;
+        let mut min_modified = None;
+        let mut max_modified = None;
         let fuzzy = true;
 
-        // Parse operators: ext:pdf, path:docs, title:report, size:>1MB
+        // Parse operators: ext:pdf, path:docs, title:report, size:>1MB, modified:today, date:2026-08-01..2026-08-05
         let operator_regex = OPERATOR_REGEX.get_or_init(|| {
-            Regex::new(r#"(?i)(ext|path|title|size):(?:"([^"]*)"|(\S+))"#).unwrap()
+            Regex::new(r#"(?i)(ext|path|title|size|modified|date):(?:"([^"]*)"|(\S+))"#).unwrap()
         });
 
         let size_regex = SIZE_REGEX
@@ -118,6 +123,15 @@ impl ParsedQuery {
                         remaining = remaining.replace(m.as_str(), "");
                     }
                 }
+                "modified" | "date" => {
+                    if let Some((min_ts, max_ts)) = parse_date_range(&value) {
+                        min_modified = Some(min_ts);
+                        max_modified = Some(max_ts);
+                    }
+                    if let Some(m) = cap.get(0) {
+                        remaining = remaining.replace(m.as_str(), "");
+                    }
+                }
                 _ => {}
             }
         }
@@ -141,9 +155,33 @@ impl ParsedQuery {
             title_filter,
             min_size,
             max_size,
+            min_modified,
+            max_modified,
             fuzzy,
             case_sensitive,
         }
+    }
+
+    /// Check if a timestamp matches the modified date filter
+    #[must_use]
+    pub const fn matches_modified(&self, modified: Option<u64>) -> bool {
+        if self.min_modified.is_none() && self.max_modified.is_none() {
+            return true;
+        }
+        let Some(m) = modified else {
+            return false;
+        };
+        if let Some(min) = self.min_modified
+            && m < min
+        {
+            return false;
+        }
+        if let Some(max) = self.max_modified
+            && m > max
+        {
+            return false;
+        }
+        true
     }
 
     /// Check if a path matches the extension filter
@@ -210,6 +248,86 @@ pub fn extract_highlight_terms(query: &str, case_sensitive: bool) -> Vec<String>
     }
 
     terms
+}
+
+/// Parses natural language and range date expressions into timestamp intervals using `jiff`.
+#[must_use]
+pub fn parse_date_range(val: &str) -> Option<(u64, u64)> {
+    let now = jiff::Zoned::now();
+    let val_lower = val.to_lowercase();
+
+    match val_lower.as_str() {
+        "today" => {
+            let start_of_day = now
+                .date()
+                .at(0, 0, 0, 0)
+                .to_zoned(now.time_zone().clone())
+                .ok()?;
+            let min_ts = u64::try_from(start_of_day.timestamp().as_second()).ok()?;
+            let max_ts = u64::try_from(now.timestamp().as_second()).ok()?;
+            Some((min_ts, max_ts))
+        }
+        "yesterday" => {
+            let start_of_today = now
+                .date()
+                .at(0, 0, 0, 0)
+                .to_zoned(now.time_zone().clone())
+                .ok()?;
+            let start_of_yesterday = start_of_today
+                .checked_sub(jiff::SignedDuration::from_secs(86400))
+                .ok()?;
+            let min_ts = u64::try_from(start_of_yesterday.timestamp().as_second()).ok()?;
+            let max_ts = u64::try_from(start_of_today.timestamp().as_second()).ok()?;
+            Some((min_ts, max_ts))
+        }
+        "7d" | "week" | "last 7 days" => {
+            let start = now
+                .checked_sub(jiff::SignedDuration::from_secs(7 * 86400))
+                .ok()?;
+            let min_ts = u64::try_from(start.timestamp().as_second()).ok()?;
+            let max_ts = u64::try_from(now.timestamp().as_second()).ok()?;
+            Some((min_ts, max_ts))
+        }
+        "30d" | "month" | "last 30 days" => {
+            let start = now
+                .checked_sub(jiff::SignedDuration::from_secs(30 * 86400))
+                .ok()?;
+            let min_ts = u64::try_from(start.timestamp().as_second()).ok()?;
+            let max_ts = u64::try_from(now.timestamp().as_second()).ok()?;
+            Some((min_ts, max_ts))
+        }
+        _ => {
+            if let Some((start_str, end_str)) = val.split_once("..") {
+                let start_date: jiff::civil::Date = start_str.trim().parse().ok()?;
+                let end_date: jiff::civil::Date = end_str.trim().parse().ok()?;
+                let start_zoned = start_date
+                    .at(0, 0, 0, 0)
+                    .to_zoned(now.time_zone().clone())
+                    .ok()?;
+                let end_zoned = end_date
+                    .at(23, 59, 59, 0)
+                    .to_zoned(now.time_zone().clone())
+                    .ok()?;
+                let min_ts = u64::try_from(start_zoned.timestamp().as_second()).ok()?;
+                let max_ts = u64::try_from(end_zoned.timestamp().as_second()).ok()?;
+                Some((min_ts, max_ts))
+            } else if let Ok(single_date) = val.parse::<jiff::civil::Date>() {
+                let start_zoned = single_date
+                    .at(0, 0, 0, 0)
+                    .to_zoned(now.time_zone().clone())
+                    .ok()?;
+                let end_zoned = single_date
+                    .at(23, 59, 59, 0)
+                    .to_zoned(now.time_zone().clone())
+                    .ok()?;
+                let min_ts = u64::try_from(start_zoned.timestamp().as_second()).ok()?;
+                let max_ts = u64::try_from(end_zoned.timestamp().as_second()).ok()?;
+                Some((min_ts, max_ts))
+            } else {
+                None
+            }
+        }
+    }
 }
 
 #[cfg(test)]

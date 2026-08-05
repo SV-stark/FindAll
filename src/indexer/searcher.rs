@@ -440,16 +440,24 @@ impl IndexSearcher {
                 combine.push((Occur::Must, Box::new(range)));
             }
 
-            if let Some(min_mod) = params.min_modified {
+            let effective_min_mod = params.min_modified.or(parsed.min_modified);
+            let effective_max_mod = parsed.max_modified;
+
+            if effective_min_mod.is_some() || effective_max_mod.is_some() {
+                let min_val = effective_min_mod.unwrap_or(0);
+                let max_val = effective_max_mod.unwrap_or(u64::MAX);
+
                 let lower = Term::from_field_date(
                     self.modified_field,
                     tantivy::DateTime::from_timestamp_secs(
-                        i64::try_from(min_mod).unwrap_or(i64::MAX),
+                        i64::try_from(min_val).unwrap_or(i64::MAX),
                     ),
                 );
                 let upper = Term::from_field_date(
                     self.modified_field,
-                    tantivy::DateTime::from_timestamp_secs(i64::MAX / 1000),
+                    tantivy::DateTime::from_timestamp_secs(
+                        i64::try_from(max_val).unwrap_or(i64::MAX / 1000),
+                    ),
                 );
                 let range = RangeQuery::new(Bound::Included(lower), Bound::Included(upper));
                 combine.push((Occur::Must, Box::new(range)));

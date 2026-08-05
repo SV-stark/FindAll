@@ -457,9 +457,18 @@ impl Scanner {
                     });
                 }
 
+                let load_metrics =
+                    crate::system::throttling::get_adaptive_system_load(indexing_threads);
+                if load_metrics.throttle_delay_ms > 0 {
+                    tokio::time::sleep(std::time::Duration::from_millis(
+                        load_metrics.throttle_delay_ms,
+                    ))
+                    .await;
+                }
+
                 match crate::parsers::parse_files_batch(
                     &paths_to_parse,
-                    indexing_threads,
+                    load_metrics.active_threads,
                     enable_ocr,
                 )
                 .await
