@@ -1,4 +1,5 @@
 pub mod drive_scanner;
+pub mod fast_walker;
 
 use crate::error::Result;
 use crate::indexer::IndexManager;
