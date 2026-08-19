@@ -62,6 +62,9 @@ pub fn setup_app() -> std::result::Result<
 
     info!("App data directory: {:?}", app_data_dir);
 
+    // Pre-warm Xberg extractors and registry
+    parsers::ensure_initialized();
+
     let settings_manager = settings::SettingsManager::new(&app_data_dir);
     let settings = settings_manager.load().unwrap_or_else(|e| {
         warn!("Failed to load settings (using defaults): {}", e);

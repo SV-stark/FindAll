@@ -2,8 +2,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::Error;
 
-pub use anyhow::Context;
-
 #[derive(Error, Debug, Clone)]
 pub enum FlashError {
     #[error("IO error: {0}")]

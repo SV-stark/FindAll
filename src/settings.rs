@@ -1,9 +1,7 @@
 use crate::error::{FlashError, Result};
 use serde::{Deserialize, Serialize};
-use smart_default::SmartDefault;
 use std::fs;
 use std::path::{Path, PathBuf};
-use strum::{Display, EnumIter, EnumString};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchHistoryItem {
@@ -31,48 +29,27 @@ impl Clone for AllowedExtensionsCache {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, SmartDefault)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct AppSettings {
     #[serde(default = "default_settings_version")]
-    #[default(default_settings_version())]
     pub version: u32,
 
     // Indexing
     pub index_dirs: Vec<String>,
-    #[default(vec![
-        ".git/".to_string(),
-        "node_modules/".to_string(),
-        "target/".to_string(),
-        "AppData/".to_string(),
-        "*.tmp".to_string(),
-        "*.temp".to_string(),
-        "Thumbs.db".to_string(),
-        ".DS_Store".to_string(),
-    ])]
     pub exclude_patterns: Vec<String>,
-    #[default(vec![
-        "$RECYCLE.BIN".to_string(),
-        "System Volume Information".to_string(),
-    ])]
     pub exclude_folders: Vec<String>, // Explicit folder paths to exclude
-    #[default(true)]
     pub auto_index_on_startup: bool,
     #[serde(default = "default_true")]
-    #[default(true)]
     pub use_gitignore: bool,
-    #[default(100)]
     pub index_file_size_limit_mb: u32,
     #[serde(default)]
     pub custom_extensions: String,
 
     // Search
-    #[default(50)]
     pub max_results: usize,
-    #[default(true)]
     pub search_history_enabled: bool,
-    #[default(true)]
     pub fuzzy_matching: bool,
     pub case_sensitive: bool,
     #[serde(default)]
@@ -82,36 +59,27 @@ pub struct AppSettings {
     pub recent_searches: Vec<String>,
     #[serde(default)]
     pub search_history: Vec<SearchHistoryItem>,
-    #[default(true)]
     pub filename_index_enabled: bool,
 
     // Appearance
     pub theme: Theme,
     pub font_size: FontSize,
-    #[default(true)]
     pub show_file_extensions: bool,
-    #[default(50)]
     pub results_per_page: usize,
 
     // Behavior
-    #[default(true)]
     pub minimize_to_tray: bool,
     pub auto_start_on_boot: bool,
     pub double_click_action: DoubleClickAction,
-    #[default(true)]
     pub show_preview_panel: bool,
     pub context_menu_enabled: bool,
 
     #[serde(default = "default_global_hotkey")]
-    #[default(default_global_hotkey())]
     pub global_hotkey: String,
 
     // Performance
-    #[default(4)]
     pub indexing_threads: u8,
-    #[default(512)]
     pub memory_limit_mb: u32,
-    #[default(false)]
     pub enable_ocr: bool,
 
     // Pinned files for quick access
@@ -119,6 +87,57 @@ pub struct AppSettings {
 
     #[serde(skip)]
     pub allowed_extensions_cache: AllowedExtensionsCache,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            version: default_settings_version(),
+            index_dirs: Vec::new(),
+            exclude_patterns: vec![
+                ".git/".to_string(),
+                "node_modules/".to_string(),
+                "target/".to_string(),
+                "AppData/".to_string(),
+                "*.tmp".to_string(),
+                "*.temp".to_string(),
+                "Thumbs.db".to_string(),
+                ".DS_Store".to_string(),
+            ],
+            exclude_folders: vec![
+                "$RECYCLE.BIN".to_string(),
+                "System Volume Information".to_string(),
+            ],
+            auto_index_on_startup: true,
+            use_gitignore: true,
+            index_file_size_limit_mb: 100,
+            custom_extensions: String::new(),
+            max_results: 50,
+            search_history_enabled: true,
+            fuzzy_matching: true,
+            case_sensitive: false,
+            whole_word: false,
+            default_filters: DefaultFilters::default(),
+            recent_searches: Vec::new(),
+            search_history: Vec::new(),
+            filename_index_enabled: true,
+            theme: Theme::default(),
+            font_size: FontSize::default(),
+            show_file_extensions: true,
+            results_per_page: 50,
+            minimize_to_tray: true,
+            auto_start_on_boot: false,
+            double_click_action: DoubleClickAction::default(),
+            show_preview_panel: true,
+            context_menu_enabled: false,
+            global_hotkey: default_global_hotkey(),
+            indexing_threads: 4,
+            memory_limit_mb: 512,
+            enable_ocr: false,
+            pinned_files: Vec::new(),
+            allowed_extensions_cache: AllowedExtensionsCache::default(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -141,10 +160,7 @@ const fn default_settings_version() -> u32 {
     1
 }
 
-#[derive(
-    Debug, Clone, Serialize, Deserialize, Default, Display, EnumString, EnumIter, PartialEq, Eq,
-)]
-#[strum(serialize_all = "lowercase")]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum Theme {
     #[default]
@@ -153,10 +169,29 @@ pub enum Theme {
     Dark,
 }
 
-#[derive(
-    Debug, Clone, Serialize, Deserialize, Default, Display, EnumString, EnumIter, PartialEq, Eq,
-)]
-#[strum(serialize_all = "lowercase")]
+impl std::fmt::Display for Theme {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Auto => write!(f, "auto"),
+            Self::Light => write!(f, "light"),
+            Self::Dark => write!(f, "dark"),
+        }
+    }
+}
+
+impl std::str::FromStr for Theme {
+    type Err = String;
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "auto" => Ok(Self::Auto),
+            "light" => Ok(Self::Light),
+            "dark" => Ok(Self::Dark),
+            other => Err(format!("Unknown theme: {other}")),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum FontSize {
     Small,
@@ -165,16 +200,57 @@ pub enum FontSize {
     Large,
 }
 
-#[derive(
-    Debug, Clone, Serialize, Deserialize, Default, Display, EnumString, EnumIter, PartialEq, Eq,
-)]
-#[strum(serialize_all = "snake_case")]
+impl std::fmt::Display for FontSize {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Small => write!(f, "small"),
+            Self::Medium => write!(f, "medium"),
+            Self::Large => write!(f, "large"),
+        }
+    }
+}
+
+impl std::str::FromStr for FontSize {
+    type Err = String;
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "small" => Ok(Self::Small),
+            "medium" => Ok(Self::Medium),
+            "large" => Ok(Self::Large),
+            other => Err(format!("Unknown font size: {other}")),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum DoubleClickAction {
     #[default]
     OpenFile,
     ShowInFolder,
     Preview,
+}
+
+impl std::fmt::Display for DoubleClickAction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::OpenFile => write!(f, "open_file"),
+            Self::ShowInFolder => write!(f, "show_in_folder"),
+            Self::Preview => write!(f, "preview"),
+        }
+    }
+}
+
+impl std::str::FromStr for DoubleClickAction {
+    type Err = String;
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "open_file" | "openfile" => Ok(Self::OpenFile),
+            "show_in_folder" | "showinfolder" => Ok(Self::ShowInFolder),
+            "preview" => Ok(Self::Preview),
+            other => Err(format!("Unknown double click action: {other}")),
+        }
+    }
 }
 
 pub struct SettingsManager {

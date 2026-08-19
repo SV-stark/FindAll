@@ -77,32 +77,76 @@ fn spawn_update_checker() {
     });
 }
 
-fn main() {
-    let args: Vec<String> = std::env::args().collect();
-    let is_cli = args.iter().any(|arg| arg == "--cli" || arg == "-c");
-    if is_cli {
-        let is_json = args.iter().any(|arg| arg == "--json" || arg == "-j");
-        // Find the query
-        let mut query = None;
-        for i in 1..args.len() {
-            if (args[i] == "--cli" || args[i] == "-c") && i + 1 < args.len() {
-                query = Some(args[i + 1].clone());
-                break;
+fn handle_cli(args: &[String]) {
+    let is_json = args.iter().any(|arg| arg == "--json" || arg == "-j");
+    let mut query = None;
+    for i in 1..args.len() {
+        if (args[i] == "--cli" || args[i] == "-c") && i + 1 < args.len() {
+            query = Some(args[i + 1].clone());
+            break;
+        }
+    }
+
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("Failed to create tokio runtime");
+
+    let run_result = rt.block_on(async { flash_search::run_cli(query, is_json, None).await });
+
+    if let Err(e) = run_result {
+        eprintln!("CLI Error: {e}");
+        std::process::exit(1);
+    }
+    std::process::exit(0);
+}
+
+fn try_lock_app<'a>(
+    lock: &'a mut fd_lock::RwLock<std::fs::File>,
+    lock_path: &std::path::Path,
+) -> Option<fd_lock::RwLockWriteGuard<'a, std::fs::File>> {
+    lock.try_write().map_or_else(
+        |_| {
+            if let Ok(pid_str) = std::fs::read_to_string(lock_path)
+                && let Ok(pid) = pid_str.trim().parse::<u32>()
+            {
+                #[cfg(windows)]
+                {
+                    use windows::Win32::Foundation::CloseHandle;
+                    use windows::Win32::System::Threading::{
+                        OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+                    };
+                    if let Ok(handle) =
+                        unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }
+                        && !handle.is_invalid()
+                    {
+                        unsafe {
+                            let _ = CloseHandle(handle);
+                        };
+                        std::process::exit(0);
+                    }
+                }
             }
-        }
+            tracing::warn!("Lock is blocked but PID appears stale. Continuing anyway...");
+            None
+        },
+        |mut guard| {
+            use std::io::{Seek, SeekFrom, Write};
+            let _ = guard.seek(SeekFrom::Start(0));
+            let _ = guard.set_len(0);
+            let _ = write!(&mut *guard, "{}", std::process::id());
+            let _ = guard.flush();
+            Some(guard)
+        },
+    )
+}
 
-        let rt = tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()
-            .expect("Failed to create tokio runtime");
+fn main() {
+    flash_search::parsers::ensure_initialized();
 
-        let run_result = rt.block_on(async { flash_search::run_cli(query, is_json, None).await });
-
-        if let Err(e) = run_result {
-            eprintln!("CLI Error: {e}");
-            std::process::exit(1);
-        }
-        std::process::exit(0);
+    let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|arg| arg == "--cli" || arg == "-c") {
+        handle_cli(&args);
     }
 
     let mut initial_dir = None;
@@ -139,40 +183,8 @@ fn main() {
 
     let mut lock = fd_lock::RwLock::new(lock_file);
 
-    // We must keep the guard alive for the entire program to hold the OS lock.
-    // If it fails, another instance holds it.
-    let _guard_lock = lock.try_write().map_or_else(
-        |_| {
-            // App might already be running. Check for a stale PID.
-            if let Ok(pid_str) = std::fs::read_to_string(&lock_path)
-                && let Ok(pid) = pid_str.trim().parse::<u32>()
-            {
-                use sysinfo::System;
-                let mut sys = System::new();
-                sys.refresh_processes(
-                    sysinfo::ProcessesToUpdate::Some(&[sysinfo::Pid::from_u32(pid)]),
-                    true,
-                );
-                if let Some(process) = sys.process(sysinfo::Pid::from_u32(pid))
-                    && process.name().to_string_lossy().contains("flash-search")
-                {
-                    // Alive and is flash-search - just exit
-                    std::process::exit(0);
-                }
-            }
-            // If we reach here, it's either a stale lock or unreadable.
-            tracing::warn!("Lock is blocked but PID appears stale. Continuing anyway...");
-            None
-        },
-        |mut guard| {
-            use std::io::{Seek, SeekFrom, Write};
-            let _ = guard.seek(SeekFrom::Start(0));
-            let _ = guard.set_len(0);
-            let _ = write!(&mut *guard, "{}", std::process::id());
-            let _ = guard.flush();
-            Some(guard)
-        },
-    );
+    // Guard kept alive for lifetime of program to hold OS lock
+    let _guard_lock = try_lock_app(&mut lock, &lock_path);
 
     init_logging(&app_dir);
 
@@ -185,12 +197,13 @@ fn main() {
 
     spawn_update_checker();
 
-    // Set up graceful shutdown
-    ctrlc::set_handler(|| {
-        info!("Shutdown signal received, committing index...");
-        flash_search::SHUTDOWN_FLAG.store(true, Ordering::SeqCst);
-    })
-    .expect("Error setting Ctrl-C handler");
+    // Set up graceful shutdown via Tokio signal
+    rt.spawn(async {
+        if tokio::signal::ctrl_c().await.is_ok() {
+            info!("Shutdown signal received, committing index...");
+            flash_search::SHUTDOWN_FLAG.store(true, Ordering::SeqCst);
+        }
+    });
 
     // Run the UI
     if let Err(e) = flash_search::run_ui(initial_dir) {

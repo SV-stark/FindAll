@@ -342,7 +342,7 @@ impl IndexSearcher {
             .get_field("extension")
             .map_err(|_| FlashError::index_field("extension", "Field not found"))?;
 
-        Ok(Self {
+        let searcher = Self {
             reader,
             index_path,
             cache: QueryCache::new(),
@@ -352,7 +352,22 @@ impl IndexSearcher {
             modified_field,
             size_field,
             extension_field,
-        })
+        };
+
+        // Warm up readers in the background to prime OS page cache and segment dictionaries
+        searcher.warm();
+
+        Ok(searcher)
+    }
+
+    /// Pre-warm index reader searchers, field norms, and term dictionaries
+    pub fn warm(&self) {
+        let searcher = self.reader.searcher();
+        let all_query = tantivy::query::AllQuery;
+        let _ = searcher.search(
+            &all_query,
+            &tantivy::collector::TopDocs::with_limit(1).order_by_score(),
+        );
     }
 
     /// Search the index and return top results with optional filters

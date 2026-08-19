@@ -79,23 +79,22 @@ fn highlight_search_matches(
         return spans;
     }
 
-    // Escape terms and build a pattern like: (term1|term2|...)
-    let pattern = matched_terms
+    let valid_terms: Vec<&str> = matched_terms
         .iter()
+        .map(String::as_str)
         .filter(|t| !t.is_empty())
-        .map(|t| regex::escape(t))
-        .collect::<Vec<_>>()
-        .join("|");
+        .collect();
 
-    if pattern.is_empty() {
+    if valid_terms.is_empty() {
         return spans;
     }
 
-    let regex_res = regex::RegexBuilder::new(&format!("({pattern})"))
-        .case_insensitive(!case_sensitive)
-        .build();
-
-    let Ok(re) = regex_res else {
+    // Use SIMD-accelerated Aho-Corasick multi-pattern search
+    let Ok(matcher) = aho_corasick::AhoCorasick::builder()
+        .ascii_case_insensitive(!case_sensitive)
+        .match_kind(aho_corasick::MatchKind::LeftmostFirst)
+        .build(&valid_terms)
+    else {
         return spans;
     };
 
@@ -106,7 +105,7 @@ fn highlight_search_matches(
         }
 
         let mut matches = Vec::new();
-        for m in re.find_iter(&text) {
+        for m in matcher.find_iter(&text) {
             matches.push((m.start(), m.end()));
         }
 

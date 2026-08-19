@@ -13,43 +13,40 @@ use std::ops::Range;
 
 #[allow(dead_code)]
 struct TermHighlighter {
-    terms: Vec<String>,
+    matcher: Option<aho_corasick::AhoCorasick>,
 }
 
 impl TermHighlighter {
     #[allow(dead_code)]
     #[must_use]
-    pub const fn new(terms: Vec<String>) -> Self {
-        Self { terms }
+    pub fn new(terms: &[String]) -> Self {
+        let valid_terms: Vec<&str> = terms
+            .iter()
+            .map(String::as_str)
+            .filter(|t| !t.is_empty())
+            .collect();
+
+        let matcher = if valid_terms.is_empty() {
+            None
+        } else {
+            aho_corasick::AhoCorasick::builder()
+                .ascii_case_insensitive(true)
+                .match_kind(aho_corasick::MatchKind::LeftmostFirst)
+                .build(&valid_terms)
+                .ok()
+        };
+
+        Self { matcher }
     }
 
     #[allow(dead_code)]
     fn highlight_line(&self, line: &str) -> Vec<(Range<usize>, iced::Color)> {
-        if self.terms.is_empty() {
-            return Vec::new();
-        }
-
-        let pattern = self
-            .terms
-            .iter()
-            .filter(|t| !t.is_empty())
-            .map(|t| regex::escape(t))
-            .collect::<Vec<_>>()
-            .join("|");
-
-        if pattern.is_empty() {
-            return Vec::new();
-        }
-
-        let Ok(re) = regex::RegexBuilder::new(&format!("({pattern})"))
-            .case_insensitive(true)
-            .build()
-        else {
+        let Some(ref matcher) = self.matcher else {
             return Vec::new();
         };
 
         let mut matches = Vec::new();
-        for m in re.find_iter(line) {
+        for m in matcher.find_iter(line) {
             matches.push(m.start()..m.end());
         }
 

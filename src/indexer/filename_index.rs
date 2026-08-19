@@ -31,6 +31,10 @@ pub struct FilenameIndexStats {
 const INDEX_FILENAME: &str = "filenames.bin";
 /// Legacy JSON filename for migration
 const LEGACY_INDEX_FILENAME: &str = "filenames.json";
+/// Magic header for verified rkyv index
+const MAGIC_HEADER: &[u8; 8] = b"FS_FN_01";
+/// Header length: 8 bytes magic + 32 bytes BLAKE3 hash
+const HEADER_LEN: usize = 40;
 
 pub struct FilenameIndex {
     committed: ArcSwap<Vec<FilenameEntry>>,
@@ -54,7 +58,41 @@ impl FilenameIndex {
                     .map_or_else(
                         |_| Vec::new(),
                         |mmap| {
-                            // Ensure byte alignment for rkyv
+                            // Check for BLAKE3 verified header
+                            if mmap.len() >= HEADER_LEN && &mmap[..8] == MAGIC_HEADER {
+                                let expected_hash = &mmap[8..HEADER_LEN];
+                                let payload = &mmap[HEADER_LEN..];
+                                let actual_hash = blake3::hash(payload);
+
+                                if actual_hash.as_bytes() == expected_hash {
+                                    let mut aligned_bytes = rkyv::util::AlignedVec::<16>::new();
+                                    aligned_bytes.extend_from_slice(payload);
+
+                                    // Safety: Payload integrity is verified via BLAKE3 checksum match
+                                    let archived = unsafe {
+                                        rkyv::access_unchecked::<rkyv::Archived<Vec<FilenameEntry>>>(
+                                            &aligned_bytes,
+                                        )
+                                    };
+                                    let entries: Vec<FilenameEntry> = archived
+                                        .iter()
+                                        .map(|item| FilenameEntry {
+                                            path: item.path.as_str().to_string(),
+                                            name: CompactString::from(item.name.as_str()),
+                                        })
+                                        .collect();
+                                    tracing::info!(
+                                        "Loaded {} filenames from verified rkyv index (instant unchecked read)",
+                                        entries.len()
+                                    );
+                                    return entries;
+                                }
+                                tracing::warn!(
+                                    "BLAKE3 checksum mismatch on filename index, falling back to checked validation"
+                                );
+                            }
+
+                            // Fallback for legacy format or unverified payload
                             let mut aligned_bytes = rkyv::util::AlignedVec::<16>::new();
                             aligned_bytes.extend_from_slice(&mmap);
 
@@ -72,7 +110,7 @@ impl FilenameIndex {
                                         })
                                         .collect();
                                     tracing::info!(
-                                        "Loaded {} filenames from rkyv index (mmap)",
+                                        "Loaded {} filenames from rkyv index (checked validation)",
                                         entries.len()
                                     );
                                     entries
@@ -201,11 +239,16 @@ impl FilenameIndex {
         build.into_inner().unwrap_or_default()
     }
 
-    /// Save entries to disk using rkyv (consolidated from bincode)
+    /// Save entries to disk using rkyv with BLAKE3 checksum header
     fn save_to_disk_sync(entries: &Vec<FilenameEntry>, data_path: &std::path::Path) {
         match rkyv::to_bytes::<rkyv::rancor::Error>(entries) {
             Ok(bytes) => {
-                let _ = std::fs::write(data_path.join(INDEX_FILENAME), bytes.as_slice());
+                let hash = blake3::hash(bytes.as_slice());
+                let mut file_data = Vec::with_capacity(HEADER_LEN + bytes.len());
+                file_data.extend_from_slice(MAGIC_HEADER);
+                file_data.extend_from_slice(hash.as_bytes());
+                file_data.extend_from_slice(bytes.as_slice());
+                let _ = std::fs::write(data_path.join(INDEX_FILENAME), file_data);
             }
             Err(e) => {
                 tracing::warn!("Failed to serialize filename index: {}", e);

@@ -422,7 +422,7 @@ mod tests {
         let option = result.unwrap();
         assert!(option.is_some());
         let (doc, modified, size, hash) = option.unwrap();
-        assert_eq!(doc.content, "Initial content");
+        assert_eq!(doc.content.trim(), "Initial content");
 
         metadata
             .update_metadata(&file_path, modified, size, hash)

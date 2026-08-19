@@ -78,75 +78,60 @@ impl From<crate::models::FilenameSearchResult> for FileItem {
     }
 }
 
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Default,
-    serde::Serialize,
-    serde::Deserialize,
-    strum::Display,
-    strum::EnumIter,
-    strum::EnumString,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum DateFilter {
     #[default]
-    #[strum(serialize = "Anytime")]
     Anytime,
-    #[strum(serialize = "Today")]
     Today,
-    #[strum(serialize = "Last 7 Days")]
     Last7Days,
-    #[strum(serialize = "Last 30 Days")]
     Last30Days,
 }
 
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Default,
-    serde::Serialize,
-    serde::Deserialize,
-    strum::Display,
-    strum::EnumIter,
-    strum::EnumString,
-)]
+impl std::fmt::Display for DateFilter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Anytime => write!(f, "Anytime"),
+            Self::Today => write!(f, "Today"),
+            Self::Last7Days => write!(f, "Last 7 Days"),
+            Self::Last30Days => write!(f, "Last 30 Days"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum SearchMode {
     #[default]
-    #[strum(serialize = "Full Text")]
     FullText,
-    #[strum(serialize = "Filename")]
     Filename,
 }
 
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Default,
-    serde::Serialize,
-    serde::Deserialize,
-    strum::Display,
-    strum::EnumIter,
-    strum::EnumString,
-)]
+impl std::fmt::Display for SearchMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::FullText => write!(f, "Full Text"),
+            Self::Filename => write!(f, "Filename"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum SortBy {
     #[default]
-    #[strum(serialize = "Relevance")]
     Relevance,
-    #[strum(serialize = "Date Modified")]
     DateModified,
-    #[strum(serialize = "Size")]
     Size,
-    #[strum(serialize = "Name")]
     Name,
+}
+
+impl std::fmt::Display for SortBy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Relevance => write!(f, "Relevance"),
+            Self::DateModified => write!(f, "Date Modified"),
+            Self::Size => write!(f, "Size"),
+            Self::Name => write!(f, "Name"),
+        }
+    }
 }
 
 pub fn get_search_input_id() -> Id {
