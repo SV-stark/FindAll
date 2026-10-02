@@ -1,6 +1,18 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+/// Marker returned by [`CancelToken::check`] when a run has been cancelled.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Cancelled;
+
+impl std::fmt::Display for Cancelled {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("indexing run was cancelled")
+    }
+}
+
+impl std::error::Error for Cancelled {}
+
 /// Cooperative cancellation handle shared by every stage of one indexing run.
 ///
 /// A plain `Arc<AtomicBool>` is not enough here. `tokio::task::JoinHandle::abort`
@@ -44,9 +56,9 @@ impl CancelToken {
     /// # Errors
     ///
     /// Returns `Err(())` when this run has been cancelled or superseded.
-    pub fn check(&self) -> Result<(), ()> {
+    pub fn check(&self) -> Result<(), Cancelled> {
         if self.is_cancelled() {
-            Err(())
+            Err(Cancelled)
         } else {
             Ok(())
         }
@@ -134,6 +146,7 @@ mod tests {
         let token = controller.begin();
         assert!(token.check().is_ok());
         controller.cancel();
-        assert_eq!(token.check(), Err(()));
+        assert_eq!(token.check(), Err(Cancelled));
+        assert_eq!(token.check().unwrap_err().to_string(), "indexing run was cancelled");
     }
 }

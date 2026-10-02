@@ -170,13 +170,14 @@ pub fn format_date(timestamp: u64) -> String {
     let Ok(secs) = i64::try_from(timestamp) else {
         return "Unknown".to_string();
     };
-    match jiff::Timestamp::from_second(secs) {
-        Ok(ts) => ts
-            .to_zoned(jiff::tz::TimeZone::system())
-            .strftime("%Y-%m-%d %H:%M")
-            .to_string(),
-        Err(_) => "Unknown".to_string(),
-    }
+    jiff::Timestamp::from_second(secs).map_or_else(
+        |_| "Unknown".to_string(),
+        |ts| {
+            ts.to_zoned(jiff::tz::TimeZone::system())
+                .strftime("%Y-%m-%d %H:%M")
+                .to_string()
+        },
+    )
 }
 
 #[derive(Debug, Clone)]
@@ -709,9 +710,16 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             Task::none()
         }
         Message::ResultSelected(idx) => {
+            // `results` can shrink between a click being emitted and the message
+            // being handled (a new search replacing the list, or results being
+            // cleared). Indexing into it unchecked is a panic, and the release
+            // profile aborts on panic.
+            let Some(item) = app.results.get(idx).cloned() else {
+                tracing::debug!("Ignoring selection of out-of-range result {idx}");
+                return Task::none();
+            };
             app.selected_index = Some(idx);
             if app.settings.show_preview_panel {
-                let item = app.results[idx].clone();
                 let query = app.search_query.clone();
                 if let Some(state) = &app.state {
                     let state = state.clone();
@@ -756,19 +764,19 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             async move {
                 let _ = opener::open(std::path::Path::new(&path));
             },
-            |_| Message::NoOp,
+            |()| Message::NoOp,
         ),
         Message::OpenFolder(path) => Task::perform(
             async move {
                 let _ = crate::commands::open_folder_internal(&path);
             },
-            |_| Message::NoOp,
+            |()| Message::NoOp,
         ),
         Message::CopyPath(path) => Task::perform(
             async move {
                 let _ = crate::commands::copy_to_clipboard_internal(&path);
             },
-            |_| Message::NoOp,
+            |()| Message::NoOp,
         ),
         Message::FilterExtensionChanged(ext) => {
             app.filter_extension = ext;
@@ -961,13 +969,20 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             if !p.is_empty() && !app.settings.exclude_patterns.contains(&p) {
                 app.settings.exclude_patterns.push(p);
                 app.new_exclude_pattern.clear();
+                // Persist immediately: an exclude rule that is not saved is lost
+                // on restart, and `save_settings_internal` also pushes the new
+                // globs to the live watcher.
+                app.save_settings()
+            } else {
+                Task::none()
             }
-            Task::none()
         }
         Message::SaveSettings => app.save_settings(),
         Message::ResetSettings => {
             app.settings = AppSettings::default();
-            Task::none()
+            // Persist and reconfigure the live watcher; previously this only
+            // mutated in-memory state and was lost on restart.
+            app.save_settings()
         }
         Message::ThemeChanged(t) => {
             app.settings.theme = t;
@@ -1083,8 +1098,10 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::RemoveExcludePattern(i) => {
             if i < app.settings.exclude_patterns.len() {
                 app.settings.exclude_patterns.remove(i);
+                app.save_settings()
+            } else {
+                Task::none()
             }
-            Task::none()
         }
         Message::ExportResults(format) => {
             let results: Vec<crate::indexer::searcher::SearchResult> = app
@@ -1224,37 +1241,44 @@ pub fn subscription(app: &App) -> Subscription<Message> {
                     async move {
                         let (tx, mut rx) = tokio::sync::mpsc::channel(10);
 
-                        std::thread::spawn(move || {
+                        // The poller exits on shutdown and drops its sender, which
+                        // closes `rx` and ends this stream. Previously it looped
+                        // forever with no exit condition: changing the hotkey in
+                        // Settings spawned a fresh thread each time and the old
+                        // ones kept burning a core and re-registering the hotkey.
+                        let shutdown = std::thread::spawn(move || {
                             let manager = global_hotkey::GlobalHotKeyManager::new().ok();
-                            let registered_hotkey = if let Some(ref m) = manager
-                                && let Some(hk) = parse_hotkey(&hotkey_str)
-                                && m.register(hk).is_ok()
-                            {
-                                Some(hk)
-                            } else {
-                                None
-                            };
+                            let registered_hotkey = manager.as_ref().and_then(|m| {
+                                let hk = parse_hotkey(&hotkey_str)?;
+                                m.register(hk).is_ok().then_some(hk)
+                            });
 
                             loop {
-                                if let Ok(event) =
-                                    global_hotkey::GlobalHotKeyEvent::receiver().try_recv()
-                                    && let Some(hk) = registered_hotkey
+                                if crate::is_shutting_down() {
+                                    break;
+                                }
+
+                                if let Some(hk) = registered_hotkey
+                                    && let Ok(event) =
+                                        global_hotkey::GlobalHotKeyEvent::receiver().try_recv()
                                     && event.id == hk.id()
                                     && event.state == global_hotkey::HotKeyState::Released
+                                    && tx.blocking_send(Message::ToggleWindow).is_err()
                                 {
-                                    let _ = tx.blocking_send(Message::ToggleWindow);
+                                    break;
                                 }
 
                                 if let Ok(event) = tray_icon::menu::MenuEvent::receiver().try_recv()
                                 {
-                                    match event.id.0.as_str() {
-                                        "show" => {
-                                            let _ = tx.blocking_send(Message::RestoreWindow);
-                                        }
-                                        "quit" => {
-                                            let _ = tx.blocking_send(Message::Quit);
-                                        }
-                                        _ => {}
+                                    let msg = match event.id.0.as_str() {
+                                        "show" => Some(Message::RestoreWindow),
+                                        "quit" => Some(Message::Quit),
+                                        _ => None,
+                                    };
+                                    if let Some(msg) = msg
+                                        && tx.blocking_send(msg).is_err()
+                                    {
+                                        break;
                                     }
                                 }
 
@@ -1262,17 +1286,26 @@ pub fn subscription(app: &App) -> Subscription<Message> {
                                     button: tray_icon::MouseButton::Left,
                                     ..
                                 }) = tray_icon::TrayIconEvent::receiver().try_recv()
+                                    && tx.blocking_send(Message::ToggleWindow).is_err()
                                 {
-                                    let _ = tx.blocking_send(Message::ToggleWindow);
+                                    break;
                                 }
 
                                 std::thread::sleep(std::time::Duration::from_millis(50));
+                            }
+
+                            // Unregister so the hotkey is released immediately
+                            // rather than lingering until process exit.
+                            if let (Some(manager), Some(hk)) = (manager, registered_hotkey) {
+                                let _ = manager.unregister(hk);
                             }
                         });
 
                         while let Some(msg) = rx.recv().await {
                             let _ = output.send(msg).await;
                         }
+
+                        let _ = shutdown.join();
                     }
                 },
             )
@@ -1352,7 +1385,7 @@ async fn app_purge_directory(
     Message::IndexRebuilt
 }
 
-pub fn app_theme(app: &App) -> iced::Theme {
+pub const fn app_theme(app: &App) -> iced::Theme {
     match app.settings.theme {
         crate::settings::Theme::Dark => iced::Theme::Dark,
         crate::settings::Theme::Light => iced::Theme::Light,

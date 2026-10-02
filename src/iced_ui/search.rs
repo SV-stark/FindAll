@@ -673,7 +673,7 @@ fn results_panel(app: &App) -> Element<'_, Message> {
         return no_results_view(app);
     }
 
-    let max_display = (app.settings.results_per_page as usize).clamp(25, 200);
+    let max_display = app.settings.results_per_page.clamp(25, 200);
     let mut result_elements: Vec<Element<Message>> = app
         .results
         .iter()

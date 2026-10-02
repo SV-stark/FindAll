@@ -164,6 +164,7 @@ impl Scanner {
     /// Returns the write statistics, or the first hard error that made the index
     /// unreliable. Individual per-batch failures are logged and counted rather
     /// than aborted, so one bad batch cannot throw away hours of work.
+    #[allow(clippy::too_many_lines)]
     fn process_writer_loop(
         task_rx: &flume::Receiver<IndexTask>,
         filename_index: Option<&Arc<crate::indexer::filename_index::FilenameIndex>>,
@@ -370,16 +371,8 @@ impl Scanner {
         if let Some(f_index) = filename_index
             && !filename_batch.is_empty()
         {
-            match f_index.add_files_batch(std::mem::take(filename_batch)) {
-                Ok(written) => stats.filename_entries_written += written,
-                Err(e) => {
-                    error!(
-                        "Failed to stage {} filename entries: {e}",
-                        filename_batch.len()
-                    );
-                    stats.write_errors += filename_batch.len();
-                }
-            }
+            stats.filename_entries_written +=
+                f_index.add_files_batch(std::mem::take(filename_batch));
         }
 
         doc_batch.clear();
@@ -504,8 +497,8 @@ impl Scanner {
 
                 chunk.push((path, modified, size));
 
-                if chunk.len() >= CHUNK_SIZE {
-                    if send_stale_chunk(
+                if chunk.len() >= CHUNK_SIZE
+                    && send_stale_chunk(
                         &metadata_db_for_filter,
                         &chunk_tx,
                         &mut chunk,
@@ -513,7 +506,6 @@ impl Scanner {
                         // Downstream is gone; stop feeding it.
                         return;
                     }
-                }
             }
 
             // Flush remainder

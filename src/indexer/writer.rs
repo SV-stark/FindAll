@@ -198,6 +198,8 @@ impl IndexWriterManager {
             let term = tantivy::Term::from_field_text(self.path_field, path);
             writer.delete_term(term);
         }
+        // The guard releases here, before the caller commits.
+        drop(writer);
 
         Ok(paths.len())
     }

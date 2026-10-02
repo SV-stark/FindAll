@@ -213,6 +213,7 @@ pub async fn run_cli(
 /// process (including other users' sandboxed apps and any web page able to reach
 /// `localhost`) could query the index and dump every indexed path. The previous
 /// implementation was an open, unauthenticated port with no input length cap.
+#[allow(clippy::too_many_lines)]
 async fn start_ipc_server(state: Arc<AppState>) {
     const IPC_ADDR: &str = "127.0.0.1:9095";
     /// Maximum accepted query length in bytes.
@@ -400,67 +401,90 @@ pub fn ensure_ipc_token(app_data_dir: &std::path::Path) -> crate::error::Result<
 
 /// Fills `buffer` with cryptographically random bytes.
 fn getrandom(buffer: &mut [u8]) {
-    #[cfg(target_os = "windows")]
-    {
-        // Declared locally rather than pulled from `windows`: the generated
-        // `BCryptGenRandom` wrapper's first parameter is typed `Param<BCRYPT_ALG_HANDLE>`,
-        // which the `BCRYPT_USE_SYSTEM_PREFERRED_RNG` constant (declared as a
-        // `BCRYPTGENRANDOM_FLAGS`) does not satisfy, so it cannot be called.
-        #[link(name = "bcrypt")]
-        unsafe extern "system" {
-            fn BCryptGenRandom(
-                alg_id: u32,
-                buffer: *mut u8,
-                buffer_len: u32,
-                flags: u32,
-            ) -> i32;
-        }
-
-        // BCRYPT_USE_SYSTEM_PREFERRED_RNG
-        const SYSTEM_PREFERRED_RNG: u32 = 0x0000_0002;
-
-        // SAFETY: `buffer` is a valid, uniquely borrowed slice for `buffer_len`
-        // bytes and `alg_id` is the documented system-preferred RNG handle.
-        let status = unsafe {
-            BCryptGenRandom(
-                SYSTEM_PREFERRED_RNG,
-                buffer.as_mut_ptr(),
-                buffer.len() as u32,
-                0,
-            )
-        };
-        // NTSTATUS >= 0 means success.
-        if status >= 0 {
-            return;
-        }
+    // Uses the `getrandom` crate, which is already in the dependency graph via
+    // `rand`. A hand-rolled `BCryptGenRandom` FFI declaration was tried first and
+    // crashed with an access violation: the exported function takes an opaque
+    // algorithm handle whose correct "use the system RNG" value is
+    // `BCRYPT_USE_SYSTEM_PREFERRED_RNG`, and calling it with a plain `u32`
+    // produced garbage. This wrapper does the platform dispatch properly.
+    if getrandom::fill(buffer).is_ok() {
+        return;
     }
 
-    #[cfg(unix)]
-    {
-        use std::io::Read;
-        if std::fs::File::open("/dev/urandom")
-            .and_then(|mut f| f.read_exact(buffer))
-            .is_ok()
-        {
-            return;
-        }
-    }
-
-    // Last-resort fallback. Only reachable if the OS CSPRNG is unavailable,
-    // which should not happen on any supported platform; a weak token is still
-    // better than no token, and the failure is logged.
     warn!("OS CSPRNG unavailable; IPC token derived from a weak seed");
+    weak_random_fill(buffer);
+}
+
+/// Last-resort fallback for [`getrandom`].
+///
+/// Only reachable if the OS CSPRNG is unavailable, which should not happen on any
+/// supported platform. A weak token is still better than no token at all, and the
+/// degradation is logged.
+fn weak_random_fill(buffer: &mut [u8]) {
+    /// xorshift64* multiplier; the high 32 bits of each output word have the best
+    /// equidistribution.
+    const SCALE: u64 = 0x2545_F491_4F6C_DD1D;
+
+    warn!("OS CSPRNG unavailable; IPC token derived from a weak seed");
+
     let mut seed = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0x9E37_79B9_7F4A_7C15, |d| {
             u64::try_from(d.as_nanos()).unwrap_or(0x9E37_79B9_7F4A_7C15)
-        }) ^ (buffer.as_ptr() as usize as u64);
+        }) ^ (buffer.as_ptr() as u64);
+
     for slot in buffer.iter_mut() {
-        // xorshift64*
         seed ^= seed >> 12;
         seed ^= seed << 25;
         seed ^= seed >> 27;
-        *slot = (seed.wrapping_mul(0x2545_F491_4F6C_DD1D) >> 33) as u8;
+        let word = seed.wrapping_mul(SCALE) >> 32;
+        *slot = u8::try_from(word & 0xFF).unwrap_or(0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn getrandom_fills_the_whole_buffer() {
+        let mut a = [0u8; 32];
+        let mut b = [0u8; 32];
+        getrandom(&mut a);
+        getrandom(&mut b);
+        assert_ne!(a, [0u8; 32], "buffer must not be left zeroed");
+        assert_ne!(a, b, "two draws must differ");
+    }
+
+    #[test]
+    fn getrandom_handles_empty_and_odd_lengths() {
+        getrandom(&mut []);
+        let mut odd = [0u8; 7];
+        getrandom(&mut odd);
+        assert_ne!(odd, [0u8; 7]);
+    }
+
+    #[test]
+    fn weak_random_fill_varies() {
+        let mut a = [0u8; 32];
+        let mut b = [0u8; 32];
+        weak_random_fill(&mut a);
+        weak_random_fill(&mut b);
+        assert_ne!(a, [0u8; 32]);
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn ipc_token_is_generated_and_reused() {
+        let dir = tempdir().unwrap();
+        let token = ensure_ipc_token(dir.path()).unwrap();
+        assert_eq!(token.len(), 64, "32 bytes hex-encoded");
+        assert!(token.chars().all(|c| c.is_ascii_hexdigit()));
+
+        // A second call must return the same token, not rotate it.
+        assert_eq!(ensure_ipc_token(dir.path()).unwrap(), token);
+        assert!(dir.path().join("ipc_token").exists());
     }
 }
 

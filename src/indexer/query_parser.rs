@@ -20,7 +20,7 @@ struct OperatorToken<'a> {
 /// approach was O(n^2) and — worse — `replace` removes the first *textual*
 /// occurrence, so a query like `ext:pdf notes ext:pdf` could strip an unrelated
 /// word that happened to equal the operator text.
-fn split_operators<'a>(input: &'a str) -> (Vec<OperatorToken<'a>>, String) {
+fn split_operators(input: &str) -> (Vec<OperatorToken<'_>>, String) {
     let operator_regex = OPERATOR_REGEX.get_or_init(|| {
         // Constant pattern; a compile failure here is a programming error and is
         // caught by `test_operator_regex_compiles`.
@@ -220,7 +220,7 @@ impl ParsedQuery {
             .rsplit_once('.')
             .map_or("", |(_, e)| e)
             .to_ascii_lowercase();
-        self.extensions.iter().any(|want| *want == ext)
+        self.extensions.contains(&ext)
     }
 
     /// Check if a path matches the path filter

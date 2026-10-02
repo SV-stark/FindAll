@@ -33,11 +33,10 @@ fn get_index_meta_path(index_path: &Path) -> PathBuf {
 }
 
 fn read_schema_version(index_path: &Path) -> Option<String> {
-    if let Ok(content) = std::fs::read_to_string(get_index_meta_path(index_path)) {
-        if let Ok(meta) = serde_json::from_str::<IndexMetaInfo>(&content) {
+    if let Ok(content) = std::fs::read_to_string(get_index_meta_path(index_path))
+        && let Ok(meta) = serde_json::from_str::<IndexMetaInfo>(&content) {
             return Some(meta.schema_version);
         }
-    }
     std::fs::read_to_string(get_schema_version_path(index_path))
         .ok()
         .map(|s| s.trim().to_string())
@@ -73,7 +72,10 @@ pub struct IndexManager {
 
 impl IndexManager {
     /// Rotates timestamped index backups, retaining the 2 most recent backups.
-    fn rotate_index_backups(index_path: &Path) -> Result<PathBuf> {
+    ///
+    /// Failures while pruning are non-fatal; the caller only needs a path to
+    /// write the new backup to.
+    fn rotate_index_backups(index_path: &Path) -> PathBuf {
         let parent = index_path.parent().unwrap_or_else(|| Path::new("."));
         let stem = index_path
             .file_name()
@@ -90,11 +92,10 @@ impl IndexManager {
             let prefix = format!("{stem}.backup.");
             let mut existing_backups = Vec::new();
             for entry in entries.flatten() {
-                if let Ok(name) = entry.file_name().into_string() {
-                    if name.starts_with(&prefix) {
+                if let Ok(name) = entry.file_name().into_string()
+                    && name.starts_with(&prefix) {
                         existing_backups.push(entry.path());
                     }
-                }
             }
             existing_backups.sort();
             while existing_backups.len() >= 2 {
@@ -104,12 +105,12 @@ impl IndexManager {
             }
         }
 
-        Ok(new_backup)
+        new_backup
     }
 
     fn rebuild_index_internal(index_path: &Path) -> Result<()> {
         if index_path.exists() {
-            let backup_path = Self::rotate_index_backups(index_path)?;
+            let backup_path = Self::rotate_index_backups(index_path);
             info!("Creating index backup at {:?}", backup_path);
 
             // Attempt atomic rename first
@@ -214,7 +215,7 @@ impl IndexManager {
         );
 
         let writer = IndexWriterManager::new(&index, memory_limit_mb)?;
-        let searcher = IndexSearcher::new(&index, index_path.to_path_buf())?;
+        let searcher = IndexSearcher::new(&index, index_path)?;
 
         Ok(Self {
             index,
@@ -258,44 +259,42 @@ impl IndexManager {
         Ok(())
     }
 
-    /// Reconcile Tantivy index with metadata DB to detect anomalies or divergence.
-    /// Returns (`tantivy_docs_count`, `metadata_paths_count`).
+    /// Reports whether the Tantivy index and the metadata DB disagree.
+    ///
+    /// Returns `Some((tantivy_docs, metadata_records))` together with a warning
+    /// when they have drifted apart by more than `tolerance`.
     pub fn reconcile_with_metadata_db(
         &self,
         metadata_db: &crate::metadata::MetadataDb,
-    ) -> Result<(usize, usize)> {
+        tolerance: usize,
+    ) -> Result<Option<(usize, usize)>> {
         let stats = self.get_statistics()?;
         let meta_paths = metadata_db.get_all_file_paths()?;
         let tantivy_count = stats.total_documents;
         let db_count = meta_paths.len();
 
-        if (tantivy_count as isize - db_count as isize).abs() > 50 {
+        let diverged = tantivy_count.abs_diff(db_count) > tolerance;
+        if diverged {
             warn!(
-                "Index/Database divergence detected: Tantivy has {} docs, redb has {} records.",
-                tantivy_count, db_count
+                "Index/Database divergence detected: Tantivy has {tantivy_count} docs, \
+                 metadata DB has {db_count} records (tolerance {tolerance}).",
             );
         } else {
-            info!(
-                "Index/Database reconciled: Tantivy={}, redb={}",
-                tantivy_count, db_count
-            );
+            info!("Index/Database reconciled: Tantivy={tantivy_count}, metadata={db_count}");
         }
 
-        Ok((tantivy_count, db_count))
+        Ok(diverged.then_some((tantivy_count, db_count)))
     }
 
     /// Search the index (async with caching)
-    pub async fn search(
-        self: &Arc<Self>,
-        params: searcher::SearchParams<'_>,
-    ) -> Result<Vec<SearchResult>> {
+    pub async fn search(&self, params: searcher::SearchParams<'_>) -> Result<Vec<SearchResult>> {
         self.searcher.search(params).await
     }
 
     /// Blocking search, for callers already on a worker thread (tests, the CLI
     /// on a runtime thread, and startup warmup).
-    pub fn search_blocking(&self, params: searcher::SearchParams<'_>) -> Result<Vec<SearchResult>> {
-        self.searcher.search_sync(&params)
+    pub fn search_blocking(&self, params: &searcher::SearchParams<'_>) -> Result<Vec<SearchResult>> {
+        self.searcher.search_sync(params)
     }
 
     /// Get recent files

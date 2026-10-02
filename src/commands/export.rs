@@ -16,7 +16,7 @@ pub fn export_results_csv(results: &[SearchResult], path: &str) -> Result<()> {
     }
 
     wtr.flush()
-        .map_err(|e| FlashError::Io(std::sync::Arc::new(e.into())))?;
+        .map_err(|e| FlashError::Io(std::sync::Arc::new(e)))?;
     Ok(())
 }
 

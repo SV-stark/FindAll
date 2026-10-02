@@ -330,68 +330,102 @@ pub async fn parse_file_preview(path: &Path, enable_ocr: bool) -> Result<Vec<Pre
     Ok(elements)
 }
 
-/// Parses a batch of files: plaintext/code on the rayon pool, everything else via
-/// Xberg's concurrent batch extractor.
-///
-/// The plaintext path is I/O + UTF-8 validation bound and used to run inline on
-/// the calling Tokio worker for every file in the chunk, which stalled the whole
-/// runtime (and therefore the UI's async tasks) for the duration of the batch.
-pub async fn parse_files_batch(
-    paths: &[PathBuf],
-    max_threads: u8,
-    enable_ocr: bool,
-) -> Result<Vec<Result<(ParsedDocument, [u8; 32])>>> {
-    let mut slots: Vec<Option<Result<(ParsedDocument, [u8; 32])>>> = vec![None; paths.len()];
-    let mut complex_inputs = Vec::new();
-    let mut complex_indices = Vec::new();
+/// One file's parse outcome: either the document plus its content hash, or the
+/// reason it could not be parsed.
+pub type ParseOutcome = Result<(ParsedDocument, [u8; 32])>;
 
-    // Split the chunk into plaintext and document work.
+/// Outcome for a whole batch, positionally matching the input `paths`.
+pub type BatchParseResult = Vec<ParseOutcome>;
+
+/// One file's outcome: the index position plus its parse result.
+type ParsedSlot = (usize, ParseOutcome);
+
+/// Splits `paths` into plaintext/code work and heavy document work.
+///
+/// Returns the Xberg inputs and the position each one corresponds to in
+/// `paths`.
+fn split_batch(paths: &[PathBuf]) -> (Vec<xberg::ExtractInput>, Vec<usize>) {
+    let mut inputs = Vec::with_capacity(paths.len());
+    let mut indices = Vec::with_capacity(paths.len());
     for (idx, path) in paths.iter().enumerate() {
         if is_plaintext_fast_path(path) {
             continue;
         }
-        complex_inputs.push(xberg::ExtractInput::from_uri(
+        inputs.push(xberg::ExtractInput::from_uri(
             path.to_string_lossy().into_owned(),
         ));
-        complex_indices.push(idx);
+        indices.push(idx);
+    }
+    (inputs, indices)
+}
+
+/// Parses every plaintext/code file in `paths` in parallel, off the async
+/// runtime.
+///
+/// This is I/O plus UTF-8 validation bound. It used to run inline on the calling
+/// Tokio worker for every file in the chunk, which stalled the entire runtime —
+/// and therefore the UI's async tasks — for the duration of the batch.
+async fn parse_plaintext_files(paths: &[PathBuf]) -> Result<Vec<ParsedSlot>> {
+    use rayon::prelude::*;
+
+    if paths.is_empty() {
+        return Ok(Vec::new());
     }
 
-    // Fast-path evaluation for plain text & source code files, in parallel and
-    // off the async runtime.
-    let plaintext_paths: Vec<(usize, PathBuf)> = paths
+    // Owned copies so the rayon closure is `'static` for `spawn_blocking`.
+    let owned: Vec<(usize, PathBuf)> = paths
         .iter()
         .enumerate()
-        .filter(|(_, p)| is_plaintext_fast_path(p))
         .map(|(i, p)| (i, p.clone()))
         .collect();
 
-    if !plaintext_paths.is_empty() {
-        use rayon::prelude::*;
-        let parsed: Vec<(usize, Result<(ParsedDocument, [u8; 32])>)> =
-            tokio::task::spawn_blocking(move || {
-                plaintext_paths
-                    .par_iter()
-                    .map(|(idx, path)| {
-                        let out = parse_plaintext(path)
-                            .map(|(content, hash)| (plaintext_document(path, content), hash));
-                        (*idx, out)
-                    })
-                    .collect()
+    // `spawn_blocking` keeps the blocking reads off the runtime's async workers.
+    tokio::task::spawn_blocking(move || {
+        owned
+            .par_iter()
+            .map(|(idx, path)| {
+                let out = parse_plaintext(path)
+                    .map(|(content, hash)| (plaintext_document(path, content), hash));
+                (*idx, out)
             })
-            .await
-            .map_err(|e| {
-                FlashError::parse(
-                    &paths[0],
-                    format!("Plaintext parse pool panicked: {e}"),
-                )
-            })?;
+            .collect()
+    })
+    .await
+    .map_err(|e| FlashError::Io(std::sync::Arc::new(std::io::Error::other(format!(
+        "Plaintext parse pool panicked: {e}"
+    )))))
+}
 
-        for (idx, result) in parsed {
-            slots[idx] = Some(result);
-        }
+/// Parses a batch of files: plaintext/code on the rayon pool, everything else via
+/// Xberg's concurrent batch extractor.
+pub async fn parse_files_batch(
+    paths: &[PathBuf],
+    max_threads: u8,
+    enable_ocr: bool,
+) -> Result<BatchParseResult> {
+    let mut slots: Vec<Option<ParseOutcome>> = vec![None; paths.len()];
+
+    // Positions in `paths` that take the plaintext fast path.
+    let plaintext_positions: Vec<usize> = paths
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| is_plaintext_fast_path(p))
+        .map(|(i, _)| i)
+        .collect();
+
+    let (complex_inputs, complex_indices) = split_batch(paths);
+
+    // `parse_plaintext_files` returns slots in the order of `plaintext`, and
+    // `plaintext_positions` maps each of those back to a position in `paths`.
+    let plaintext: Vec<PathBuf> = plaintext_positions
+        .iter()
+        .map(|&i| paths[i].clone())
+        .collect();
+    let plaintext_results = parse_plaintext_files(&plaintext).await?;
+    for ((_, result), slot_idx) in plaintext_results.into_iter().zip(plaintext_positions) {
+        slots[slot_idx] = Some(result);
     }
 
-    // Process any remaining complex binary files via Xberg
     if !complex_inputs.is_empty() {
         let config = xberg::ExtractionConfig {
             use_cache: false,
@@ -403,8 +437,6 @@ pub async fn parse_files_batch(
 
         match xberg::extract_batch(complex_inputs, &config).await {
             Ok(batch_results) => {
-                let pending: Vec<usize> = complex_indices.clone();
-
                 for result in batch_results.results {
                     let source_idx = result
                         .metadata
@@ -414,7 +446,7 @@ pub async fn parse_files_batch(
                         .and_then(|v| usize::try_from(v).ok());
 
                     if let Some(sub_idx) = source_idx
-                        && let Some(&actual_idx) = pending.get(sub_idx)
+                        && let Some(&actual_idx) = complex_indices.get(sub_idx)
                     {
                         let hash = hash_file_streaming(&paths[actual_idx])?;
                         slots[actual_idx] = Some(Ok((
@@ -437,8 +469,8 @@ pub async fn parse_files_batch(
             }
             Err(e) => {
                 // `extract_batch` failing outright means every document in the
-                // chunk is unparsed. Mark them individually so the caller can
-                // fall back per-file instead of seeing one opaque batch error.
+                // chunk is unparsed. Mark them individually so the caller can fall
+                // back per-file instead of seeing one opaque batch error.
                 error!("Xberg batch extraction failed: {e}");
                 for &idx in &complex_indices {
                     slots[idx] = Some(Err(FlashError::parse(
@@ -446,18 +478,6 @@ pub async fn parse_files_batch(
                         format!("Batch extraction failed: {e}"),
                     )));
                 }
-                return Ok(slots
-                    .into_iter()
-                    .enumerate()
-                    .map(|(idx, slot)| {
-                        slot.unwrap_or_else(|| {
-                            Err(FlashError::parse(
-                                &paths[idx],
-                                "No output returned for file".to_string(),
-                            ))
-                        })
-                    })
-                    .collect());
             }
         }
     }

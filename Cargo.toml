@@ -1,6 +1,6 @@
 [package]
 name = "flash-search"
-version = "0.16.5"
+version = "0.17.0"
 description = "Ultrafast local text search"
 authors = ["Flash Search Team"]
 edition = "2024"
@@ -83,6 +83,9 @@ aho-corasick = "1.1"
 # Utilities
 thiserror = "2.0"
 blake3 = "1.5"
+# OS CSPRNG for the local IPC token. Already present transitively via `rand`;
+# declared directly because we call it.
+getrandom = "0.3"
 jiff = { version = "0.1", features = ["serde"] }
 dirs = "6.0"
 arboard = "3.4"

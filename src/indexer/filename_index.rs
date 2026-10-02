@@ -236,7 +236,8 @@ impl FilenameIndex {
         }
     }
 
-    pub fn add_file(&self, path: &str, name: &str) -> Result<usize> {
+    /// Stages a single entry. Returns the number of entries accepted (0 or 1).
+    pub fn add_file(&self, path: &str, name: &str) -> usize {
         self.stage(vec![FilenameEntry {
             path: path.to_string(),
             name: CompactString::from(name),
@@ -246,13 +247,13 @@ impl FilenameIndex {
     /// Adds multiple files to the staging buffer in a single lock acquisition.
     ///
     /// Returns the number of entries accepted.
-    pub fn add_files_batch(&self, entries: Vec<FilenameEntry>) -> Result<usize> {
+    pub fn add_files_batch(&self, entries: Vec<FilenameEntry>) -> usize {
         self.stage(entries)
     }
 
-    fn stage(&self, entries: Vec<FilenameEntry>) -> Result<usize> {
+    fn stage(&self, entries: Vec<FilenameEntry>) -> usize {
         if entries.is_empty() {
-            return Ok(0);
+            return 0;
         }
         let count = entries.len();
         let should_flush = {
@@ -265,7 +266,7 @@ impl FilenameIndex {
             // `commit` so a long scan pays for it once, not per flush.
             self.publish_staged();
         }
-        Ok(count)
+        count
     }
 
     /// Moves staged entries into the live snapshot without rebuilding the FST.
@@ -406,36 +407,17 @@ impl FilenameIndex {
             std::collections::BinaryHeap::with_capacity(limit.max(16));
         let mut seen = 0usize;
 
-        fn consider(
-            name: &str,
-            idx: usize,
-            query_lower: &str,
-            limit: usize,
-            best: &mut std::collections::BinaryHeap<Reverse<RankedHit>>,
-        ) {
-            let Some(score) = match_score(name, query_lower) else {
-                return;
-            };
-            let ranked = RankedHit { score, idx };
-            if best.len() < limit {
-                best.push(Reverse(ranked));
-            } else if let Some(Reverse(worst)) = best.peek()
-                && score < worst.score
-            {
-                best.pop();
-                best.push(Reverse(ranked));
-            }
-        }
-
         // 1. FST lookup over the committed prefix.
-        if !snapshot.fst.is_empty() {
-            if let Ok(map) = fst::Map::new(&snapshot.fst) {
+        if !snapshot.fst.is_empty()
+            && let Ok(map) = fst::Map::new(&snapshot.fst) {
                 let automaton = Subsequence::new(&query_lower);
                 let mut stream = map.search(automaton).into_stream();
                 while let Some((_, value)) = stream.next() {
                     let Ok(idx) = usize::try_from(value) else {
                         continue;
                     };
+                    // Values beyond the FST's coverage belong to the appended
+                    // tail, which is scanned linearly below.
                     if idx >= snapshot.fst_entries {
                         continue;
                     }
@@ -446,25 +428,29 @@ impl FilenameIndex {
                     consider(&entry.name, idx, &query_lower, limit, &mut best);
                 }
             }
-        }
 
         // 2. Linear scan over entries appended since the last commit.
         for (offset, entry) in snapshot.entries[snapshot.fst_entries..].iter().enumerate() {
-            let idx = snapshot.fst_entries + offset;
             seen += 1;
-            consider(&entry.name, idx, &query_lower, limit, &mut best);
+            consider(
+                &entry.name,
+                snapshot.fst_entries + offset,
+                &query_lower,
+                limit,
+                &mut best,
+            );
         }
 
-        // 3. Staged entries that have not been published yet.
+        // 3. Staged entries that have not been published yet. Their ids live past
+        // the end of the snapshot so they stay unique.
         {
             let staging = self.staging.lock();
+            let staged_base = snapshot.entries.len();
             for (offset, entry) in staging.iter().enumerate() {
                 seen += 1;
-                // Staged indices live after the snapshot, so offset them past the
-                // end of the published range to keep the ids unique.
                 consider(
                     &entry.name,
-                    snapshot.entries.len() + offset,
+                    staged_base + offset,
                     &query_lower,
                     limit,
                     &mut best,
@@ -554,6 +540,33 @@ impl FilenameIndex {
 
 use std::cmp::Reverse;
 
+/// Keeps the `limit` best-scoring candidates seen so far.
+///
+/// A short query ("a") can be a subsequence of a large fraction of a million
+/// filenames, so scoring every candidate and sorting at the end is pure waste.
+/// The heap pops the *worst* held candidate, which is only evicted when a better
+/// one arrives.
+fn consider(
+    name: &str,
+    idx: usize,
+    query_lower: &str,
+    limit: usize,
+    best: &mut std::collections::BinaryHeap<Reverse<RankedHit>>,
+) {
+    let Some(score) = match_score(name, query_lower) else {
+        return;
+    };
+
+    if best.len() < limit {
+        best.push(Reverse(RankedHit { score, idx }));
+    } else if let Some(Reverse(worst)) = best.peek()
+        && score < worst.score
+    {
+        best.pop();
+        best.push(Reverse(RankedHit { score, idx }));
+    }
+}
+
 /// A scored candidate. `Ord` is derived from the score so a `BinaryHeap` of
 /// `Reverse<RankedHit>` pops the *worst* candidate first.
 #[derive(PartialEq)]
@@ -585,24 +598,37 @@ impl Ord for RankedHit {
 /// can skip it without a magic score sentinel.
 fn match_score(name: &str, query_lower: &str) -> Option<f32> {
     let name_lower = name.to_lowercase();
-    let name_len = name_lower.len();
+    #[allow(clippy::cast_precision_loss)]
+    let name_len = name_lower.len() as f32;
+    let query_len = query_lower.len();
 
     if name_lower == query_lower {
         return Some(0.0);
     }
+
+    // `saturating_sub` keeps the length-delta term non-negative even if a
+    // multi-byte character makes `query_lower.len()` exceed the byte length we
+    // compared against.
+    #[allow(clippy::cast_precision_loss)]
+    let length_delta = (name_len - query_len as f32).max(0.0);
+
     if name_lower.starts_with(query_lower) {
-        return Some(1.0 + (name_len - query_lower.len()) as f32 * 0.001);
+        return Some(length_delta.mul_add(0.001, 1.0));
     }
     if let Some(idx) = name_lower.find(query_lower) {
-        return Some(2.0 + idx as f32 * 0.01 + (name_len - query_lower.len()) as f32 * 0.001);
+        #[allow(clippy::cast_precision_loss)]
+        let position = idx as f32;
+        return Some(length_delta.mul_add(0.001, position.mul_add(0.01, 2.0)));
     }
 
     find_subsequence_span(&name_lower, query_lower).map(|(start, end)| {
         #[allow(clippy::cast_precision_loss)]
         let span = (end - start + 1) as f32;
         #[allow(clippy::cast_precision_loss)]
-        let gap_penalty = (span - query_lower.len() as f32).max(0.0);
-        3.0 + gap_penalty * 0.1 + start as f32 * 0.01 + name_len as f32 * 0.001
+        let gap_penalty = (span - query_len as f32).max(0.0);
+        #[allow(clippy::cast_precision_loss)]
+        let position = start as f32;
+        name_len.mul_add(0.001, position.mul_add(0.01, 3.0 + gap_penalty * 0.1))
     })
 }
 
@@ -643,13 +669,15 @@ mod tests {
     fn search_finds_and_ranks_exact_before_fuzzy() {
         let dir = tempdir().unwrap();
         let index = FilenameIndex::open(dir.path()).unwrap();
-        index
-            .add_files_batch(vec![
+        assert_eq!(
+            index.add_files_batch(vec![
                 entry("/a/report.txt", "report.txt"),
                 entry("/a/re_po_rt.txt", "re_po_rt.txt"),
                 entry("/a/unrelated.docx", "unrelated.docx"),
-            ])
-            .unwrap();
+            ]),
+            3
+        );
+
         index.commit().unwrap();
         // The save task is detached; the in-memory snapshot is already current.
         let results = index.search("report", 10).unwrap();
@@ -661,15 +689,19 @@ mod tests {
     fn search_covers_entries_staged_after_last_commit() {
         let dir = tempdir().unwrap();
         let index = FilenameIndex::open(dir.path()).unwrap();
-        index
-            .add_files_batch(vec![entry("/a/alpha.txt", "alpha.txt")])
-            .unwrap();
+        assert_eq!(
+            index.add_files_batch(vec![entry("/a/alpha.txt", "alpha.txt")]),
+            1
+        );
+
         index.commit().unwrap();
 
         // Staged but not committed: must still be searchable.
-        index
-            .add_files_batch(vec![entry("/a/beta.txt", "beta.txt")])
-            .unwrap();
+        assert_eq!(
+            index.add_files_batch(vec![entry("/a/beta.txt", "beta.txt")]),
+            1
+        );
+
         let results = index.search("beta", 10).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].file_path, "/a/beta.txt");
@@ -679,13 +711,15 @@ mod tests {
     fn search_respects_limit_and_subsequence_matching() {
         let dir = tempdir().unwrap();
         let index = FilenameIndex::open(dir.path()).unwrap();
-        index
-            .add_files_batch(vec![
+        assert_eq!(
+            index.add_files_batch(vec![
                 entry("/1/abc.txt", "abc.txt"),
                 entry("/2/aabbcc.txt", "aabbcc.txt"),
                 entry("/3/acb.txt", "acb.txt"),
-            ])
-            .unwrap();
+            ]),
+            3
+        );
+
         index.commit().unwrap();
 
         let results = index.search("abc", 2).unwrap();
@@ -697,11 +731,18 @@ mod tests {
     fn empty_query_returns_nothing() {
         let dir = tempdir().unwrap();
         let index = FilenameIndex::open(dir.path()).unwrap();
-        index
-            .add_files_batch(vec![entry("/a/x.txt", "x.txt")])
-            .unwrap();
+        assert_eq!(index.add_files_batch(vec![entry("/a/x.txt", "x.txt")]), 1);
+
         index.commit().unwrap();
         assert!(index.search("", 10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn empty_batch_is_a_no_op() {
+        let dir = tempdir().unwrap();
+        let index = FilenameIndex::open(dir.path()).unwrap();
+        assert_eq!(index.add_files_batch(Vec::new()), 0);
+        assert_eq!(index.get_stats().unwrap().total_files, 0);
     }
 
     #[test]
@@ -711,14 +752,15 @@ mod tests {
         let expected: Vec<String> = (0..500)
             .map(|i| format!("/docs/file-{i}.txt"))
             .collect();
-        index
-            .add_files_batch(
+        assert_eq!(
+            index.add_files_batch(
                 expected
                     .iter()
-                    .map(|p| entry(p, p.rsplit('/').next().unwrap()))
+                    .map(|p| entry(p, std::path::Path::new(p).file_name().unwrap().to_str().unwrap()))
                     .collect(),
-            )
-            .unwrap();
+            ),
+            expected.len()
+        );
         index.commit().unwrap();
         // commit() persists on a background task; give it a chance to finish.
         std::thread::sleep(std::time::Duration::from_millis(500));

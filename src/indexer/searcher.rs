@@ -381,7 +381,11 @@ pub struct IndexSearcher {
 }
 
 impl IndexSearcher {
-    pub fn new(index: &Index, index_path: std::path::PathBuf) -> Result<Self> {
+    /// Opens a reader over `index`.
+    ///
+    /// The reader is warmed on a background thread, so this returns promptly
+    /// even for a large index.
+    pub fn new(index: &Index, index_path: &std::path::Path) -> Result<Self> {
         let reader = index
             .reader_builder()
             .reload_policy(tantivy::ReloadPolicy::OnCommitWithDelay)
@@ -411,7 +415,7 @@ impl IndexSearcher {
         let reader_for_searcher = reader.clone();
         let searcher = Self {
             reader: reader_for_searcher,
-            index_path: index_path.clone(),
+            index_path: index_path.to_path_buf(),
             cache: QueryCache::new(),
             path_field,
             content_field,
@@ -424,12 +428,12 @@ impl IndexSearcher {
 
         // Seed the cached size synchronously so the very first UI paint shows a
         // real number instead of `0`, then keep it fresh via `refresh_size_cache`.
-        *searcher.size_cache.lock() = directory_size_sync(&index_path);
+        *searcher.size_cache.lock() = directory_size_sync(index_path);
 
         // Warm the reader off the startup thread. `IndexManager::open` runs on the
         // UI bootstrap path, and a synchronous `AllQuery` scan there delays the
         // window appearing for no benefit.
-        let warm_reader = reader.clone();
+        let warm_reader = reader;
         std::thread::Builder::new()
             .name("flash-search-index-warm".to_string())
             .spawn(move || {
@@ -562,20 +566,20 @@ impl IndexSearcher {
             if let Some(ref extensions) = file_extensions
                 && !extensions.is_empty()
             {
-                let extension_queries: Vec<_> = extensions
-                    .iter()
-                    .map(|ext| {
-                        let term = tantivy::Term::from_field_text(self.extension_field, ext);
-                        tantivy::query::TermQuery::new(term, IndexRecordOption::Basic)
-                    })
-                    .collect();
-
                 combine.push((
                     Occur::Must,
                     Box::new(tantivy::query::BooleanQuery::new(
-                        extension_queries
-                            .into_iter()
-                            .map(|q| (Occur::Should, Box::new(q) as Box<dyn tantivy::query::Query>))
+                        extensions
+                            .iter()
+                            .map(|ext| {
+                                let term = tantivy::Term::from_field_text(self.extension_field, ext);
+                                let q: Box<dyn tantivy::query::Query> =
+                                    Box::new(tantivy::query::TermQuery::new(
+                                        term,
+                                        IndexRecordOption::Basic,
+                                    ));
+                                (Occur::Should, q)
+                            })
                             .collect(),
                     )),
                 ));
@@ -957,7 +961,7 @@ mod tests {
                 .case_sensitive(false),
         )
         .build();
-        let searcher = IndexSearcher::new(&index, std::path::PathBuf::from("unused")).unwrap();
+        let searcher = IndexSearcher::new(index, std::path::Path::new("unused")).unwrap();
         searcher.search_sync(&params).unwrap()
     }
 
@@ -981,11 +985,33 @@ mod tests {
     }
 
     #[test]
+    fn test_extension_filter_is_case_insensitive() {
+        // The writer lowercases the extension before indexing, so a query must
+        // match regardless of the case the user typed.
+        let (_dir, index) = fixture();
+        let upper = search(&index, |b| b.query("quarterly ext:PDF"));
+        let mixed = search(&index, |b| b.query("quarterly ext:Pdf"));
+        assert_eq!(upper.len(), 1);
+        assert_eq!(mixed.len(), 1);
+    }
+
+    #[test]
+    fn test_unknown_extension_filter_returns_nothing() {
+        let (_dir, index) = fixture();
+        assert!(search(&index, |b| b.query("quarterly ext:xyz")).is_empty());
+    }
+
+    #[test]
     fn test_ext_operator_filters_results() {
         let (_dir, index) = fixture();
         let results = search(&index, |b| b.query("quarterly ext:pdf"));
         assert_eq!(results.len(), 1);
-        assert!(results[0].file_path.ends_with(".pdf"));
+        assert!(
+            results[0]
+                .file_path
+                .to_ascii_lowercase()
+                .ends_with(".pdf")
+        );
     }
 
     #[test]
@@ -1008,7 +1034,12 @@ mod tests {
         let (_dir, index) = fixture();
         let results = search(&index, |b| b.query("quarterly title:annual"));
         assert_eq!(results.len(), 1);
-        assert!(results[0].file_path.ends_with("annual-report.pdf"));
+        assert!(
+            results[0]
+                .file_path
+                .to_ascii_lowercase()
+                .ends_with("annual-report.pdf")
+        );
 
         let none = search(&index, |b| b.query("quarterly title:does-not-exist"));
         assert!(none.is_empty());
@@ -1019,7 +1050,12 @@ mod tests {
         let (_dir, index) = fixture();
         let results = search(&index, |b| b.query("quarterly size:>1000"));
         assert_eq!(results.len(), 1, "only the 4096-byte PDF passes");
-        assert!(results[0].file_path.ends_with(".pdf"));
+        assert!(
+            results[0]
+                .file_path
+                .to_ascii_lowercase()
+                .ends_with(".pdf")
+        );
     }
 
     #[test]
@@ -1079,7 +1115,7 @@ mod tests {
     #[test]
     fn test_cache_returns_the_same_results_as_a_cold_search() {
         let (_dir, index) = fixture();
-        let searcher = IndexSearcher::new(&index, std::path::PathBuf::from("unused")).unwrap();
+        let searcher = IndexSearcher::new(&index, std::path::Path::new("unused")).unwrap();
 
         let params = SearchParams::builder()
             .query("quarterly")
@@ -1111,7 +1147,7 @@ mod tests {
             .unwrap();
         writer.commit().unwrap();
 
-        let searcher = IndexSearcher::new(&index, dir.path().to_path_buf()).unwrap();
+        let searcher = IndexSearcher::new(&index, dir.path()).unwrap();
         let stats = searcher.get_statistics().unwrap();
         assert_eq!(stats.total_documents, 1);
         assert!(stats.total_size_bytes > 0);

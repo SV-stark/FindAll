@@ -2,7 +2,6 @@
 
 use mimalloc::MiMalloc;
 
-use std::sync::atomic::Ordering;
 use tracing::{error, info};
 
 #[global_allocator]
@@ -87,10 +86,16 @@ fn handle_cli(args: &[String]) {
         }
     }
 
-    let rt = tokio::runtime::Builder::new_multi_thread()
+    let rt = match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
-        .expect("Failed to create tokio runtime");
+    {
+        Ok(rt) => rt,
+        Err(e) => {
+            eprintln!("CLI Error: failed to create the async runtime: {e}");
+            std::process::exit(1);
+        }
+    };
 
     let run_result = rt.block_on(async { flash_search::run_cli(query, is_json, None).await });
 
@@ -101,55 +106,89 @@ fn handle_cli(args: &[String]) {
     std::process::exit(0);
 }
 
+/// True when a process with this PID is currently running.
+fn process_is_alive(pid: u32) -> bool {
+    #[cfg(windows)]
+    {
+        use windows::Win32::Foundation::CloseHandle;
+        use windows::Win32::System::Threading::{
+            GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+        };
+
+        /// `STILL_ACTIVE` from the Win32 API: the process has not exited.
+        const STILL_ACTIVE_CODE: u32 = 259;
+
+        // SAFETY: a plain query-only open of a PID we read from our own lock file.
+        // `code` is a valid, initialised out-parameter.
+        unsafe {
+            let Ok(handle) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) else {
+                return false;
+            };
+            let mut code = 0u32;
+            let alive =
+                GetExitCodeProcess(handle, &raw mut code).is_ok() && code == STILL_ACTIVE_CODE;
+            let _ = CloseHandle(handle);
+            alive
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        std::path::Path::new(&format!("/proc/{pid}")).exists()
+    }
+}
+
+/// Attempts to become the single running instance.
+///
+/// `Ok(guard)` means the lock is ours and must be held for the process lifetime.
+/// `Err(AlreadyRunning)` means another *live* process holds it.
+///
+/// The PID file is only a fast path. The OS lock is the source of truth: a stale
+/// PID left behind by a hard kill is detected by the failed `try_write`, and a
+/// live process is detected by the successful one. The previous code took the
+/// opposite (and dangerous) branch, continuing to start a second instance.
 fn try_lock_app<'a>(
     lock: &'a mut fd_lock::RwLock<std::fs::File>,
     lock_path: &std::path::Path,
-) -> Option<fd_lock::RwLockWriteGuard<'a, std::fs::File>> {
-    lock.try_write().map_or_else(
-        |_| {
-            if let Ok(pid_str) = std::fs::read_to_string(lock_path)
-                && let Ok(pid) = pid_str.trim().parse::<u32>()
-            {
-                #[cfg(windows)]
-                {
-                    use windows::Win32::Foundation::CloseHandle;
-                    use windows::Win32::System::Threading::{
-                        OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
-                    };
-                    if let Ok(handle) =
-                        unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }
-                        && !handle.is_invalid()
-                    {
-                        unsafe {
-                            let _ = CloseHandle(handle);
-                        };
-                        std::process::exit(0);
-                    }
-                }
-                #[cfg(unix)]
-                {
-                    if std::path::Path::new(&format!("/proc/{pid}")).exists() {
-                        std::process::exit(0);
-                    }
-                }
-            }
-            tracing::warn!("Lock is blocked but PID appears stale. Continuing anyway...");
-            None
-        },
-        |mut guard| {
-            use std::io::{Seek, SeekFrom, Write};
-            let _ = guard.seek(SeekFrom::Start(0));
-            let _ = guard.set_len(0);
-            let _ = write!(&mut *guard, "{}", std::process::id());
-            let _ = guard.flush();
-            Some(guard)
-        },
-    )
+) -> Result<fd_lock::RwLockWriteGuard<'a, std::fs::File>, LockFailure> {
+    if let Ok(mut guard) = lock.try_write() {
+        use std::io::{Seek, SeekFrom, Write};
+        let _ = guard.seek(SeekFrom::Start(0));
+        let _ = guard.set_len(0);
+        let _ = write!(&mut *guard, "{}", std::process::id());
+        let _ = guard.flush();
+        return Ok(guard);
+    }
+
+    let recorded = std::fs::read_to_string(lock_path)
+        .ok()
+        .and_then(|s| s.trim().parse::<u32>().ok());
+
+    match recorded {
+        Some(pid) if pid != std::process::id() && process_is_alive(pid) => {
+            Err(LockFailure::AlreadyRunning)
+        }
+        _ => {
+            // Either the PID is dead (stale lock) or the file is unreadable.
+            // Refuse to start rather than risk two writers on one index.
+            tracing::error!(
+                "Index lock at {} is held but the owning process is gone. \
+                 Close any other Flash Search instance, or delete the lock \
+                 file if none is running, then try again.",
+                lock_path.display()
+            );
+            std::process::exit(1);
+        }
+    }
+}
+
+/// Outcome of failing to acquire the single-instance lock.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LockFailure {
+    /// Another live instance holds the lock; exit quietly.
+    AlreadyRunning,
 }
 
 fn main() {
-    flash_search::parsers::ensure_initialized();
-
     let args: Vec<String> = std::env::args().collect();
     if args.iter().any(|arg| arg == "--cli" || arg == "-c") {
         handle_cli(&args);
@@ -165,13 +204,26 @@ fn main() {
 
     let app_dir =
         flash_search::get_app_data_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    std::fs::create_dir_all(&app_dir).ok();
-    let lock_path = app_dir.join("app.lock");
+    if let Err(e) = std::fs::create_dir_all(&app_dir) {
+        eprintln!(
+            "Error: failed to create the data directory at {}.",
+            app_dir.display()
+        );
+        eprintln!("Details: {e}");
+        std::process::exit(1);
+    }
 
+    init_logging(&app_dir);
+
+    let lock_path = app_dir.join("app.lock");
+    // `create(true)` without `truncate`: the PID inside must survive until the
+    // OS lock is held, and the lock is advisory so the file contents are only
+    // meaningful while we hold it.
     let lock_file = match std::fs::OpenOptions::new()
         .read(true)
         .write(true)
         .create(true)
+        .truncate(false)
         .open(&lock_path)
     {
         Ok(file) => file,
@@ -187,31 +239,61 @@ fn main() {
 
     let mut lock = fd_lock::RwLock::new(lock_file);
 
-    // Guard kept alive for lifetime of program to hold OS lock
-    let _guard_lock = try_lock_app(&mut lock, &lock_path);
+    // Two instances must never share a Tantivy directory or a redb file. The old
+    // code logged "Continuing anyway" when the lock was held but the recorded PID
+    // looked stale, and then carried on into `IndexManager::open` — which is how a
+    // crashed-and-restarted instance could leave a corrupt index behind.
+    let lock_guard = match try_lock_app(&mut lock, &lock_path) {
+        Ok(guard) => guard,
+        Err(LockFailure::AlreadyRunning) => {
+            info!("Another instance is already running; exiting");
+            return;
+        }
+    };
 
-    init_logging(&app_dir);
+    flash_search::parsers::ensure_initialized();
 
-    let rt = tokio::runtime::Builder::new_multi_thread()
+    let rt = match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
+        .thread_name("flash-search-worker")
         .build()
-        .expect("Failed to create tokio runtime");
+    {
+        Ok(rt) => rt,
+        Err(e) => {
+            error!("Failed to create the async runtime: {e}");
+            std::process::exit(1);
+        }
+    };
 
     let _guard = rt.enter();
 
     spawn_update_checker();
 
-    // Set up graceful shutdown via Tokio signal
+    // Ctrl-C previously only set a flag whose log message promised
+    // "committing index..." and then did nothing. The watcher and the USN journal
+    // thread never read it either, so background threads kept running until the
+    // process died. Now the flag is set through `request_shutdown` and the UI
+    // commits before returning.
     rt.spawn(async {
         if tokio::signal::ctrl_c().await.is_ok() {
-            info!("Shutdown signal received, committing index...");
-            flash_search::SHUTDOWN_FLAG.store(true, Ordering::SeqCst);
+            info!("Shutdown signal received");
+            flash_search::request_shutdown();
         }
     });
 
     // Run the UI
-    if let Err(e) = flash_search::run_ui(initial_dir) {
-        error!("Application error: {}", e);
+    let result = flash_search::run_ui(initial_dir);
+
+    // Signal background threads, then let the runtime drain so their shutdown
+    // paths complete before we release the index lock.
+    flash_search::request_shutdown();
+    rt.shutdown_timeout(std::time::Duration::from_secs(3));
+
+    // Keep the lock alive until after the UI exits and the runtime has drained.
+    drop(lock_guard);
+
+    if let Err(e) = result {
+        error!("Application error: {e}");
         std::process::exit(1);
     }
 }

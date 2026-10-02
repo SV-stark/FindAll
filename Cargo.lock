@@ -2013,7 +2013,7 @@ checksum = "80bb028c8b4148c9ee0cca68fcd9add6044e81d3619f48577ddf13a263d047a2"
 
 [[package]]
 name = "flash-search"
-version = "0.16.5"
+version = "0.17.0"
 dependencies = [
  "ahash",
  "aho-corasick",
@@ -2028,6 +2028,7 @@ dependencies = [
  "fd-lock",
  "flume",
  "fst",
+ "getrandom 0.3.4",
  "global-hotkey",
  "globset",
  "iced",

@@ -641,7 +641,7 @@ mod tests {
         fs::write(&file_b, b"beta content\n").unwrap();
 
         let config = WatcherConfig {
-            allowed_extensions: ["txt".to_string()].into_iter().collect(),
+            allowed_extensions: std::iter::once("txt".to_string()).collect(),
             exclude_globs: Arc::new(GlobSet::empty()),
             enable_ocr: false,
         };
@@ -663,7 +663,7 @@ mod tests {
 
         let results = indexer
             .search_blocking(
-                crate::indexer::searcher::SearchParams::builder()
+                &crate::indexer::searcher::SearchParams::builder()
                     .query("content")
                     .limit(10)
                     .case_sensitive(false)
@@ -697,7 +697,7 @@ mod tests {
         assert!(metadata.get_metadata(&file_path).unwrap().is_some());
 
         let config = WatcherConfig {
-            allowed_extensions: ["txt".to_string()].into_iter().collect(),
+            allowed_extensions: std::iter::once("txt".to_string()).collect(),
             exclude_globs: Arc::new(GlobSet::empty()),
             enable_ocr: false,
         };
@@ -715,7 +715,7 @@ mod tests {
         );
         let remaining = indexer
             .search_blocking(
-                crate::indexer::searcher::SearchParams::builder()
+                &crate::indexer::searcher::SearchParams::builder()
                     .query("temporary")
                     .limit(10)
                     .case_sensitive(false)
@@ -737,7 +737,7 @@ mod tests {
 
         let globs = compile_globs(&["node_modules/".to_string()]);
         let config = WatcherConfig {
-            allowed_extensions: ["txt".to_string()].into_iter().collect(),
+            allowed_extensions: std::iter::once("txt".to_string()).collect(),
             exclude_globs: Arc::new(globs),
             enable_ocr: false,
         };

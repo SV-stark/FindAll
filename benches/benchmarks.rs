@@ -1,5 +1,5 @@
 use divan::black_box;
-use flash_search::indexer::query_parser::ParsedQuery;
+use flash_search::indexer::query_parser::{ParsedQuery, extract_highlight_terms};
 use flash_search::parsers::is_plaintext_fast_path;
 use std::path::Path;
 
@@ -37,6 +37,21 @@ fn bench_plaintext_fast_path_check() {
 
 #[divan::bench]
 fn bench_blake3_throughput() {
-    let data = black_box([0x42u8; 65536]);
+    // Heap-allocated so the 64 KiB buffer does not sit on the stack.
+    let data = black_box(vec![0x42u8; 65_536]);
     let _ = blake3::hash(&data);
+}
+
+/// Benches the highlighting path a keystroke takes after parsing.
+#[divan::bench]
+fn bench_highlight_terms() {
+    let queries = [
+        "quarterly revenue",
+        "ext:pdf annual report",
+        "path:docs size:>1MB modified:week",
+        "title:\"Q3 Report\" ext:xlsx docx",
+    ];
+    for q in queries {
+        black_box(extract_highlight_terms(black_box(q), false));
+    }
 }
