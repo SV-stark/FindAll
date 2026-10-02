@@ -112,16 +112,19 @@ impl IndexWriterManager {
             return Ok(());
         }
 
-        let writer = self.writer.lock();
+        // Chunk into 500 documents to yield writer lock periodically,
+        // allowing concurrent watcher updates or search readers to make progress.
+        for chunk in docs.chunks(500) {
+            let writer = self.writer.lock();
 
-        for (doc, modified, size) in docs {
-            let tantivy_doc = self.create_tantivy_document(doc, *modified, *size);
-            writer
-                .add_document(tantivy_doc)
-                .map_err(|e| FlashError::index(format!("Failed to add document: {e}")))?;
+            for (doc, modified, size) in chunk {
+                let tantivy_doc = self.create_tantivy_document(doc, *modified, *size);
+                writer
+                    .add_document(tantivy_doc)
+                    .map_err(|e| FlashError::index(format!("Failed to add document: {e}")))?;
+            }
         }
 
-        drop(writer);
         Ok(())
     }
 
@@ -157,12 +160,16 @@ impl IndexWriterManager {
         document.add_date(self.modified_field, modified_date);
         document.add_u64(self.size_field, size);
 
-        // Index file extension for fast filtering
+        // Index file extension for fast filtering without allocating when already lowercase
         if let Some(ext) = std::path::Path::new(&doc.path)
             .extension()
             .and_then(|e| e.to_str())
         {
-            document.add_text(self.extension_field, ext.to_lowercase());
+            if ext.bytes().all(|b| b.is_ascii_lowercase()) {
+                document.add_text(self.extension_field, ext);
+            } else {
+                document.add_text(self.extension_field, ext.to_ascii_lowercase());
+            }
         }
 
         document
@@ -174,6 +181,25 @@ impl IndexWriterManager {
         self.writer.lock().delete_term(term);
 
         Ok(())
+    }
+
+    /// Remove many documents under a single lock acquisition.
+    ///
+    /// Dropping an indexed directory previously issued one
+    /// `delete_term` + one redb write transaction *per file*. For a folder with
+    /// 50 000 files that meant 50 000 round trips through the writer mutex.
+    pub fn remove_documents_batch(&self, paths: &[String]) -> Result<usize> {
+        if paths.is_empty() {
+            return Ok(0);
+        }
+
+        let writer = self.writer.lock();
+        for path in paths {
+            let term = tantivy::Term::from_field_text(self.path_field, path);
+            writer.delete_term(term);
+        }
+
+        Ok(paths.len())
     }
 
     /// Delete all documents from the index

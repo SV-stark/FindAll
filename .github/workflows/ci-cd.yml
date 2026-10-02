@@ -26,9 +26,13 @@ jobs:
         run: cargo fmt --all -- --check
 
   test:
-    name: Test (windows-latest)
+    name: Test (${{ matrix.os }})
     needs: [fmt]
-    runs-on: windows-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
     steps:
       - uses: actions/checkout@v4
       
@@ -40,6 +44,9 @@ jobs:
             
       - name: Run tests
         run: cargo test --all
+
+      - name: Check benchmarks
+        run: cargo check --benches
 
   clippy:
     name: Clippy

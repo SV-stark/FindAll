@@ -8,8 +8,8 @@ mod system;
 pub use autostart::{is_auto_start_enabled, set_auto_start};
 pub use export::{export_results_csv, export_results_json};
 pub use indexing::{
-    get_index_statistics_internal, get_index_status_internal, get_recent_files_internal,
-    start_indexing_internal,
+    cancel_indexing_internal, get_index_statistics_internal, get_index_status_internal,
+    get_recent_files_internal, start_indexing_internal,
 };
 pub use search::{
     get_file_preview_highlighted_internal, get_file_preview_internal,
@@ -42,8 +42,14 @@ pub struct AppState {
     pub filename_index: Option<Arc<FilenameIndex>>,
     pub progress_tx: flume::Sender<crate::scanner::ProgressEvent>,
     pub scanner: Arc<crate::scanner::Scanner>,
+    /// Handle to the in-flight indexing run, if any.
     pub indexing_handle: Mutex<Option<tokio::task::JoinHandle<()>>>,
-    pub indexing_cancel: Arc<std::sync::atomic::AtomicBool>,
+    /// Invalidates the current indexing run when a new one begins.
+    ///
+    /// A generation-based [`CancellationController`](crate::scanner::cancel::CancellationController)
+    /// rather than a plain flag because `JoinHandle::abort` cannot stop the
+    /// `spawn_blocking` stages inside `scan_directory`.
+    pub indexing_control: crate::scanner::cancel::CancellationController,
     pub db_corrupted: bool,
 }
 
@@ -52,10 +58,80 @@ impl AppState {
         AppStateBuilder::default()
     }
 
+    /// Cancels any in-flight indexing run.
+    pub fn cancel_indexing(&self) {
+        self.indexing_control.cancel();
+    }
+
+    /// Starts a new indexing run for `path`, superseding any run already in
+    /// flight.
+    ///
+    /// Returns a `Result` so the caller can surface a failure to spawn, rather
+    /// than silently leaving the UI in "indexing" forever.
+    ///
+    /// # Errors
+    ///
+    /// Propagates a panic from the previous run's task and any error returned by
+    /// the scanner.
+    pub async fn start_indexing(self: &Arc<Self>, path: std::path::PathBuf) -> crate::error::Result<()> {
+        // Supersede the previous run *first*, then wait for it to actually stop.
+        let previous = self.indexing_handle.lock().take();
+        let cancel = self.indexing_control.begin();
+
+        if let Some(previous) = previous {
+            // The token above already told every stage to stop. Give the run a
+            // moment to flush and release the index writer so the new run does
+            // not interleave with a still-draining one.
+            if tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                previous,
+            )
+            .await
+            .is_err()
+            {
+                tracing::warn!("Previous indexing run did not stop within 5s; continuing anyway");
+            }
+        }
+
+        let settings = self.settings_cache.load();
+        let mut exclude_patterns = settings.exclude_patterns.clone();
+        exclude_patterns.extend(settings.exclude_folders.iter().cloned());
+        // Deduplicate so a folder listed both as a pattern and as a folder is not
+        // compiled twice.
+        exclude_patterns.sort_unstable();
+        exclude_patterns.dedup();
+
+        let scanner = Arc::clone(&self.scanner);
+        let handle = tokio::spawn(async move {
+            match scanner.scan_directory(path, exclude_patterns, cancel).await {
+                Ok(report) => {
+                    if report.write_errors > 0 {
+                        tracing::error!(
+                            "Indexing completed with {} write errors ({} documents written)",
+                            report.write_errors,
+                            report.documents_written
+                        );
+                    } else {
+                        tracing::info!(
+                            "Indexing completed: {} documents written{}",
+                            report.documents_written,
+                            if report.cancelled { " (cancelled)" } else { "" }
+                        );
+                    }
+                }
+                Err(e) => tracing::error!("Indexing failed: {e}"),
+            }
+        });
+
+        *self.indexing_handle.lock() = Some(handle);
+        Ok(())
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         indexer: Arc<IndexManager>,
         metadata_db: Arc<MetadataDb>,
+        settings: AppSettings,
         settings_manager: SettingsManager,
         watcher: WatcherManager,
         filename_index: Option<Arc<FilenameIndex>>,
@@ -63,23 +139,19 @@ impl AppState {
         scanner: Arc<crate::scanner::Scanner>,
         db_corrupted: bool,
     ) -> Self {
-        let cache = settings_manager.load().unwrap_or_else(|e| {
-            tracing::warn!("Failed to load settings (using defaults): {}", e);
-            AppSettings::default()
-        });
         let mut watcher = watcher;
-        let _ = watcher.update_watch_list(&cache.index_dirs);
+        let _ = watcher.update_watch_list(&settings.index_dirs);
         Self {
             indexer,
             metadata_db,
             settings_manager: Arc::new(settings_manager),
-            settings_cache: ArcSwap::from_pointee(cache),
+            settings_cache: ArcSwap::from_pointee(settings),
             watcher: Mutex::new(watcher),
             filename_index,
             progress_tx,
             scanner,
             indexing_handle: Mutex::new(None),
-            indexing_cancel: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            indexing_control: crate::scanner::cancel::CancellationController::new(),
             db_corrupted,
         }
     }
@@ -89,6 +161,7 @@ impl AppState {
 pub struct AppStateBuilder {
     indexer: Option<Arc<IndexManager>>,
     metadata_db: Option<Arc<MetadataDb>>,
+    settings: Option<AppSettings>,
     settings_manager: Option<SettingsManager>,
     watcher: Option<WatcherManager>,
     filename_index: Option<Arc<FilenameIndex>>,
@@ -107,6 +180,17 @@ impl AppStateBuilder {
     #[must_use]
     pub fn metadata_db(mut self, metadata_db: Arc<MetadataDb>) -> Self {
         self.metadata_db = Some(metadata_db);
+        self
+    }
+
+    /// Supplies the already-loaded settings.
+    ///
+    /// `AppState::new` used to re-read `settings.json` from disk, which meant the
+    /// scan configuration could differ from the one `setup_app` had just used to
+    /// open the index.
+    #[must_use]
+    pub fn settings(mut self, settings: AppSettings) -> Self {
+        self.settings = Some(settings);
         self
     }
 
@@ -158,12 +242,25 @@ impl AppStateBuilder {
     ///
     /// # Panics
     ///
-    /// Panics if any required field is missing.
+    /// Panics if a required field was not supplied. All setters are used by
+    /// `setup_app` in a single place, so a missing field is a wiring bug that
+    /// should fail loudly at startup rather than degrade silently.
     pub fn build(self) -> AppState {
+        let settings_manager = self
+            .settings_manager
+            .expect("settings_manager is required");
+        let settings = self.settings.unwrap_or_else(|| {
+            settings_manager.load().unwrap_or_else(|e| {
+                tracing::warn!("Failed to load settings (using defaults): {e}");
+                AppSettings::default()
+            })
+        });
+
         AppState::new(
             self.indexer.expect("indexer is required"),
             self.metadata_db.expect("metadata_db is required"),
-            self.settings_manager.expect("settings_manager is required"),
+            settings,
+            settings_manager,
             self.watcher.expect("watcher is required"),
             self.filename_index,
             self.progress_tx.expect("progress_tx is required"),

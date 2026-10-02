@@ -4,25 +4,77 @@ use std::sync::OnceLock;
 static OPERATOR_REGEX: OnceLock<Regex> = OnceLock::new();
 static SIZE_REGEX: OnceLock<Regex> = OnceLock::new();
 
+/// A single `operator:value` token extracted from a raw query string.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct OperatorToken<'a> {
+    operator: &'a str,
+    value: &'a str,
+    /// Byte range of the whole `operator:value` token inside the raw query.
+    span: std::ops::Range<usize>,
+}
+
+/// Splits `input` into operator tokens and the leftover free-text fragments.
+///
+/// The leftover text is rebuilt by concatenating the gaps *between* operator
+/// spans, rather than calling `String::replace` per operator. The previous
+/// approach was O(n^2) and — worse — `replace` removes the first *textual*
+/// occurrence, so a query like `ext:pdf notes ext:pdf` could strip an unrelated
+/// word that happened to equal the operator text.
+fn split_operators<'a>(input: &'a str) -> (Vec<OperatorToken<'a>>, String) {
+    let operator_regex = OPERATOR_REGEX.get_or_init(|| {
+        // Constant pattern; a compile failure here is a programming error and is
+        // caught by `test_operator_regex_compiles`.
+        Regex::new(r#"(?i)(ext|path|title|size|modified|date):(?:"([^"]*)"|(\S+))"#)
+            .expect("OPERATOR_REGEX must be a valid regex")
+    });
+
+    let mut tokens = Vec::new();
+    let mut text = String::with_capacity(input.len());
+    let mut cursor = 0usize;
+
+    for cap in operator_regex.captures_iter(input) {
+        let whole = cap.get(0).expect("group 0 of a match is always present");
+        let value = cap
+            .get(2)
+            .or_else(|| cap.get(3))
+            .map_or("", |m| m.as_str());
+
+        if whole.start() < cursor {
+            // Overlapping match (should not happen with `captures_iter`, but
+            // guard so the leftover text can never be built out of order).
+            continue;
+        }
+
+        text.push_str(&input[cursor..whole.start()]);
+        tokens.push(OperatorToken {
+            operator: cap.get(1).map_or("", |m| m.as_str()),
+            value,
+            span: whole.start()..whole.end(),
+        });
+        cursor = whole.end();
+    }
+
+    text.push_str(&input[cursor..]);
+    (tokens, text)
+}
+
 /// Parsed query with operators and search terms
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ParsedQuery {
-    /// The original text query (for Tantivy)
+    /// Free-text query with all `operator:value` tokens removed
     pub text_query: String,
-    /// Extension filter (e.g., "pdf", "docx")
-    pub extension: Option<String>,
-    /// Path filter (search in specific path)
+    /// Extension filter(s) from `ext:`. Repeated `ext:` tokens are OR-ed together.
+    pub extensions: Vec<String>,
+    /// Path substring filter from `path:` (lowercased when `!case_sensitive`)
     pub path_filter: Option<String>,
-    /// Title filter
+    /// Title substring filter from `title:`
     pub title_filter: Option<String>,
-    /// Size filters
+    /// Size filters from `size:`
     pub min_size: Option<u64>,
     pub max_size: Option<u64>,
-    /// Date/Modified filters
+    /// Date filters from `modified:` / `date:`
     pub min_modified: Option<u64>,
     pub max_modified: Option<u64>,
-    /// Whether fuzzy matching is enabled
-    pub fuzzy: bool,
     pub case_sensitive: bool,
 }
 
@@ -32,117 +84,89 @@ impl ParsedQuery {
         Self::parse(query, case_sensitive)
     }
 
-    #[allow(clippy::too_many_lines)]
     fn parse(input: &str, case_sensitive: bool) -> Self {
-        let mut extension = None;
-        let mut path_filter = None;
-        let mut title_filter = None;
-        let mut min_size = None;
-        let mut max_size = None;
-        let mut min_modified = None;
-        let mut max_modified = None;
-        let fuzzy = true;
+        let (tokens, leftover) = split_operators(input);
 
-        // Parse operators: ext:pdf, path:docs, title:report, size:>1MB, modified:today, date:2026-08-01..2026-08-05
-        let operator_regex = OPERATOR_REGEX.get_or_init(|| {
-            Regex::new(r#"(?i)(ext|path|title|size|modified|date):(?:"([^"]*)"|(\S+))"#).unwrap()
+        let size_regex = SIZE_REGEX.get_or_init(|| {
+            // Constant pattern; a compile failure is a programming error and is
+            // covered by `test_size_regex_compiles`.
+            Regex::new(r"(?i)^([<>]?)(\d+(?:\.\d+)?)(MB|KB|GB|B)?$")
+                .expect("SIZE_REGEX must be a valid regex")
         });
 
-        let size_regex = SIZE_REGEX
-            .get_or_init(|| Regex::new(r"(?i)^([<>]?)(\d+(?:\.\d+)?)(MB|KB|GB|B)?$").unwrap());
+        let mut extensions = Vec::new();
+        let mut path_filter: Option<String> = None;
+        let mut title_filter: Option<String> = None;
+        let mut min_size: Option<u64> = None;
+        let mut max_size: Option<u64> = None;
+        let mut min_modified: Option<u64> = None;
+        let mut max_modified: Option<u64> = None;
 
-        let mut remaining = input.to_string();
-
-        // Process all operators
-        for cap in operator_regex.captures_iter(input) {
-            let operator = cap
-                .get(1)
-                .map(|m| m.as_str().to_lowercase())
-                .unwrap_or_default();
-            let value = cap
-                .get(2)
-                .map(|m| m.as_str().to_string()) // Quoted value
-                .or_else(|| cap.get(3).map(|m| m.as_str().to_string())) // Unquoted value
-                .unwrap_or_default();
-
-            match operator.as_str() {
+        for token in &tokens {
+            match token.operator.to_ascii_lowercase().as_str() {
                 "ext" => {
-                    extension = Some(value.trim_start_matches('.').to_lowercase());
-                    if let Some(m) = cap.get(0) {
-                        remaining = remaining.replace(m.as_str(), "");
+                    let ext = token.value.trim_start_matches('.').to_lowercase();
+                    if !ext.is_empty() && !extensions.contains(&ext) {
+                        extensions.push(ext);
                     }
                 }
                 "path" => {
                     path_filter = Some(if case_sensitive {
-                        value
+                        token.value.to_string()
                     } else {
-                        value.to_lowercase()
+                        token.value.to_lowercase()
                     });
-                    if let Some(m) = cap.get(0) {
-                        remaining = remaining.replace(m.as_str(), "");
-                    }
                 }
                 "title" => {
                     title_filter = Some(if case_sensitive {
-                        value
+                        token.value.to_string()
                     } else {
-                        value.to_lowercase()
+                        token.value.to_lowercase()
                     });
-                    if let Some(m) = cap.get(0) {
-                        remaining = remaining.replace(m.as_str(), "");
-                    }
                 }
                 "size" => {
-                    if let Some(scap) = size_regex.captures(&value) {
+                    if let Some(scap) = size_regex.captures(token.value)
+                        && let Some(num_str) = scap.get(2)
+                        && let Ok(num) = num_str.as_str().parse::<f64>()
+                    {
                         let op = scap.get(1).map_or("", |m| m.as_str());
-                        if let Some(num_str) = scap.get(2)
-                            && let Ok(num) = num_str.as_str().parse::<f64>()
-                        {
-                            let multiplier = scap.get(3).map_or(1, |m| {
-                                match m.as_str().to_uppercase().as_str() {
-                                    "GB" => 1024 * 1024 * 1024,
-                                    "MB" => 1024 * 1024,
-                                    "KB" => 1024,
-                                    _ => 1,
-                                }
-                            });
+                        let multiplier: u64 = scap.get(3).map_or(1, |m| {
+                            match m.as_str().to_ascii_uppercase().as_str() {
+                                "GB" => 1024 * 1024 * 1024,
+                                "MB" => 1024 * 1024,
+                                "KB" => 1024,
+                                _ => 1,
+                            }
+                        });
 
-                            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-                            let bytes = (num * f64::from(multiplier)).round() as u64;
-                            match op {
-                                ">" => min_size = Some(bytes),
-                                "<" => max_size = Some(bytes),
-                                _ => {
-                                    min_size = Some(bytes);
-                                    max_size = Some(bytes);
-                                }
+                        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                        let bytes = (num * multiplier as f64).round() as u64;
+                        match op {
+                            // Repeated `>`/`size:` keep the strictest bound. A
+                            // contradictory pair (`size:>10MB size:<1MB`) keeps
+                            // both bounds as written, which yields an empty
+                            // result set — the honest answer to a query that
+                            // asks for the impossible.
+                            ">" => min_size = Some(min_size.map_or(bytes, |m| m.max(bytes))),
+                            "<" => max_size = Some(max_size.map_or(bytes, |m| m.min(bytes))),
+                            _ => {
+                                min_size = Some(bytes);
+                                max_size = Some(bytes);
                             }
                         }
                     }
-                    if let Some(m) = cap.get(0) {
-                        remaining = remaining.replace(m.as_str(), "");
-                    }
                 }
                 "modified" | "date" => {
-                    if let Some((min_ts, max_ts)) = parse_date_range(&value) {
-                        min_modified = Some(min_ts);
-                        max_modified = Some(max_ts);
-                    }
-                    if let Some(m) = cap.get(0) {
-                        remaining = remaining.replace(m.as_str(), "");
+                    if let Some((min_ts, max_ts)) = parse_date_range(token.value) {
+                        min_modified = Some(min_modified.map_or(min_ts, |m| m.min(min_ts)));
+                        max_modified = Some(max_modified.map_or(max_ts, |m| m.max(max_ts)));
                     }
                 }
                 _ => {}
             }
         }
 
-        // Clean up remaining text for full-text search
-        let text_query = remaining
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .join(" ")
-            .trim()
-            .to_string();
+        let text_query = leftover.split_whitespace().collect::<Vec<_>>().join(" ");
 
         Self {
             text_query: if text_query.is_empty() {
@@ -150,14 +174,13 @@ impl ParsedQuery {
             } else {
                 text_query
             },
-            extension,
+            extensions,
             path_filter,
             title_filter,
             min_size,
             max_size,
             min_modified,
             max_modified,
-            fuzzy,
             case_sensitive,
         }
     }
@@ -184,13 +207,20 @@ impl ParsedQuery {
         true
     }
 
-    /// Check if a path matches the extension filter
+    /// Check if a path matches the extension filter(s).
+    ///
+    /// With no `ext:` filter this returns `true`; otherwise the path's
+    /// extension must be one of the requested ones (OR semantics).
     #[must_use]
     pub fn matches_extension(&self, path: &str) -> bool {
-        self.extension.as_ref().is_none_or(|ext| {
-            let path_lower = path.to_lowercase();
-            path_lower.ends_with(&format!(".{ext}"))
-        })
+        if self.extensions.is_empty() {
+            return true;
+        }
+        let ext = path
+            .rsplit_once('.')
+            .map_or("", |(_, e)| e)
+            .to_ascii_lowercase();
+        self.extensions.iter().any(|want| *want == ext)
     }
 
     /// Check if a path matches the path filter
@@ -200,7 +230,7 @@ impl ParsedQuery {
             if self.case_sensitive {
                 path.contains(filter)
             } else {
-                path.to_lowercase().contains(filter)
+                path.to_ascii_lowercase().contains(filter)
             }
         })
     }
@@ -217,6 +247,13 @@ impl ParsedQuery {
                 }
             })
         })
+    }
+
+    /// True when no post-retrieval filtering is required, letting the searcher
+    /// skip the per-document `path:`/`title:` checks entirely.
+    #[must_use]
+    pub const fn needs_post_filter(&self) -> bool {
+        self.path_filter.is_some() || self.title_filter.is_some()
     }
 }
 
@@ -238,13 +275,15 @@ pub fn extract_highlight_terms(query: &str, case_sensitive: bool) -> Vec<String>
         })
         .collect();
 
-    if terms.is_empty() && parsed.text_query == "*" {
-        terms.push("*".to_string());
-    }
-
-    // Also add title filter terms
-    if let Some(title) = parsed.title_filter {
-        terms.push(title);
+    // `path:`/`title:` filters are applied as post-filters, so their terms still
+    // need highlighting when they are the only thing the user typed.
+    for filter in [parsed.title_filter.as_ref(), parsed.path_filter.as_ref()]
+        .into_iter()
+        .flatten()
+    {
+        if !terms.iter().any(|t| t == filter) {
+            terms.push(filter.clone());
+        }
     }
 
     terms
@@ -338,8 +377,79 @@ mod tests {
     fn test_parse_ext_operator() {
         let query = "ext:pdf report";
         let parsed = ParsedQuery::new(query, false);
-        assert_eq!(parsed.extension, Some("pdf".to_string()));
+        assert_eq!(parsed.extensions, vec!["pdf".to_string()]);
         assert_eq!(parsed.text_query, "report");
+    }
+
+    #[test]
+    fn test_repeated_ext_operators_accumulate() {
+        let parsed = ParsedQuery::new("report ext:pdf ext:docx ext:PDF", false);
+        assert_eq!(parsed.extensions, vec!["pdf".to_string(), "docx".to_string()]);
+        assert_eq!(parsed.text_query, "report");
+    }
+
+    #[test]
+    fn test_operator_removal_does_not_eat_free_text() {
+        // Regression: `String::replace` per operator stripped the first textual
+        // match anywhere, so repeated operators corrupted the free-text query.
+        let parsed = ParsedQuery::new("ext:pdf ext:pdf notes", false);
+        assert_eq!(parsed.text_query, "notes");
+
+        let parsed = ParsedQuery::new("size:>1MB size:>1MB notes", false);
+        assert_eq!(parsed.text_query, "notes");
+    }
+
+    #[test]
+    fn test_quoted_operator_values() {
+        let parsed = ParsedQuery::new("notes path:\"My Documents\" title:\"Q3 Report\"", false);
+        assert_eq!(parsed.path_filter.as_deref(), Some("my documents"));
+        assert_eq!(parsed.title_filter.as_deref(), Some("q3 report"));
+        assert_eq!(parsed.text_query, "notes");
+    }
+
+    #[test]
+    fn test_contradictory_size_bounds_are_preserved() {
+        // `size:>10MB size:<1MB` asks for the impossible. Both bounds are kept so
+        // the query returns nothing rather than silently returning something the
+        // user did not ask for.
+        let parsed = ParsedQuery::new("x size:>10MB size:<1MB", false);
+        assert_eq!(parsed.min_size, Some(10_485_760));
+        assert_eq!(parsed.max_size, Some(1_048_576));
+    }
+
+    #[test]
+    fn test_repeated_bounds_keep_the_strictest() {
+        let parsed = ParsedQuery::new("x size:>1MB size:>4MB", false);
+        assert_eq!(parsed.min_size, Some(4_194_304));
+
+        let parsed = ParsedQuery::new("x size:<8MB size:<2MB", false);
+        assert_eq!(parsed.max_size, Some(2_097_152));
+    }
+
+    #[test]
+    fn test_bare_query_becomes_match_all() {
+        let parsed = ParsedQuery::new("   ", false);
+        assert_eq!(parsed.text_query, "*");
+        assert!(!parsed.needs_post_filter());
+    }
+
+    #[test]
+    fn test_operator_regex_compiles() {
+        OPERATOR_REGEX
+            .get_or_init(|| {
+                Regex::new(r#"(?i)(ext|path|title|size|modified|date):(?:"([^"]*)"|(\S+))"#)
+                    .expect("OPERATOR_REGEX must be a valid regex")
+            });
+        assert!(!OPERATOR_REGEX.get().unwrap().as_str().is_empty());
+    }
+
+    #[test]
+    fn test_size_regex_compiles() {
+        SIZE_REGEX.get_or_init(|| {
+            Regex::new(r"(?i)^([<>]?)(\d+(?:\.\d+)?)(MB|KB|GB|B)?$")
+                .expect("SIZE_REGEX must be a valid regex")
+        });
+        assert!(!SIZE_REGEX.get().unwrap().as_str().is_empty());
     }
 
     #[test]
@@ -348,6 +458,7 @@ mod tests {
         let parsed = ParsedQuery::new(query, false);
         assert_eq!(parsed.path_filter, Some("documents".to_string()));
         assert_eq!(parsed.text_query, "important");
+        assert!(parsed.needs_post_filter());
     }
 
     #[test]
@@ -362,7 +473,7 @@ mod tests {
     fn test_multiple_operators() {
         let query = "ext:pdf path:reports annual size:<10MB";
         let parsed = ParsedQuery::new(query, false);
-        assert_eq!(parsed.extension, Some("pdf".to_string()));
+        assert_eq!(parsed.extensions, vec!["pdf".to_string()]);
         assert_eq!(parsed.path_filter, Some("reports".to_string()));
         assert_eq!(parsed.max_size, Some(10_485_760));
         assert_eq!(parsed.text_query, "annual");
@@ -374,6 +485,15 @@ mod tests {
         assert!(parsed.matches_extension("file.pdf"));
         assert!(parsed.matches_extension("FILE.PDF"));
         assert!(!parsed.matches_extension("file.txt"));
+        assert!(!parsed.matches_extension("pdf"));
+
+        let parsed = ParsedQuery::new("ext:pdf ext:docx", false);
+        assert!(parsed.matches_extension("a.docx"));
+        assert!(!parsed.matches_extension("a.txt"));
+
+        // No filter at all matches everything.
+        let parsed = ParsedQuery::new("anything", false);
+        assert!(parsed.matches_extension("a.txt"));
     }
 
     #[test]
@@ -392,10 +512,18 @@ mod tests {
     }
 
     #[test]
+    fn test_needs_post_filter_only_for_substring_operators() {
+        assert!(!ParsedQuery::new("ext:pdf size:>1MB modified:today", false).needs_post_filter());
+        assert!(ParsedQuery::new("path:docs", false).needs_post_filter());
+        assert!(ParsedQuery::new("title:report", false).needs_post_filter());
+    }
+
+    #[test]
     fn test_extract_highlight_terms() {
         let terms = extract_highlight_terms("ext:pdf report title:annual", false);
         assert!(terms.contains(&"report".to_string()));
         assert!(terms.contains(&"annual".to_string()));
+        assert!(!terms.iter().any(|t| t.starts_with("ext:")));
     }
 
     #[cfg(test)]
@@ -421,12 +549,20 @@ mod tests {
                 match op.as_str() {
                     "ext" => {
                         let expected = val.trim_start_matches('.').to_lowercase();
-                        assert_eq!(parsed.extension, Some(expected));
+                        // `val` may be a bare "." which normalises to empty; the
+                        // parser drops empty extensions.
+                        if !expected.is_empty() {
+                            assert!(
+                                parsed.extensions.contains(&expected),
+                                "expected {expected:?} in {:?}",
+                                parsed.extensions
+                            );
+                        }
                     },
                     "path" => assert_eq!(parsed.path_filter, Some(val.to_lowercase())),
                     "title" => assert_eq!(parsed.title_filter, Some(val.to_lowercase())),
                     "size" => {},
-                    _ => unreachable!(),
+                    _ => unreachable!("op is restricted to the four operators above"),
                 }
             }
         }

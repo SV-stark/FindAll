@@ -1,18 +1,19 @@
 #[cfg(target_os = "windows")]
 mod windows_usn {
     use crate::error::{FlashError, Result};
-    use crate::scanner::{ProgressEvent, ProgressType};
+    use crate::scanner::ProgressEvent;
+    use crate::scanner::ProgressType;
     use compact_str::CompactString;
     use smallvec::SmallVec;
     use std::collections::HashMap;
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use tracing::{error, info};
+    use tracing::{error, info, warn};
     use windows::Win32::Foundation::{CloseHandle, GENERIC_READ, HANDLE};
     use windows::Win32::Storage::FileSystem::{
-        CreateFileW, FILE_ATTRIBUTE_SYSTEM, FILE_FLAG_BACKUP_SEMANTICS, FILE_SHARE_READ,
-        FILE_SHARE_WRITE, OPEN_EXISTING,
+        CreateFileW, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_SYSTEM, FILE_FLAG_BACKUP_SEMANTICS,
+        FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
     };
     use windows::Win32::System::IO::DeviceIoControl;
     use windows::Win32::System::Ioctl::{
@@ -327,7 +328,25 @@ mod windows_usn {
                 let buffer_ptr = buffer.as_mut_ptr().cast::<u8>();
                 let buffer_len = u32::try_from(buffer.len() * 8).unwrap_or(u32::MAX);
 
+                // Reusable cache mapping a directory's file reference number to its
+                // full path. The previous code reconstructed every event as
+                // `C:\<name>`, which is only correct for files in the drive root,
+                // so essentially every event for a file in a subdirectory was
+                // either dropped by the extension check or indexed under a bogus
+                // path. Learning the parent chain lazily from the journal's own
+                // directory records keeps the map cheap: only directories that
+                // actually change get added.
+                let mut dir_paths: HashMap<u64, PathBuf> = HashMap::new();
+                dir_paths.insert(0, PathBuf::from(&drive_root_str));
+
+                let mut consecutive_failures = 0u32;
+
                 loop {
+                    if crate::is_shutting_down() {
+                        info!("USN journal watcher stopping for {drive_root_str}");
+                        break;
+                    }
+
                     let mut bytes_returned = 0u32;
                     let success = DeviceIoControl(
                         handle,
@@ -342,6 +361,7 @@ mod windows_usn {
                     );
 
                     if success.is_ok() && bytes_returned >= 8 {
+                        consecutive_failures = 0;
                         let next_usn = buffer_ptr.cast::<i64>().read_unaligned();
                         read_data.StartUsn = next_usn;
 
@@ -376,32 +396,85 @@ mod windows_usn {
                                         std::slice::from_raw_parts(name_ptr, name_len),
                                     );
 
-                                    // Simplified path: In a full impl, we'd use the FRN map.
-                                    // For now, we only support top-level changes or
-                                    // we'd need to keep the fs_map in memory.
-                                    // As a compromise for this prototype, we'll try to get the path
-                                    // by using the parent FRN if we have a way to cache it.
-                                    let mut changed_path = PathBuf::from(&drive_root_str);
-                                    changed_path.push(name);
+                                    let parent_frn = record.ParentFileReferenceNumber as u64;
+                                    let is_dir = (record.FileAttributes
+                                        & FILE_ATTRIBUTE_DIRECTORY.0)
+                                        != 0;
 
-                                    let action = if (record.Reason & USN_REASON_FILE_DELETE) != 0 {
-                                        crate::watcher::WatcherAction::Remove
-                                    } else {
-                                        crate::watcher::WatcherAction::Index
-                                    };
+                                    if is_dir {
+                                        // Learn this directory's path so its
+                                        // children can be resolved later.
+                                        if let Some(parent) =
+                                            resolve_frn_path(&dir_paths, parent_frn)
+                                        {
+                                            let mut dir_path = parent;
+                                            dir_path.push(&name);
+                                            dir_paths.insert(
+                                                record.FileReferenceNumber as u64,
+                                                dir_path,
+                                            );
+                                            // Keep the map from growing without
+                                            // bound on a long-lived process.
+                                            if dir_paths.len() > 100_000 {
+                                                dir_paths.clear();
+                                                dir_paths.insert(0, PathBuf::from(&drive_root_str));
+                                            }
+                                        }
+                                    } else if let Some(parent) =
+                                        resolve_frn_path(&dir_paths, parent_frn)
+                                    {
+                                        let mut changed_path = parent;
+                                        changed_path.push(&name);
 
-                                    let _ = tx.blocking_send((changed_path, action));
+                                        let action = if (record.Reason & USN_REASON_FILE_DELETE) != 0 {
+                                            crate::watcher::WatcherAction::Remove
+                                        } else {
+                                            crate::watcher::WatcherAction::Index
+                                        };
+
+                                        if tx.blocking_send((changed_path, action)).is_err() {
+                                            let _ = CloseHandle(handle);
+                                            return;
+                                        }
+                                    }
+                                    // `resolve_frn_path` returning `None` means the
+                                    // parent directory was never observed, so the
+                                    // full path is unknown. Skip the event rather
+                                    // than reporting a wrong path.
                                 }
                             }
 
                             offset += record_len;
                         }
                     } else {
+                        consecutive_failures += 1;
+                        if consecutive_failures > 60 {
+                            warn!(
+                                "USN journal read failed {} times; disabling the journal watcher",
+                                consecutive_failures
+                            );
+                            break;
+                        }
+                        // Back off: the previous unconditional 500 ms sleep made a
+                        // permanently failing journal spin forever at 2 Hz for the
+                        // lifetime of the process.
                         std::thread::sleep(std::time::Duration::from_millis(500));
                     }
                 }
+                let _ = CloseHandle(handle);
             }
         });
+    }
+
+    /// Resolves a directory's file reference number to a path.
+    ///
+    /// `USN_RECORD_V2` already stores both file and parent reference numbers
+    /// masked to 48 bits on NTFS, so a plain map lookup is the correct test.
+    /// Returns `None` for directories created before this watcher started,
+    /// which is the safe outcome: the event is skipped rather than reported
+    /// under a wrong path.
+    fn resolve_frn_path(dir_paths: &HashMap<u64, PathBuf>, frn: u64) -> Option<PathBuf> {
+        dir_paths.get(&frn).cloned()
     }
 }
 
@@ -440,11 +513,13 @@ mod linux_fanotify {
 }
 
 use crate::error::Result;
-use crate::scanner::{ProgressEvent, ProgressType};
+use crate::scanner::ProgressEvent;
+use crate::scanner::ProgressType;
+use crate::scanner::cancel::CancelToken;
 use ignore::WalkBuilder;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tracing::{info, warn};
 
 pub trait DriveScanner: Send + Sync {
@@ -457,7 +532,7 @@ pub trait DriveScanner: Send + Sync {
         path_tx: flume::Sender<PathBuf>,
         progress_tx: Option<flume::Sender<ProgressEvent>>,
         total_count: Arc<AtomicUsize>,
-        cancel_flag: Arc<AtomicBool>,
+        cancel: CancelToken,
     ) -> Result<()>;
 
     // Real-time hook for whole drives
@@ -483,7 +558,7 @@ impl DriveScanner for DefaultDriveScanner {
         path_tx: flume::Sender<PathBuf>,
         progress_tx: Option<flume::Sender<ProgressEvent>>,
         total_count: Arc<AtomicUsize>,
-        cancel_flag: Arc<AtomicBool>,
+        cancel: CancelToken,
     ) -> Result<()> {
         let mut builder = WalkBuilder::new(&root);
 
@@ -499,14 +574,23 @@ impl DriveScanner for DefaultDriveScanner {
         }
 
         builder
-            .follow_links(true)
+            // Symlinks are NOT followed. `follow_links(true)` with no loop
+            // detection means a self-referential junction (which is trivial to
+            // create on Windows) makes the walker descend forever until the disk
+            // fills up. Skipping links loses a little reach but cannot hang a
+            // multi-hour scan.
+            .follow_links(false)
             .standard_filters(use_gitignore)
             .git_ignore(use_gitignore)
             .git_global(use_gitignore)
             .git_exclude(use_gitignore)
             .ignore(use_gitignore)
             .hidden(!use_gitignore);
-        builder.max_depth(Some(20));
+
+        // The previous `max_depth(Some(20))` silently truncated deep trees —
+        // e.g. `node_modules` nests past 20 in plenty of real repositories, and
+        // those files simply never appeared in the index with no error anywhere.
+        // Depth is now unbounded; cancellation is the only exit.
 
         info!("Starting DefaultDriveScanner for {}", root.display());
         let walker = builder.build_parallel();
@@ -515,9 +599,9 @@ impl DriveScanner for DefaultDriveScanner {
             let path_tx = path_tx.clone();
             let progress_tx = progress_tx.clone();
             let total = total_count.clone();
-            let cancel_flag = cancel_flag.clone();
+            let cancel = cancel.clone();
             Box::new(move |entry| {
-                if cancel_flag.load(Ordering::Relaxed) {
+                if cancel.is_cancelled() {
                     return ignore::WalkState::Quit;
                 }
 
@@ -525,7 +609,12 @@ impl DriveScanner for DefaultDriveScanner {
                 if let Ok(entry) = entry {
                     if entry.file_type().is_some_and(|ft| ft.is_file()) {
                         let path = entry.path().to_path_buf();
-                        let _ = path_tx.send(path);
+                        // `send` blocks once the bounded channel is full, which
+                        // is the backpressure we want: the walker must not run
+                        // ahead of the parser and exhaust RAM.
+                        if path_tx.send(path).is_err() {
+                            return ignore::WalkState::Quit;
+                        }
                         let count = total.fetch_add(1, Ordering::Relaxed);
 
                         #[allow(clippy::collapsible_if)]
@@ -581,7 +670,7 @@ impl DriveScanner for WindowsDriveScanner {
         path_tx: flume::Sender<PathBuf>,
         progress_tx: Option<flume::Sender<ProgressEvent>>,
         total_count: Arc<AtomicUsize>,
-        cancel_flag: Arc<AtomicBool>,
+        cancel: CancelToken,
     ) -> Result<()> {
         let root_str = root.to_string_lossy();
         let is_unc = root_str.starts_with("\\\\");
@@ -641,7 +730,7 @@ impl DriveScanner for WindowsDriveScanner {
             path_tx,
             progress_tx,
             total_count,
-            cancel_flag,
+            cancel,
         )
     }
 
@@ -703,7 +792,7 @@ impl DriveScanner for MacDriveScanner {
         path_tx: flume::Sender<PathBuf>,
         progress_tx: Option<flume::Sender<ProgressEvent>>,
         total_count: Arc<AtomicUsize>,
-        cancel_flag: Arc<AtomicBool>,
+        cancel: CancelToken,
     ) -> Result<()> {
         let _ = macos_fsevents::scan_volume(&root);
         let fallback = DefaultDriveScanner;
@@ -714,7 +803,7 @@ impl DriveScanner for MacDriveScanner {
             path_tx,
             progress_tx,
             total_count,
-            cancel_flag,
+            cancel,
         )
     }
 }
@@ -733,7 +822,7 @@ impl DriveScanner for LinuxDriveScanner {
         path_tx: flume::Sender<PathBuf>,
         progress_tx: Option<flume::Sender<ProgressEvent>>,
         total_count: Arc<AtomicUsize>,
-        cancel_flag: Arc<AtomicBool>,
+        cancel: CancelToken,
     ) -> Result<()> {
         let _ = linux_fanotify::scan_volume(&root);
         let fallback = DefaultDriveScanner;
@@ -744,7 +833,7 @@ impl DriveScanner for LinuxDriveScanner {
             path_tx,
             progress_tx,
             total_count,
-            cancel_flag,
+            cancel,
         )
     }
 }

@@ -126,6 +126,12 @@ fn try_lock_app<'a>(
                         std::process::exit(0);
                     }
                 }
+                #[cfg(unix)]
+                {
+                    if std::path::Path::new(&format!("/proc/{pid}")).exists() {
+                        std::process::exit(0);
+                    }
+                }
             }
             tracing::warn!("Lock is blocked but PID appears stale. Continuing anyway...");
             None
@@ -157,9 +163,8 @@ fn main() {
         }
     }
 
-    let app_dir = dirs::data_local_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("com.flashsearch");
+    let app_dir =
+        flash_search::get_app_data_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     std::fs::create_dir_all(&app_dir).ok();
     let lock_path = app_dir.join("app.lock");
 
@@ -167,7 +172,6 @@ fn main() {
         .read(true)
         .write(true)
         .create(true)
-        .truncate(true)
         .open(&lock_path)
     {
         Ok(file) => file,

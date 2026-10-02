@@ -10,12 +10,14 @@ pub fn create_schema() -> Schema {
     // File path - stored for retrieval, indexed as string for fast term deletes
     schema_builder.add_text_field("file_path", STRING | STORED);
 
-    // Content - indexed full-text stream, explicitly NOT stored to save space
-    let text_options = TextOptions::default().set_indexing_options(
-        TextFieldIndexing::default()
-            .set_tokenizer("default")
-            .set_index_option(IndexRecordOption::WithFreqsAndPositions),
-    );
+    // Content - indexed full-text stream, stored compressed for snippet generation
+    let text_options = TextOptions::default()
+        .set_indexing_options(
+            TextFieldIndexing::default()
+                .set_tokenizer("default")
+                .set_index_option(IndexRecordOption::WithFreqsAndPositions),
+        )
+        .set_stored();
     schema_builder.add_text_field("content", text_options);
 
     // Title - stored for display, indexed for search
@@ -27,8 +29,11 @@ pub fn create_schema() -> Schema {
     // File size - fast field for range queries
     schema_builder.add_u64_field("size", FAST | INDEXED);
 
-    // File extension - keyword indexed for exact ext filter (NOT stored in doc store)
-    schema_builder.add_text_field("extension", STRING);
+    // File extension - keyword indexed for exact ext filter.
+    // STORED so results can display the correct file-type badge/icon; without it
+    // `retrieve_result_with_doc` always reads back `None` and the UI falls back
+    // to a generic "FILE" badge for every result.
+    schema_builder.add_text_field("extension", STRING | STORED);
 
     schema_builder.build()
 }

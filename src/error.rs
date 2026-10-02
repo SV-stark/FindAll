@@ -73,14 +73,18 @@ impl FlashError {
         }
     }
 
-    pub fn index_field<S: Into<String>>(field: S, msg: S) -> Self {
+    pub fn index_field<S1: Into<String>, S2: Into<String>>(field: S1, msg: S2) -> Self {
         Self::Index {
             msg: msg.into(),
             field: Some(field.into()),
         }
     }
 
-    pub fn database<S: Into<String>, S2: Into<String>>(operation: S, key: S, cause: S2) -> Self {
+    pub fn database<S1: Into<String>, S2: Into<String>, S3: Into<String>>(
+        operation: S1,
+        key: S2,
+        cause: S3,
+    ) -> Self {
         Self::Database {
             operation: operation.into(),
             key: key.into(),
@@ -88,7 +92,10 @@ impl FlashError {
         }
     }
 
-    pub fn unsupported_format<S: Into<String>>(format: S, extension: S) -> Self {
+    pub fn unsupported_format<S1: Into<String>, S2: Into<String>>(
+        format: S1,
+        extension: S2,
+    ) -> Self {
         Self::UnsupportedFormat {
             format: format.into(),
             extension: extension.into(),

@@ -673,14 +673,33 @@ fn results_panel(app: &App) -> Element<'_, Message> {
         return no_results_view(app);
     }
 
-    let results = scrollable(column(
-        app.results
-            .iter()
-            .enumerate()
-            .map(|(i, res)| result_item_view(app.selected_index, app.hovered_item_index, i, res))
-            .collect::<Vec<Element<Message>>>(),
-    ))
-    .height(Length::Fill);
+    let max_display = (app.settings.results_per_page as usize).clamp(25, 200);
+    let mut result_elements: Vec<Element<Message>> = app
+        .results
+        .iter()
+        .take(max_display)
+        .enumerate()
+        .map(|(i, res)| result_item_view(app.selected_index, app.hovered_item_index, i, res))
+        .collect();
+
+    if app.results.len() > max_display {
+        result_elements.push(
+            container(
+                text(format!(
+                    "Showing top {} of {} matches. Refine query to narrow results.",
+                    max_display,
+                    app.results.len()
+                ))
+                .size(11)
+                .style(theme::dim_text_style()),
+            )
+            .padding(12)
+            .center_x(Length::Fill)
+            .into(),
+        );
+    }
+
+    let results = scrollable(column(result_elements)).height(Length::Fill);
 
     container(results)
         .width(Length::FillPortion(2))

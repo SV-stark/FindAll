@@ -52,7 +52,14 @@ pub fn get_icon_char(name: &str) -> char {
         "keyboard" => '\u{e100}',
         "refresh" => '\u{e146}',
         _ => {
-            tracing::warn!("icon '{}' not found", name);
+            static WARNED_ICONS: std::sync::Mutex<Option<std::collections::HashSet<String>>> =
+                std::sync::Mutex::new(None);
+            if let Ok(mut lock) = WARNED_ICONS.lock() {
+                let set = lock.get_or_insert_with(std::collections::HashSet::new);
+                if set.insert(name.to_string()) {
+                    tracing::warn!("icon '{}' not found", name);
+                }
+            }
             '\u{003f}' // Question mark as fallback
         }
     }

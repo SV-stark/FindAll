@@ -1,10 +1,11 @@
+pub mod cancel;
 pub mod drive_scanner;
-pub mod fast_walker;
 
 use crate::error::Result;
 use crate::indexer::IndexManager;
 use crate::metadata::MetadataDb;
-use crate::parsers::{ParsedDocument, parse_file};
+use crate::parsers::ParsedDocument;
+use cancel::CancelToken;
 use drive_scanner::DriveScanner;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -12,24 +13,39 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 use tokio::sync::mpsc;
-use tracing::{info, instrument, warn};
+use tracing::{error, info, instrument, warn};
 
-fn get_file_hash(path: &std::path::Path) -> [u8; 32] {
-    let mut hasher = blake3::Hasher::new();
-    std::fs::File::open(path).map_or_else(
-        |_| blake3::hash(path.to_string_lossy().as_bytes()).into(),
-        |mut file| {
-            use std::io::Read;
-            let mut buf = vec![0u8; 65536];
-            while let Ok(n) = file.read(&mut buf) {
-                if n == 0 {
-                    break;
-                }
-                hasher.update(&buf[..n]);
-            }
-            hasher.finalize().into()
-        },
-    )
+/// Drops already-indexed files from `chunk` and forwards the stale remainder.
+///
+/// A metadata read failure is logged once and treated as "everything is stale",
+/// which is the safe direction: re-parsing a file is wasted work, silently
+/// *skipping* one leaves the user unable to find it.
+fn send_stale_chunk(
+    metadata_db: &MetadataDb,
+    chunk_tx: &mpsc::Sender<Vec<(PathBuf, u64, u64)>>,
+    chunk: &mut Vec<(PathBuf, u64, u64)>,
+) -> bool {
+    let needs = match metadata_db.batch_needs_reindex_paths(chunk) {
+        Ok(needs) => needs,
+        Err(e) => {
+            warn!("Metadata staleness check failed, re-indexing chunk: {e}");
+            vec![true; chunk.len()]
+        }
+    };
+
+    let stale: Vec<_> = std::mem::take(chunk)
+        .into_iter()
+        .zip(needs)
+        .filter_map(|(item, need)| need.then_some(item))
+        .collect();
+
+    if stale.is_empty() {
+        return true;
+    }
+
+    // `blocking_send` returns false once the receiver is gone, which means the
+    // parser stage was cancelled or failed.
+    chunk_tx.blocking_send(stale).is_ok()
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
@@ -51,6 +67,33 @@ pub struct ProgressEvent {
 }
 
 const BATCH_SIZE: usize = 5000;
+
+/// Number of batches between Tantivy commits during a scan.
+///
+/// Committing only at the very end means a crash, kill, or power loss during a
+/// multi-hour index run discards *everything* written so far. Committing every
+/// `COMMIT_EVERY_BATCHES` batches bounds that loss window while keeping segment
+/// churn low.
+const COMMIT_EVERY_BATCHES: usize = 4;
+
+/// Counters describing what a scan actually managed to persist.
+///
+/// Indexing errors used to be discarded with `let _ =`, which meant a failing
+/// Tantivy writer or a corrupt metadata row produced a silently incomplete
+/// index with a cheerful "All files indexed" message.
+#[derive(Debug, Default)]
+struct WriteStats {
+    documents_written: usize,
+    metadata_written: usize,
+    filename_entries_written: usize,
+    write_errors: usize,
+}
+
+impl WriteStats {
+    const fn has_errors(&self) -> bool {
+        self.write_errors > 0
+    }
+}
 
 #[derive(Debug)]
 struct IndexTask {
@@ -115,6 +158,12 @@ impl Scanner {
         scanner.watch(root, tx)
     }
 
+    /// Consumes parsed documents from `task_rx`, flushing them to Tantivy, the
+    /// metadata DB, and the filename index.
+    ///
+    /// Returns the write statistics, or the first hard error that made the index
+    /// unreliable. Individual per-batch failures are logged and counted rather
+    /// than aborted, so one bad batch cannot throw away hours of work.
     fn process_writer_loop(
         task_rx: &flume::Receiver<IndexTask>,
         filename_index: Option<&Arc<crate::indexer::filename_index::FilenameIndex>>,
@@ -122,20 +171,24 @@ impl Scanner {
         metadata_db: &Arc<MetadataDb>,
         progress_tx: Option<&flume::Sender<ProgressEvent>>,
         total_files: &Arc<AtomicUsize>,
-        cancel_flag: &Arc<std::sync::atomic::AtomicBool>,
-    ) {
-        info!("Stage 2b: Batch Writing");
+        cancel: &CancelToken,
+    ) -> WriteStats {
+        info!("Stage 2c: Batch Writing");
         let start = Instant::now();
+        let mut stats = WriteStats::default();
         let mut doc_batch: Vec<(crate::parsers::ParsedDocument, u64, u64)> =
             Vec::with_capacity(BATCH_SIZE);
         let mut meta_batch: Vec<(String, u64, u64, [u8; 32])> = Vec::with_capacity(BATCH_SIZE);
         let mut filename_batch: Vec<crate::indexer::filename_index::FilenameEntry> =
             Vec::with_capacity(BATCH_SIZE);
         let mut processed: usize = 0;
+        let mut batches_since_commit: usize = 0;
+        let mut cancelled = false;
 
         for task in task_rx {
-            if cancel_flag.load(Ordering::Relaxed) {
+            if cancel.is_cancelled() {
                 warn!("Indexing cancelled. Flushing batches...");
+                cancelled = true;
                 break;
             }
 
@@ -164,15 +217,26 @@ impl Scanner {
 
             // Flush batch when full
             if doc_batch.len() >= BATCH_SIZE {
-                let _ = indexer.add_documents_batch(&doc_batch);
-                let _ = metadata_db.batch_update_metadata(&meta_batch);
-
-                if let Some(f_index) = filename_index {
-                    let _ = f_index.add_files_batch(std::mem::take(&mut filename_batch));
+                batches_since_commit += 1;
+                let should_commit = batches_since_commit >= COMMIT_EVERY_BATCHES;
+                Self::flush_batches(
+                    &mut doc_batch,
+                    &mut meta_batch,
+                    &mut filename_batch,
+                    filename_index,
+                    indexer,
+                    metadata_db,
+                    &mut stats,
+                );
+                if should_commit {
+                    batches_since_commit = 0;
+                    if let Err(e) = indexer.commit() {
+                        error!("Failed to commit index mid-scan: {e}");
+                        stats.write_errors += 1;
+                    } else {
+                        indexer.invalidate_cache();
+                    }
                 }
-
-                doc_batch.clear();
-                meta_batch.clear();
             }
 
             // Progress update
@@ -208,16 +272,32 @@ impl Scanner {
             }
         }
 
-        // Flush remaining items (B1: always commit at end)
-        if !doc_batch.is_empty() {
-            let _ = indexer.add_documents_batch(&doc_batch);
-            let _ = indexer.commit();
-            indexer.invalidate_cache();
-            let _ = metadata_db.batch_update_metadata(&meta_batch);
+        // Always flush the remainder, regardless of which batch happens to be
+        // non-empty. The old code gated the whole tail flush (metadata *and*
+        // filename index *and* the final commit) on `!doc_batch.is_empty()`, so
+        // cancelling a scan right after a batch boundary silently dropped every
+        // metadata row and filename entry that had been accumulated.
+        Self::flush_batches(
+            &mut doc_batch,
+            &mut meta_batch,
+            &mut filename_batch,
+            filename_index,
+            indexer,
+            metadata_db,
+            &mut stats,
+        );
 
-            if let Some(f_index) = filename_index {
-                let _ = f_index.add_files_batch(filename_batch);
-            }
+        if let Err(e) = indexer.commit() {
+            error!("Failed to commit index at end of scan: {e}");
+            stats.write_errors += 1;
+        }
+        indexer.invalidate_cache();
+
+        if let Some(f_index) = filename_index
+            && let Err(e) = f_index.commit()
+        {
+            error!("Failed to commit filename index: {e}");
+            stats.write_errors += 1;
         }
 
         // Final progress
@@ -228,30 +308,105 @@ impl Scanner {
                 current_folder: String::new(),
                 processed,
                 total: processed,
-                status: "All files indexed".to_string(),
+                status: if cancelled {
+                    format!("Indexing cancelled after {processed} files")
+                } else {
+                    "All files indexed".to_string()
+                },
                 eta_seconds: 0,
                 files_per_second: 0.0,
             });
         }
 
         info!(
-            "Indexed {} files in {:.2}s",
+            "Indexed {} files in {:.2}s ({} docs, {} metadata rows, {} filename entries, {} write errors)",
             processed,
-            start.elapsed().as_secs_f64()
+            start.elapsed().as_secs_f64(),
+            stats.documents_written,
+            stats.metadata_written,
+            stats.filename_entries_written,
+            stats.write_errors
         );
+
+        stats
     }
 
+    /// Writes the currently accumulated batches and clears them.
+    fn flush_batches(
+        doc_batch: &mut Vec<(crate::parsers::ParsedDocument, u64, u64)>,
+        meta_batch: &mut Vec<(String, u64, u64, [u8; 32])>,
+        filename_batch: &mut Vec<crate::indexer::filename_index::FilenameEntry>,
+        filename_index: Option<&Arc<crate::indexer::filename_index::FilenameIndex>>,
+        indexer: &Arc<IndexManager>,
+        metadata_db: &Arc<MetadataDb>,
+        stats: &mut WriteStats,
+    ) {
+        if !doc_batch.is_empty() {
+            match indexer.add_documents_batch(doc_batch) {
+                Ok(()) => stats.documents_written += doc_batch.len(),
+                Err(e) => {
+                    error!(
+                        "Failed to write {} documents to the index: {e}",
+                        doc_batch.len()
+                    );
+                    stats.write_errors += doc_batch.len();
+                }
+            }
+        }
+
+        if !meta_batch.is_empty() {
+            match metadata_db.batch_update_metadata(meta_batch) {
+                Ok(written) => stats.metadata_written += written,
+                Err(e) => {
+                    error!(
+                        "Failed to write {} metadata rows: {e}",
+                        meta_batch.len()
+                    );
+                    stats.write_errors += meta_batch.len();
+                }
+            }
+        }
+
+        if let Some(f_index) = filename_index
+            && !filename_batch.is_empty()
+        {
+            match f_index.add_files_batch(std::mem::take(filename_batch)) {
+                Ok(written) => stats.filename_entries_written += written,
+                Err(e) => {
+                    error!(
+                        "Failed to stage {} filename entries: {e}",
+                        filename_batch.len()
+                    );
+                    stats.write_errors += filename_batch.len();
+                }
+            }
+        }
+
+        doc_batch.clear();
+        meta_batch.clear();
+    }
+
+    /// Scans `root` and indexes every supported, non-excluded file.
+    ///
+    /// Pass a [`CancelToken`] from [`cancel::CancellationController::begin`] so
+    /// that starting a new run reliably stops this one, including its
+    /// `spawn_blocking` stages which `JoinHandle::abort` cannot reach.
+    ///
+    /// Returns an error when a stage failed outright. Partial per-batch write
+    /// failures are logged and counted (and surfaced through the returned
+    /// [`IndexingReport`]) rather than aborting the run.
     #[allow(clippy::too_many_lines)]
-    #[instrument(skip(self, exclude_patterns, cancel_flag), fields(root = %root.display()))]
+    #[instrument(skip(self, exclude_patterns, cancel), fields(root = %root.display()))]
     pub async fn scan_directory(
         &self,
         root: PathBuf,
         exclude_patterns: Vec<String>,
-        cancel_flag: Arc<std::sync::atomic::AtomicBool>,
-    ) -> Result<()> {
+        cancel: CancelToken,
+    ) -> Result<IndexingReport> {
         info!("Starting directory scan for {}", root.display());
 
-        let (path_tx, path_rx) = flume::unbounded::<PathBuf>();
+        // Bounded channel with backpressure to prevent unbounded RAM explosion on large filesystems
+        let (path_tx, path_rx) = flume::bounded::<PathBuf>(10_000);
 
         let root_clone = root.clone();
         let tx_clone = self.progress_tx.clone();
@@ -260,7 +415,7 @@ impl Scanner {
         let total_for_scan = total.clone();
 
         let use_gitignore = self.settings.use_gitignore;
-        let cancel_flag_for_scan = cancel_flag.clone();
+        let cancel_for_scan = cancel.clone();
         let walker_handle = tokio::task::spawn_blocking(move || {
             scanner.scan(
                 root_clone,
@@ -269,23 +424,15 @@ impl Scanner {
                 path_tx,
                 tx_clone,
                 total_for_scan,
-                cancel_flag_for_scan,
+                cancel_for_scan,
             )
         });
 
         // --- Stage 2: Content Indexing (Async Batched) ---
-        //
-        // Architecture:
-        //   - path_rx (crossbeam, sync) is drained in a spawn_blocking task.
-        //   - Valid, filtered file paths are grouped into chunks of CHUNK_SIZE and
-        //     sent through an async mpsc channel (chunk_tx -> chunk_rx).
-        //   - An async Tokio task receives chunks and awaits parse_files_batch(),
-        //     which uses xberg's native JoinSet-based concurrency internally —
-        //     no manual Rayon pool needed.
-        //   - Parsed IndexTasks are forwarded to a sync writer via crossbeam.
         const CHUNK_SIZE: usize = 200;
 
-        let (task_tx, task_rx) = flume::bounded::<IndexTask>(BATCH_SIZE * 8);
+        // Bounded tasks channel with backpressure
+        let (task_tx, task_rx) = flume::bounded::<IndexTask>(BATCH_SIZE);
         // Async channel for sending path-chunks from the blocking walker to the async parser.
         let (chunk_tx, mut chunk_rx) = tokio::sync::mpsc::channel::<Vec<(PathBuf, u64, u64)>>(32);
 
@@ -310,14 +457,14 @@ impl Scanner {
         // --- Stage 2a: Blocking path receiver + filter ---
         // Drains path_rx (crossbeam), applies extension/size/metadata filters,
         // checks the metadata DB for staleness, then sends chunks over chunk_tx.
-        let cancel_flag_for_filter = cancel_flag.clone();
+        let cancel_for_filter = cancel.clone();
         let filter_handle = tokio::task::spawn_blocking(move || {
             info!("Stage 2a: Path filtering and chunking");
             let limit_bytes = u64::from(file_size_limit_mb) * 1024 * 1024;
             let mut chunk: Vec<(PathBuf, u64, u64)> = Vec::with_capacity(CHUNK_SIZE);
 
             for path in path_rx {
-                if cancel_flag_for_filter.load(Ordering::Relaxed) {
+                if cancel_for_filter.is_cancelled() {
                     break;
                 }
 
@@ -358,36 +505,20 @@ impl Scanner {
                 chunk.push((path, modified, size));
 
                 if chunk.len() >= CHUNK_SIZE {
-                    // Batch-check staleness directly against the metadata DB without allocating Strings
-                    let needs: Vec<bool> = metadata_db_for_filter
-                        .batch_needs_reindex_paths(&chunk)
-                        .unwrap_or_else(|_| vec![true; chunk.len()]);
-                    let current_chunk = std::mem::take(&mut chunk);
-                    let stale: Vec<_> = current_chunk
-                        .into_iter()
-                        .zip(needs)
-                        .filter_map(|(item, need)| need.then_some(item))
-                        .collect();
-                    if !stale.is_empty() {
-                        let _ = chunk_tx.blocking_send(stale);
+                    if send_stale_chunk(
+                        &metadata_db_for_filter,
+                        &chunk_tx,
+                        &mut chunk,
+                    ) {
+                        // Downstream is gone; stop feeding it.
+                        return;
                     }
-                    chunk.clear();
                 }
             }
 
             // Flush remainder
             if !chunk.is_empty() {
-                let needs: Vec<bool> = metadata_db_for_filter
-                    .batch_needs_reindex_paths(&chunk)
-                    .unwrap_or_else(|_| vec![true; chunk.len()]);
-                let stale: Vec<_> = chunk
-                    .into_iter()
-                    .zip(needs)
-                    .filter_map(|(item, need)| need.then_some(item))
-                    .collect();
-                if !stale.is_empty() {
-                    let _ = chunk_tx.blocking_send(stale);
-                }
+                send_stale_chunk(&metadata_db_for_filter, &chunk_tx, &mut chunk);
             }
             // chunk_tx drops here, closing chunk_rx.
         });
@@ -399,44 +530,26 @@ impl Scanner {
         let progress_tx_for_parser = self.progress_tx.clone();
         let total_files_for_parser = total.clone();
 
-        let cancel_flag_for_parser = cancel_flag.clone();
+        let cancel_for_parser = cancel.clone();
 
         let parser_handle = tokio::spawn(async move {
             info!("Stage 2b: Async Xberg batch parsing");
-            let content_cache: mini_moka::sync::Cache<[u8; 32], crate::parsers::ParsedDocument> =
-                mini_moka::sync::Cache::builder()
-                    .max_capacity(500)
-                    .time_to_idle(std::time::Duration::from_mins(1))
-                    .build();
 
             while let Some(chunk) = chunk_rx.recv().await {
-                if cancel_flag_for_parser.load(Ordering::Relaxed) {
+                if cancel_for_parser.is_cancelled() {
                     break;
                 }
 
-                let mut paths_to_parse = Vec::new();
-                let mut chunk_hashes = Vec::new();
-
-                for (path, modified, size) in &chunk {
-                    let hash = get_file_hash(path);
-                    chunk_hashes.push(hash);
-
-                    if let Some(cached_doc) = content_cache.get(&hash) {
-                        let mut doc = cached_doc.clone();
-                        doc.path = path.to_string_lossy().to_string();
-                        let _ = task_tx_for_parser.send(IndexTask {
-                            doc,
-                            modified: *modified,
-                            size: *size,
-                            content_hash: hash,
-                        });
-                    } else {
-                        paths_to_parse.push(path.clone());
-                    }
+                if chunk.is_empty() {
+                    continue;
                 }
 
-                if paths_to_parse.is_empty() {
-                    continue;
+                let mut paths_to_parse = Vec::with_capacity(chunk.len());
+                let mut meta_to_parse = Vec::with_capacity(chunk.len());
+
+                for (path, modified, size) in chunk {
+                    paths_to_parse.push(path);
+                    meta_to_parse.push((modified, size));
                 }
 
                 if let Some(tx) = &progress_tx_for_parser {
@@ -475,60 +588,50 @@ impl Scanner {
                 .await
                 {
                     Ok(results) => {
-                        for (parsed_res, path) in
-                            results.into_iter().zip(paths_to_parse.into_iter())
+                        for (parsed_res, (modified, size)) in
+                            results.into_iter().zip(meta_to_parse.into_iter())
                         {
-                            if let Some(&(ref found_path, modified, size)) =
-                                chunk.iter().find(|(p, _, _)| *p == path)
-                            {
-                                let hash =
-                                    chunk.iter().position(|(p, _, _)| *p == path).map_or_else(
-                                        || get_file_hash(found_path),
-                                        |idx| chunk_hashes[idx],
-                                    );
-
-                                match parsed_res {
-                                    Ok(parsed) => {
-                                        content_cache.insert(hash, parsed.clone());
-
-                                        let _ = task_tx_for_parser.send(IndexTask {
+                            match parsed_res {
+                                Ok((parsed, hash)) => {
+                                    if task_tx_for_parser
+                                        .send(IndexTask {
                                             doc: parsed,
                                             modified,
                                             size,
                                             content_hash: hash,
-                                        });
+                                        })
+                                        .is_err()
+                                    {
+                                        break;
                                     }
-                                    Err(e) => {
-                                        warn!("Failed to parse file {:?}: {}", path, e);
-                                    }
+                                }
+                                Err(e) => {
+                                    warn!("Failed to parse file: {}", e);
                                 }
                             }
                         }
                     }
                     Err(e) => {
-                        warn!("Async batch crashed ({e}), falling back to per-file sync parsing");
-                        for path in paths_to_parse {
-                            if let Some(&(ref found_path, modified, size)) =
-                                chunk.iter().find(|(p, _, _)| *p == path)
+                        warn!("Async batch crashed ({e}), falling back to per-file parsing");
+                        for (path, (modified, size)) in
+                            paths_to_parse.into_iter().zip(meta_to_parse.into_iter())
+                        {
+                            if let Ok((parsed, hash)) =
+                                crate::parsers::parse_file_with_hash(&path, enable_ocr).await
                             {
-                                let hash =
-                                    chunk.iter().position(|(p, _, _)| *p == path).map_or_else(
-                                        || get_file_hash(found_path),
-                                        |idx| chunk_hashes[idx],
-                                    );
-
-                                if let Ok(parsed) = parse_file(&path, enable_ocr).await {
-                                    content_cache.insert(hash, parsed.clone());
-
-                                    let _ = task_tx_for_parser.send(IndexTask {
+                                if task_tx_for_parser
+                                    .send(IndexTask {
                                         doc: parsed,
                                         modified,
                                         size,
                                         content_hash: hash,
-                                    });
-                                } else {
-                                    warn!("Failed to parse file {:?}", path);
+                                    })
+                                    .is_err()
+                                {
+                                    break;
                                 }
+                            } else {
+                                warn!("Failed to parse file {:?}", path);
                             }
                         }
                     }
@@ -539,7 +642,7 @@ impl Scanner {
 
         // --- Stage 2c: Sequential batch writer (sync) ---
         // Tantivy writes must be sequential; this separate thread drains task_rx.
-        let cancel_flag_for_writer = cancel_flag.clone();
+        let cancel_for_writer = cancel.clone();
         let writer_handle = tokio::task::spawn_blocking(move || {
             Self::process_writer_loop(
                 &task_rx,
@@ -548,8 +651,8 @@ impl Scanner {
                 &metadata_db_for_writer,
                 progress_tx_clone.as_ref(),
                 &total_files,
-                &cancel_flag_for_writer,
-            );
+                &cancel_for_writer,
+            )
         });
 
         // Wait for all stages to complete
@@ -565,17 +668,38 @@ impl Scanner {
             .map_err(|e| crate::error::FlashError::index(format!("Parse task failed: {e}")))?;
         // Drop the original task_tx so the writer sees the channel close.
         drop(task_tx);
-        writer_handle
+        let stats = writer_handle
             .await
             .map_err(|e| crate::error::FlashError::index(format!("Write task failed: {e}")))?;
 
-        // Commit filename index to disk
-        if let Some(f_index) = &self.filename_index {
-            let _ = f_index.commit();
+        if stats.has_errors() {
+            warn!(
+                "Indexing finished with {} write errors ({} docs, {} metadata rows, {} filename entries written)",
+                stats.write_errors,
+                stats.documents_written,
+                stats.metadata_written,
+                stats.filename_entries_written
+            );
         }
 
-        Ok(())
+        Ok(IndexingReport {
+            documents_written: stats.documents_written,
+            metadata_written: stats.metadata_written,
+            filename_entries_written: stats.filename_entries_written,
+            write_errors: stats.write_errors,
+            cancelled: cancel.is_cancelled(),
+        })
     }
+}
+
+/// Summary of what a single [`Scanner::scan_directory`] run persisted.
+#[derive(Debug, Clone, Copy, Default, serde::Serialize)]
+pub struct IndexingReport {
+    pub documents_written: usize,
+    pub metadata_written: usize,
+    pub filename_entries_written: usize,
+    pub write_errors: usize,
+    pub cancelled: bool,
 }
 
 #[cfg(test)]

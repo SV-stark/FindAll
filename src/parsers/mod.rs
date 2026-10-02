@@ -1,5 +1,6 @@
 use crate::error::{FlashError, Result};
 use std::path::{Path, PathBuf};
+use tracing::{error, warn};
 
 pub mod memory_map;
 
@@ -97,6 +98,40 @@ pub fn is_plaintext_fast_path(path: &Path) -> bool {
     )
 }
 
+/// True for extensions that should be previewed with syntax highlighting.
+#[must_use]
+pub fn is_code_extension(ext: &str) -> bool {
+    matches!(
+        ext.to_ascii_lowercase().as_str(),
+        "rs" | "py"
+            | "js"
+            | "jsx"
+            | "ts"
+            | "tsx"
+            | "c"
+            | "cpp"
+            | "h"
+            | "hpp"
+            | "cs"
+            | "go"
+            | "java"
+            | "kt"
+            | "swift"
+            | "php"
+            | "rb"
+            | "lua"
+            | "sh"
+            | "sql"
+            | "json"
+            | "toml"
+            | "yaml"
+            | "yml"
+            | "xml"
+            | "html"
+            | "css"
+    )
+}
+
 /// Ensure Xberg built-in extractors and registries are pre-warmed during bootstrap.
 pub fn ensure_initialized() {
     let _ = xberg::core::mime::list_supported_formats();
@@ -126,40 +161,78 @@ pub fn is_supported_file(path: &Path) -> bool {
     false
 }
 
-/// Detect file type and route to appropriate parser
-pub async fn parse_file(path: &Path, enable_ocr: bool) -> Result<ParsedDocument> {
+/// Streams a file through BLAKE3 without loading it into memory.
+///
+/// The heavy extraction path used to `read_file` the *entire* document a second
+/// time purely to hash it, which for a 90 MB PDF meant another 90 MB of pages
+/// faulted in and a transient allocation of the same size. Hashing in 256 KiB
+/// chunks keeps this path's memory flat and lets the OS evict the previous
+/// buffer before the next one is read.
+fn hash_file_streaming(path: &Path) -> Result<[u8; 32]> {
+    use std::io::Read;
+
+    let file = std::fs::File::open(path)
+        .map_err(|e| FlashError::Io(std::sync::Arc::new(e)))?;
+
+    let mut hasher = blake3::Hasher::new();
+    let mut buffer = vec![0u8; 256 * 1024];
+    let mut reader = std::io::BufReader::with_capacity(256 * 1024, file);
+
+    loop {
+        let read = reader
+            .read(&mut buffer)
+            .map_err(|e| FlashError::Io(std::sync::Arc::new(e)))?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+
+    Ok(*hasher.finalize().as_bytes())
+}
+
+/// Reads a plaintext/code file and returns its UTF-8 content plus BLAKE3 hash in
+/// a single pass over the data.
+fn parse_plaintext(path: &Path) -> Result<(String, [u8; 32])> {
+    let file_data = memory_map::read_file(path)?;
+    let hash = *blake3::hash(&file_data).as_bytes();
+    let content = std::str::from_utf8(&file_data).map_or_else(
+        |_| String::from_utf8_lossy(&file_data).into_owned(),
+        std::string::ToString::to_string,
+    );
+    Ok((content, hash))
+}
+
+/// Builds a `ParsedDocument` for a plaintext file, using the file name as title.
+fn plaintext_document(path: &Path, content: String) -> ParsedDocument {
+    ParsedDocument {
+        path: path.to_string_lossy().to_string(),
+        content,
+        title: path
+            .file_name()
+            .map(|n| CompactString::from(n.to_string_lossy().as_ref())),
+        language: None,
+        keywords: None,
+        layout: None,
+        code_metadata: None,
+        embeddings: None,
+    }
+}
+
+/// Detect file type, route to appropriate parser, and compute BLAKE3 hash in a single pass
+pub async fn parse_file_with_hash(
+    path: &Path,
+    enable_ocr: bool,
+) -> Result<(ParsedDocument, [u8; 32])> {
     // Zero-copy plaintext / code fast path (microsecond execution)
     if is_plaintext_fast_path(path) {
-        let file_data = memory_map::read_file(path)?;
-        let content = std::str::from_utf8(&file_data).map_or_else(
-            |_| String::from_utf8_lossy(&file_data).into_owned(),
-            std::string::ToString::to_string,
-        );
-
-        return Ok(ParsedDocument {
-            path: path.to_string_lossy().to_string(),
-            content,
-            title: path
-                .file_name()
-                .map(|n| CompactString::from(n.to_string_lossy().as_ref())),
-            language: None,
-            keywords: None,
-            layout: None,
-            code_metadata: None,
-            embeddings: None,
-        });
+        let (content, hash) = parse_plaintext(path)?;
+        return Ok((plaintext_document(path, content), hash));
     }
 
     // Heavy document extraction pipeline (PDF, DOCX, XLSX, etc.)
-    // Uses OutputFormat::Plain for indexing to strip markdown syntax tokens
-    let config = xberg::ExtractionConfig {
-        use_cache: false,
-        disable_ocr: !enable_ocr,
-        output_format: xberg::OutputFormat::Plain,
-        ..Default::default()
-    };
+    let config = extraction_config(enable_ocr);
 
-    // Use URI input directly to avoid cloning file buffers in memory
     let input = xberg::ExtractInput::from_uri(path.to_string_lossy().into_owned());
 
     let result = xberg::extract(input, &config).await.map_err(|e| {
@@ -171,50 +244,33 @@ pub async fn parse_file(path: &Path, enable_ocr: bool) -> Result<ParsedDocument>
         FlashError::parse(path, "Extraction returned empty results list".to_string())
     })?;
 
-    Ok(map_extracted_document(path, doc))
+    Ok((map_extracted_document(path, doc), hash_file_streaming(path)?))
+}
+
+/// Builds the Xberg extraction config used for indexing.
+fn extraction_config(enable_ocr: bool) -> xberg::ExtractionConfig {
+    xberg::ExtractionConfig {
+        use_cache: false,
+        disable_ocr: !enable_ocr,
+        output_format: xberg::OutputFormat::Plain,
+        ..Default::default()
+    }
+}
+
+/// Detect file type and route to appropriate parser
+pub async fn parse_file(path: &Path, enable_ocr: bool) -> Result<ParsedDocument> {
+    parse_file_with_hash(path, enable_ocr)
+        .await
+        .map(|(doc, _)| doc)
 }
 
 pub async fn parse_file_preview(path: &Path, enable_ocr: bool) -> Result<Vec<PreviewElement>> {
     // Fast path for code and text preview rendering
     if is_plaintext_fast_path(path) {
-        let file_data = memory_map::read_file(path)?;
-        let content = std::str::from_utf8(&file_data).map_or_else(
-            |_| String::from_utf8_lossy(&file_data).into_owned(),
-            std::string::ToString::to_string,
-        );
+        let (content, _) = parse_plaintext(path)?;
 
         let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-        let is_code = matches!(
-            extension.to_ascii_lowercase().as_str(),
-            "rs" | "py"
-                | "js"
-                | "jsx"
-                | "ts"
-                | "tsx"
-                | "c"
-                | "cpp"
-                | "h"
-                | "hpp"
-                | "cs"
-                | "go"
-                | "java"
-                | "kt"
-                | "swift"
-                | "php"
-                | "rb"
-                | "lua"
-                | "sh"
-                | "sql"
-                | "json"
-                | "toml"
-                | "yaml"
-                | "yml"
-                | "xml"
-                | "html"
-                | "css"
-        );
-
-        let element_type = if is_code {
+        let element_type = if is_code_extension(extension) {
             crate::models::ElementType::CodeBlock
         } else {
             crate::models::ElementType::NarrativeText
@@ -274,47 +330,64 @@ pub async fn parse_file_preview(path: &Path, enable_ocr: bool) -> Result<Vec<Pre
     Ok(elements)
 }
 
-/// Process a batch of files using parallel plaintext parsing and async Xberg extraction
+/// Parses a batch of files: plaintext/code on the rayon pool, everything else via
+/// Xberg's concurrent batch extractor.
+///
+/// The plaintext path is I/O + UTF-8 validation bound and used to run inline on
+/// the calling Tokio worker for every file in the chunk, which stalled the whole
+/// runtime (and therefore the UI's async tasks) for the duration of the batch.
 pub async fn parse_files_batch(
     paths: &[PathBuf],
     max_threads: u8,
     enable_ocr: bool,
-) -> Result<Vec<Result<ParsedDocument>>> {
-    let mut slots: Vec<Option<Result<ParsedDocument>>> = vec![None; paths.len()];
+) -> Result<Vec<Result<(ParsedDocument, [u8; 32])>>> {
+    let mut slots: Vec<Option<Result<(ParsedDocument, [u8; 32])>>> = vec![None; paths.len()];
     let mut complex_inputs = Vec::new();
     let mut complex_indices = Vec::new();
 
-    // Fast-path evaluation for plain text & source code files
+    // Split the chunk into plaintext and document work.
     for (idx, path) in paths.iter().enumerate() {
         if is_plaintext_fast_path(path) {
-            match memory_map::read_file(path) {
-                Ok(file_data) => {
-                    let content = std::str::from_utf8(&file_data).map_or_else(
-                        |_| String::from_utf8_lossy(&file_data).into_owned(),
-                        std::string::ToString::to_string,
-                    );
-                    slots[idx] = Some(Ok(ParsedDocument {
-                        path: path.to_string_lossy().to_string(),
-                        content,
-                        title: path
-                            .file_name()
-                            .map(|n| CompactString::from(n.to_string_lossy().as_ref())),
-                        language: None,
-                        keywords: None,
-                        layout: None,
-                        code_metadata: None,
-                        embeddings: None,
-                    }));
-                }
-                Err(e) => {
-                    slots[idx] = Some(Err(e));
-                }
-            }
-        } else {
-            complex_inputs.push(xberg::ExtractInput::from_uri(
-                path.to_string_lossy().into_owned(),
-            ));
-            complex_indices.push(idx);
+            continue;
+        }
+        complex_inputs.push(xberg::ExtractInput::from_uri(
+            path.to_string_lossy().into_owned(),
+        ));
+        complex_indices.push(idx);
+    }
+
+    // Fast-path evaluation for plain text & source code files, in parallel and
+    // off the async runtime.
+    let plaintext_paths: Vec<(usize, PathBuf)> = paths
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| is_plaintext_fast_path(p))
+        .map(|(i, p)| (i, p.clone()))
+        .collect();
+
+    if !plaintext_paths.is_empty() {
+        use rayon::prelude::*;
+        let parsed: Vec<(usize, Result<(ParsedDocument, [u8; 32])>)> =
+            tokio::task::spawn_blocking(move || {
+                plaintext_paths
+                    .par_iter()
+                    .map(|(idx, path)| {
+                        let out = parse_plaintext(path)
+                            .map(|(content, hash)| (plaintext_document(path, content), hash));
+                        (*idx, out)
+                    })
+                    .collect()
+            })
+            .await
+            .map_err(|e| {
+                FlashError::parse(
+                    &paths[0],
+                    format!("Plaintext parse pool panicked: {e}"),
+                )
+            })?;
+
+        for (idx, result) in parsed {
+            slots[idx] = Some(result);
         }
     }
 
@@ -322,59 +395,94 @@ pub async fn parse_files_batch(
     if !complex_inputs.is_empty() {
         let config = xberg::ExtractionConfig {
             use_cache: false,
-            max_concurrent_extractions: Some(max_threads as usize),
+            max_concurrent_extractions: Some(usize::from(max_threads).max(1)),
             disable_ocr: !enable_ocr,
             output_format: xberg::OutputFormat::Plain,
             ..Default::default()
         };
 
-        if let Ok(batch_results) = xberg::extract_batch(complex_inputs, &config).await {
-            for result in batch_results.results {
-                let source_idx = result
-                    .metadata
-                    .additional
-                    .get("source_index")
-                    .and_then(serde_json::Value::as_u64)
-                    .and_then(|v| usize::try_from(v).ok());
+        match xberg::extract_batch(complex_inputs, &config).await {
+            Ok(batch_results) => {
+                let pending: Vec<usize> = complex_indices.clone();
 
-                if let Some(sub_idx) = source_idx
-                    && sub_idx < complex_indices.len()
-                {
-                    let actual_idx = complex_indices[sub_idx];
-                    slots[actual_idx] =
-                        Some(Ok(map_extracted_document(&paths[actual_idx], result)));
+                for result in batch_results.results {
+                    let source_idx = result
+                        .metadata
+                        .additional
+                        .get("source_index")
+                        .and_then(serde_json::Value::as_u64)
+                        .and_then(|v| usize::try_from(v).ok());
+
+                    if let Some(sub_idx) = source_idx
+                        && let Some(&actual_idx) = pending.get(sub_idx)
+                    {
+                        let hash = hash_file_streaming(&paths[actual_idx])?;
+                        slots[actual_idx] = Some(Ok((
+                            map_extracted_document(&paths[actual_idx], result),
+                            hash,
+                        )));
+                    } else {
+                        warn!("Xberg returned a result with no usable source_index");
+                    }
+                }
+
+                for error in batch_results.errors {
+                    if let Some(&actual_idx) = complex_indices.get(error.index) {
+                        slots[actual_idx] = Some(Err(FlashError::parse(
+                            &paths[actual_idx],
+                            format!("Extraction failed: {}", error.message),
+                        )));
+                    }
                 }
             }
-
-            for error in batch_results.errors {
-                if error.index < complex_indices.len() {
-                    let actual_idx = complex_indices[error.index];
-                    slots[actual_idx] = Some(Err(FlashError::parse(
-                        &paths[actual_idx],
-                        format!("Extraction failed: {}", error.message),
+            Err(e) => {
+                // `extract_batch` failing outright means every document in the
+                // chunk is unparsed. Mark them individually so the caller can
+                // fall back per-file instead of seeing one opaque batch error.
+                error!("Xberg batch extraction failed: {e}");
+                for &idx in &complex_indices {
+                    slots[idx] = Some(Err(FlashError::parse(
+                        &paths[idx],
+                        format!("Batch extraction failed: {e}"),
                     )));
                 }
+                return Ok(slots
+                    .into_iter()
+                    .enumerate()
+                    .map(|(idx, slot)| {
+                        slot.unwrap_or_else(|| {
+                            Err(FlashError::parse(
+                                &paths[idx],
+                                "No output returned for file".to_string(),
+                            ))
+                        })
+                    })
+                    .collect());
             }
         }
     }
 
-    let results = slots
+    Ok(slots
         .into_iter()
         .enumerate()
-        .map(|(idx, opt)| {
-            opt.unwrap_or_else(|| {
+        .map(|(idx, slot)| {
+            slot.unwrap_or_else(|| {
                 Err(FlashError::parse(
                     &paths[idx],
                     "No output returned for file".to_string(),
                 ))
             })
         })
-        .collect();
-
-    Ok(results)
+        .collect())
 }
 
 /// Maps a `xberg::ExtractedDocument` into a `ParsedDocument`.
+///
+/// `layout`, `code_metadata`, and `embeddings` are intentionally left unset:
+/// nothing downstream ever reads them (the writer only uses `content`,
+/// `keywords`, `title`, and `path`), and populating them previously meant
+/// `format!("{value:?}")`-ing entire structured outputs on every document just
+/// to throw the string away.
 fn map_extracted_document(path: &Path, doc: xberg::ExtractedDocument) -> ParsedDocument {
     let language = doc
         .detected_languages
@@ -398,11 +506,9 @@ fn map_extracted_document(path: &Path, doc: xberg::ExtractedDocument) -> ParsedD
             .map(|t| CompactString::from(t.as_str())),
         language,
         keywords,
-        layout: doc.structured_output.map(|l| format!("{l:?}")),
-        code_metadata: doc.annotations.map(|c| format!("{c:?}")),
-        embeddings: doc
-            .chunks
-            .and_then(|c| c.into_iter().find_map(|chunk| chunk.embedding)),
+        layout: None,
+        code_metadata: None,
+        embeddings: None,
     }
 }
 

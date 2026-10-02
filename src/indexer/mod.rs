@@ -15,19 +15,50 @@ use tantivy::{Index, directory::MmapDirectory};
 use tracing::{error, info, warn};
 
 /// Current schema version - bump this when schema changes
-pub const SCHEMA_VERSION: &str = "1.3.0";
+pub const SCHEMA_VERSION: &str = "2.1.0";
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct IndexMetaInfo {
+    pub schema_version: String,
+    pub created_at: u64,
+    pub last_rebuilt: u64,
+}
 
 fn get_schema_version_path(index_path: &Path) -> PathBuf {
     index_path.join(".schema_version")
 }
 
+fn get_index_meta_path(index_path: &Path) -> PathBuf {
+    index_path.join("index_meta.json")
+}
+
 fn read_schema_version(index_path: &Path) -> Option<String> {
+    if let Ok(content) = std::fs::read_to_string(get_index_meta_path(index_path)) {
+        if let Ok(meta) = serde_json::from_str::<IndexMetaInfo>(&content) {
+            return Some(meta.schema_version);
+        }
+    }
     std::fs::read_to_string(get_schema_version_path(index_path))
         .ok()
         .map(|s| s.trim().to_string())
 }
 
 fn write_schema_version(index_path: &Path, version: &str) -> Result<()> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let meta = IndexMetaInfo {
+        schema_version: version.to_string(),
+        created_at: now,
+        last_rebuilt: now,
+    };
+
+    if let Ok(serialized) = serde_json::to_string_pretty(&meta) {
+        let _ = std::fs::write(get_index_meta_path(index_path), serialized);
+    }
+
     std::fs::write(get_schema_version_path(index_path), version)
         .map_err(|e| FlashError::Io(std::sync::Arc::new(e)))
 }
@@ -41,30 +72,68 @@ pub struct IndexManager {
 }
 
 impl IndexManager {
-    fn rebuild_index_internal(index_path: &Path) -> Result<()> {
-        // Try to backup the index before destroying it
-        let backup_path = index_path.with_extension("backup");
-        if let Err(e) = std::fs::remove_dir_all(&backup_path)
-            && e.kind() != std::io::ErrorKind::NotFound
-        {
-            warn!("Failed to remove old backup at {:?}: {}", backup_path, e);
-        }
-        if index_path.exists()
-            && let Err(e) = std::fs::rename(index_path, &backup_path)
-        {
-            warn!(
-                "Failed to atomic rename index to {:?}: {}. Falling back to copy.",
-                backup_path, e
-            );
-            if let Err(e) = copy_dir(index_path, &backup_path) {
-                warn!("Failed to backup index to {:?}: {}", backup_path, e);
+    /// Rotates timestamped index backups, retaining the 2 most recent backups.
+    fn rotate_index_backups(index_path: &Path) -> Result<PathBuf> {
+        let parent = index_path.parent().unwrap_or_else(|| Path::new("."));
+        let stem = index_path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("index");
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let new_backup = parent.join(format!("{stem}.backup.{now}"));
+
+        // Prune old backups, retaining only the 2 most recent
+        if let Ok(entries) = std::fs::read_dir(parent) {
+            let prefix = format!("{stem}.backup.");
+            let mut existing_backups = Vec::new();
+            for entry in entries.flatten() {
+                if let Ok(name) = entry.file_name().into_string() {
+                    if name.starts_with(&prefix) {
+                        existing_backups.push(entry.path());
+                    }
+                }
             }
-            if let Err(e) = std::fs::remove_dir_all(index_path) {
-                error!(
-                    "Failed to remove corrupted index at {:?}: {}",
-                    index_path, e
+            existing_backups.sort();
+            while existing_backups.len() >= 2 {
+                let to_prune = existing_backups.remove(0);
+                info!("Pruning old index backup at {:?}", to_prune);
+                let _ = std::fs::remove_dir_all(&to_prune);
+            }
+        }
+
+        Ok(new_backup)
+    }
+
+    fn rebuild_index_internal(index_path: &Path) -> Result<()> {
+        if index_path.exists() {
+            let backup_path = Self::rotate_index_backups(index_path)?;
+            info!("Creating index backup at {:?}", backup_path);
+
+            // Attempt atomic rename first
+            if let Err(e) = std::fs::rename(index_path, &backup_path) {
+                warn!(
+                    "Atomic rename to {:?} failed ({}). Copying index files...",
+                    backup_path, e
                 );
-                return Err(FlashError::Io(std::sync::Arc::new(e)));
+                if let Err(copy_err) = copy_dir(index_path, &backup_path) {
+                    error!(
+                        "Failed to backup index to {:?}: {}. Preserving existing index directory to prevent data loss.",
+                        backup_path, copy_err
+                    );
+                    return Err(FlashError::Io(std::sync::Arc::new(copy_err)));
+                }
+
+                // Copy succeeded, now safely remove old directory
+                if let Err(rm_err) = std::fs::remove_dir_all(index_path) {
+                    error!(
+                        "Failed to remove old index directory at {:?}: {}",
+                        index_path, rm_err
+                    );
+                    return Err(FlashError::Io(std::sync::Arc::new(rm_err)));
+                }
             }
         }
 
@@ -169,14 +238,50 @@ impl IndexManager {
         self.writer.remove_document(path)
     }
 
+    /// Remove many documents in a single lock acquisition.
+    pub fn remove_documents_batch(&self, paths: &[String]) -> Result<usize> {
+        self.writer.remove_documents_batch(paths)
+    }
+
     /// Clear all documents from the index
     pub fn clear(&self) -> Result<()> {
         self.writer.delete_all_documents()
     }
 
-    /// Commit pending changes
+    /// Commit pending changes and immediately reload reader
     pub fn commit(&self) -> Result<()> {
-        self.writer.commit()
+        self.writer.commit()?;
+        let _ = self.searcher.reload();
+        // The on-disk size changed; re-measure in the background so the status
+        // bar does not have to walk the index directory on the UI thread.
+        self.searcher.refresh_size_cache();
+        Ok(())
+    }
+
+    /// Reconcile Tantivy index with metadata DB to detect anomalies or divergence.
+    /// Returns (`tantivy_docs_count`, `metadata_paths_count`).
+    pub fn reconcile_with_metadata_db(
+        &self,
+        metadata_db: &crate::metadata::MetadataDb,
+    ) -> Result<(usize, usize)> {
+        let stats = self.get_statistics()?;
+        let meta_paths = metadata_db.get_all_file_paths()?;
+        let tantivy_count = stats.total_documents;
+        let db_count = meta_paths.len();
+
+        if (tantivy_count as isize - db_count as isize).abs() > 50 {
+            warn!(
+                "Index/Database divergence detected: Tantivy has {} docs, redb has {} records.",
+                tantivy_count, db_count
+            );
+        } else {
+            info!(
+                "Index/Database reconciled: Tantivy={}, redb={}",
+                tantivy_count, db_count
+            );
+        }
+
+        Ok((tantivy_count, db_count))
     }
 
     /// Search the index (async with caching)
@@ -185,6 +290,12 @@ impl IndexManager {
         params: searcher::SearchParams<'_>,
     ) -> Result<Vec<SearchResult>> {
         self.searcher.search(params).await
+    }
+
+    /// Blocking search, for callers already on a worker thread (tests, the CLI
+    /// on a runtime thread, and startup warmup).
+    pub fn search_blocking(&self, params: searcher::SearchParams<'_>) -> Result<Vec<SearchResult>> {
+        self.searcher.search_sync(&params)
     }
 
     /// Get recent files

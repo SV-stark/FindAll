@@ -10,6 +10,13 @@ resolver = "3"
 [lib]
 name = "flash_search"
 
+[features]
+default = []
+# Enables OCR of scanned PDFs / images. Pulls in `xberg-tesseract`, which
+# downloads and CMake-builds Leptonica + Tesseract from source at compile time.
+# Off by default so normal builds need no network, CMake, or C/C++ toolchain.
+ocr = ["xberg/ocr"]
+
 [build-dependencies]
 winres = "0.1"
 image = { version = "0.25", default-features = false, features = [
@@ -49,13 +56,16 @@ memmap2 = "0.9"
 fd-lock = "4.0"
 
 # Document Parsing
-# Simplified with Xberg (lightweight without heavy NLP/YAKE keyword overhead)
-xberg = { version = "1.0.14", features = [
-    "tokio-runtime",
-    "pdf",
-    "ocr",
-] }
-
+# Xberg (Kreuzberg successor) handles 75+ document formats.
+#
+# OCR is intentionally NOT enabled by default. `xberg-tesseract` downloads and
+# CMake-builds Leptonica + Tesseract from source, which requires network access,
+# CMake and a C/C++ toolchain on every machine that builds the project (CI,
+# `cargo install`, release builds). The app ships with `enable_ocr = false`, so
+# the default build stays hermetic and fast.
+#
+# Opt in with:  cargo build --features ocr
+xberg = { version = "1.3", features = ["tokio-runtime", "pdf"] }
 
 # Performance Libraries
 mini-moka = "0.10"

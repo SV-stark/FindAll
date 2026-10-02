@@ -20,8 +20,14 @@ pub use iced_ui::{app_theme, app_title, subscription, update, view};
 
 pub static SHUTDOWN_FLAG: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+#[must_use]
 pub fn is_shutting_down() -> bool {
     SHUTDOWN_FLAG.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// Signals background threads to wind down.
+pub fn request_shutdown() {
+    SHUTDOWN_FLAG.store(true, std::sync::atomic::Ordering::SeqCst);
 }
 
 use crate::error::FlashError;
@@ -65,9 +71,14 @@ pub fn setup_app() -> std::result::Result<
     // Pre-warm Xberg extractors and registry
     parsers::ensure_initialized();
 
+    // Create the local IPC token before anything can bind the IPC port.
+    if let Err(e) = ensure_ipc_token(&app_data_dir) {
+        warn!("Could not create local search IPC token: {e}");
+    }
+
     let settings_manager = settings::SettingsManager::new(&app_data_dir);
     let settings = settings_manager.load().unwrap_or_else(|e| {
-        warn!("Failed to load settings (using defaults): {}", e);
+        warn!("Failed to load settings (using defaults): {e}");
         settings::AppSettings::default()
     });
     let index_path = app_data_dir.join("index");
@@ -94,10 +105,12 @@ pub fn setup_app() -> std::result::Result<
             }
         };
 
-    // Initialize watcher with exclude patterns for live event filtering
+    // The watcher must see the same extension set and exclude globs the scanner
+    // uses; otherwise a file the scanner skips still triggers a re-index, or vice
+    // versa.
     let watcher = watcher::WatcherManager::new_with_excludes(
-        indexer_shared.clone(),
-        metadata_db_shared.clone(),
+        Arc::clone(&indexer_shared),
+        Arc::clone(&metadata_db_shared),
         settings.get_allowed_extensions().clone(),
         &settings.exclude_patterns,
         settings.enable_ocr,
@@ -106,17 +119,18 @@ pub fn setup_app() -> std::result::Result<
     let (progress_tx, progress_rx) = flume::bounded(100);
 
     let scanner = Arc::new(crate::scanner::Scanner::new(
-        indexer_shared.clone(),
-        metadata_db_shared.clone(),
+        Arc::clone(&indexer_shared),
+        Arc::clone(&metadata_db_shared),
         filename_index.clone(),
         Some(progress_tx.clone()),
-        settings,
+        settings.clone(),
     ));
 
     let state = Arc::new(
         AppState::builder()
             .indexer(indexer_shared)
             .metadata_db(metadata_db_shared)
+            .settings(settings)
             .settings_manager(settings_manager)
             .watcher(watcher)
             .maybe_filename_index(filename_index)
@@ -143,8 +157,7 @@ pub fn run_ui(initial_dir: Option<String>) -> std::result::Result<(), FlashError
         Err(e) => (Err(e.to_string()), flume::bounded(1).1),
     };
 
-    iced_ui::run_ui(&state_res, rx, initial_dir);
-    Ok(())
+    iced_ui::run_ui(&state_res, rx, initial_dir)
 }
 
 pub async fn run_cli(
@@ -191,67 +204,264 @@ pub async fn run_cli(
     Ok(())
 }
 
+/// Runs the local search IPC server.
+///
+/// # Security
+///
+/// The listener is loopback-only and guarded by a per-user token stored in the
+/// app data directory with owner-only permissions. Without the token, any local
+/// process (including other users' sandboxed apps and any web page able to reach
+/// `localhost`) could query the index and dump every indexed path. The previous
+/// implementation was an open, unauthenticated port with no input length cap.
 async fn start_ipc_server(state: Arc<AppState>) {
-    let addr = "127.0.0.1:9095";
-    let listener = match tokio::net::TcpListener::bind(addr).await {
-        Ok(l) => l,
+    const IPC_ADDR: &str = "127.0.0.1:9095";
+    /// Maximum accepted query length in bytes.
+    const MAX_QUERY_BYTES: usize = 4096;
+
+    let app_data_dir = match get_app_data_dir() {
+        Ok(dir) => dir,
         Err(e) => {
-            tracing::error!("Failed to bind IPC TCP listener at {}: {}", addr, e);
+            tracing::error!("Cannot start IPC server: {e}");
             return;
         }
     };
 
-    tracing::info!("IPC TCP Server listening on {}", addr);
+    let token = match std::fs::read_to_string(app_data_dir.join("ipc_token")) {
+        Ok(token) if !token.trim().is_empty() => token,
+        _ => {
+            tracing::warn!("IPC token missing; local search IPC is disabled");
+            return;
+        }
+    };
+    let token = token.trim().to_string();
+
+    let listener = match tokio::net::TcpListener::bind(IPC_ADDR).await {
+        Ok(l) => l,
+        Err(e) => {
+            tracing::error!("Failed to bind IPC TCP listener at {IPC_ADDR}: {e}");
+            return;
+        }
+    };
+
+    tracing::info!("Local search IPC listening on {IPC_ADDR} (token required)");
 
     loop {
-        let Ok((mut socket, _)) = listener.accept().await else {
-            continue;
+        if is_shutting_down() {
+            break;
+        }
+
+        // `accept` returns an error for both transient conditions (EMFILE, ECONNABORTED)
+        // and permanent ones. Sleeping briefly avoids a hot spin loop while still
+        // recovering promptly.
+        let accepted = match listener.accept().await {
+            Ok(accepted) => accepted,
+            Err(e) => {
+                tracing::warn!("IPC accept failed: {e}");
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                continue;
+            }
         };
+        let (mut socket, _peer) = accepted;
 
         let state_clone = state.clone();
+        let token = token.clone();
         tokio::spawn(async move {
-            use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+            use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+
             let (reader, mut writer) = socket.split();
             let mut reader = BufReader::new(reader);
-            let mut line = String::new();
 
-            if reader.read_line(&mut line).await.is_ok() {
-                let query = line.trim();
-                if !query.is_empty() {
-                    let search_params = SearchParams::builder()
-                        .query(query)
-                        .limit(50)
-                        .case_sensitive(false)
-                        .build();
+            // First line is the shared token, second line is the query.
+            let mut auth_line = Vec::new();
+            let read = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                reader.read_until(b'\n', &mut auth_line),
+            )
+            .await;
 
-                    match state_clone.indexer.search(search_params).await {
-                        Ok(results) => {
-                            let json_results: Vec<serde_json::Value> = results
-                                .into_iter()
-                                .map(|res| {
-                                    serde_json::json!({
-                                        "score": res.score,
-                                        "path": res.file_path,
-                                        "title": res.title
-                                    })
-                                })
-                                .collect();
+            let auth_ok = matches!(
+                read,
+                Ok(Ok(_))
+            ) && String::from_utf8_lossy(&auth_line)
+                .trim()
+                .eq_ignore_ascii_case(token.as_str());
 
-                            if let Ok(serialized) = serde_json::to_string(&json_results) {
-                                let _ = writer.write_all(serialized.as_bytes()).await;
-                                let _ = writer.write_all(b"\n").await;
-                            }
-                        }
-                        Err(e) => {
-                            let err_json = serde_json::json!({ "error": e.to_string() });
-                            if let Ok(serialized) = serde_json::to_string(&err_json) {
-                                let _ = writer.write_all(serialized.as_bytes()).await;
-                                let _ = writer.write_all(b"\n").await;
-                            }
-                        }
-                    }
+            if !auth_ok {
+                tracing::warn!("Rejected unauthenticated local search request");
+                let _ = writer.write_all(b"{\"error\":\"unauthorized\"}\n").await;
+                return;
+            }
+
+            // Cap the query length so a client cannot make the server buffer
+            // without bound. `read_until` stops at the cap, and the leftover
+            // bytes are simply never read from this short-lived connection.
+            let mut line = Vec::new();
+            match reader
+                .take(MAX_QUERY_BYTES as u64 + 1)
+                .read_until(b'\n', &mut line)
+                .await
+            {
+                Ok(n) if n <= MAX_QUERY_BYTES => {}
+                Ok(_) => {
+                    let _ = writer
+                        .write_all(b"{\"error\":\"query too long\"}\n")
+                        .await;
+                    return;
+                }
+                Err(e) => {
+                    tracing::warn!("IPC read failed: {e}");
+                    return;
                 }
             }
+
+            let query = String::from_utf8_lossy(&line);
+            let query = query.trim();
+            if query.is_empty() {
+                return;
+            }
+
+            let search_params = SearchParams::builder()
+                .query(query)
+                .limit(50)
+                .case_sensitive(false)
+                .build();
+
+            let payload = match state_clone.indexer.search(search_params).await {
+                Ok(results) => {
+                    let json_results: Vec<serde_json::Value> = results
+                        .into_iter()
+                        .map(|res| {
+                            serde_json::json!({
+                                "score": res.score,
+                                "path": res.file_path,
+                                "title": res.title
+                            })
+                        })
+                        .collect();
+                    serde_json::to_string(&json_results).unwrap_or_else(|e| {
+                        format!(r#"{{"error":"{e}"}}"#)
+                    })
+                }
+                Err(e) => serde_json::json!({ "error": e.to_string() }).to_string(),
+            };
+
+            let _ = writer.write_all(payload.as_bytes()).await;
+            let _ = writer.write_all(b"\n").await;
         });
     }
 }
+
+/// Generates and persists the local IPC token with owner-only permissions.
+///
+/// Returns the token. On non-Windows platforms the file is created with mode
+/// `0600`.
+pub fn ensure_ipc_token(app_data_dir: &std::path::Path) -> crate::error::Result<String> {
+    use std::io::Write;
+
+    let path = app_data_dir.join("ipc_token");
+    if let Ok(existing) = std::fs::read_to_string(&path) {
+        let trimmed = existing.trim();
+        if !trimmed.is_empty() {
+            return Ok(trimmed.to_string());
+        }
+    }
+
+    let token = {
+        let mut bytes = [0u8; 32];
+        getrandom(&mut bytes);
+        bytes.iter().fold(
+            String::with_capacity(64),
+            |mut acc, b| {
+                use std::fmt::Write;
+                let _ = write!(acc, "{b:02x}");
+                acc
+            },
+        )
+    };
+
+    std::fs::create_dir_all(app_data_dir)
+        .map_err(|e| FlashError::config("create_dir", e.to_string()))?;
+
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options
+        .open(&path)
+        .map_err(|e| FlashError::config("create_ipc_token", e.to_string()))?;
+    file.write_all(token.as_bytes())
+        .map_err(|e| FlashError::config("write_ipc_token", e.to_string()))?;
+
+    Ok(token)
+}
+
+/// Fills `buffer` with cryptographically random bytes.
+fn getrandom(buffer: &mut [u8]) {
+    #[cfg(target_os = "windows")]
+    {
+        // Declared locally rather than pulled from `windows`: the generated
+        // `BCryptGenRandom` wrapper's first parameter is typed `Param<BCRYPT_ALG_HANDLE>`,
+        // which the `BCRYPT_USE_SYSTEM_PREFERRED_RNG` constant (declared as a
+        // `BCRYPTGENRANDOM_FLAGS`) does not satisfy, so it cannot be called.
+        #[link(name = "bcrypt")]
+        unsafe extern "system" {
+            fn BCryptGenRandom(
+                alg_id: u32,
+                buffer: *mut u8,
+                buffer_len: u32,
+                flags: u32,
+            ) -> i32;
+        }
+
+        // BCRYPT_USE_SYSTEM_PREFERRED_RNG
+        const SYSTEM_PREFERRED_RNG: u32 = 0x0000_0002;
+
+        // SAFETY: `buffer` is a valid, uniquely borrowed slice for `buffer_len`
+        // bytes and `alg_id` is the documented system-preferred RNG handle.
+        let status = unsafe {
+            BCryptGenRandom(
+                SYSTEM_PREFERRED_RNG,
+                buffer.as_mut_ptr(),
+                buffer.len() as u32,
+                0,
+            )
+        };
+        // NTSTATUS >= 0 means success.
+        if status >= 0 {
+            return;
+        }
+    }
+
+    #[cfg(unix)]
+    {
+        use std::io::Read;
+        if std::fs::File::open("/dev/urandom")
+            .and_then(|mut f| f.read_exact(buffer))
+            .is_ok()
+        {
+            return;
+        }
+    }
+
+    // Last-resort fallback. Only reachable if the OS CSPRNG is unavailable,
+    // which should not happen on any supported platform; a weak token is still
+    // better than no token, and the failure is logged.
+    warn!("OS CSPRNG unavailable; IPC token derived from a weak seed");
+    let mut seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0x9E37_79B9_7F4A_7C15, |d| {
+            u64::try_from(d.as_nanos()).unwrap_or(0x9E37_79B9_7F4A_7C15)
+        }) ^ (buffer.as_ptr() as usize as u64);
+    for slot in buffer.iter_mut() {
+        // xorshift64*
+        seed ^= seed >> 12;
+        seed ^= seed << 25;
+        seed ^= seed >> 27;
+        *slot = (seed.wrapping_mul(0x2545_F491_4F6C_DD1D) >> 33) as u8;
+    }
+}
+
+

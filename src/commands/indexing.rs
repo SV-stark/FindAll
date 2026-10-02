@@ -3,56 +3,27 @@ use crate::indexer::searcher::IndexStatistics;
 use crate::models::{IndexStatus, RecentFile};
 use std::path::PathBuf;
 use std::sync::Arc;
-use tracing::error;
 
-/// Starts the indexing process.
+/// Starts (or restarts) indexing for `path`.
+///
+/// Supersedes any run already in flight and merges the user's exclude patterns
+/// and folders. The UI used to call `Scanner::scan_directory` directly with an
+/// empty exclude list, which silently ignored the user's settings and left the
+/// run uncancellable and untracked.
 ///
 /// # Errors
 ///
-/// Returns an error if the indexing task cannot be spawned or fails.
+/// Returns an error if the indexing task cannot be started.
 pub async fn start_indexing_internal(path: String, state: Arc<AppState>) -> Result<(), String> {
-    let path = PathBuf::from(path);
-    let previous_handle = {
-        let mut handle_guard = state.indexing_handle.lock();
-        handle_guard.take()
-    };
-
-    // Gracefully cancel previous indexing if still running
-    if let Some(handle) = previous_handle {
-        state
-            .indexing_cancel
-            .store(true, std::sync::atomic::Ordering::Relaxed);
-        let _ = handle.await;
-    }
-
-    // Reset the cancel flag for the new indexing run
     state
-        .indexing_cancel
-        .store(false, std::sync::atomic::Ordering::Relaxed);
+        .start_indexing(PathBuf::from(path))
+        .await
+        .map_err(|e| e.to_string())
+}
 
-    let mut handle_guard = state.indexing_handle.lock();
-    let state_clone = state.clone();
-    let cancel_flag = state.indexing_cancel.clone();
-
-    let handle = tokio::spawn(async move {
-        let settings = state_clone.settings_cache.load();
-        let mut exclude_patterns = settings.exclude_patterns.clone();
-        for folder in &settings.exclude_folders {
-            exclude_patterns.push(folder.clone());
-        }
-
-        if let Err(e) = state_clone
-            .scanner
-            .scan_directory(path, exclude_patterns, cancel_flag)
-            .await
-        {
-            error!("Indexing error: {}", e);
-        }
-    });
-
-    *handle_guard = Some(handle);
-    drop(handle_guard);
-    Ok(())
+/// Cancels the current indexing run, if any.
+pub fn cancel_indexing_internal(state: &Arc<AppState>) {
+    state.cancel_indexing();
 }
 
 /// Gets the current status of the indexer.
@@ -61,18 +32,7 @@ pub async fn start_indexing_internal(path: String, state: Arc<AppState>) -> Resu
 ///
 /// Returns an error if the index statistics cannot be retrieved.
 pub async fn get_index_status_internal(state: &Arc<AppState>) -> Result<IndexStatus, String> {
-    let is_running = {
-        let mut handle_guard = state.indexing_handle.lock();
-        let finished = handle_guard
-            .as_ref()
-            .is_some_and(tokio::task::JoinHandle::is_finished);
-        if finished {
-            *handle_guard = None;
-            false
-        } else {
-            handle_guard.is_some()
-        }
-    };
+    let is_running = state.indexing_handle.lock().is_some();
 
     let status = if is_running {
         "indexing".to_string()

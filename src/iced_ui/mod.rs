@@ -160,15 +160,23 @@ pub fn format_size(bytes: u64) -> String {
     }
 }
 
-/// # Panics
+/// Formats a Unix timestamp for display.
 ///
-/// Panics if the timestamp is out of range for the system's local time.
+/// Never panics: an out-of-range timestamp renders as `Unknown` instead of
+/// unwrapping. The release profile uses `panic = "abort"`, so any panic on this
+/// path terminates the process with no chance to report anything.
+#[must_use]
 pub fn format_date(timestamp: u64) -> String {
-    jiff::Timestamp::from_second(i64::try_from(timestamp).unwrap_or(i64::MAX))
-        .unwrap_or_else(|_| jiff::Timestamp::from_second(0).unwrap())
-        .to_zoned(jiff::tz::TimeZone::system())
-        .strftime("%Y-%m-%d %H:%M")
-        .to_string()
+    let Ok(secs) = i64::try_from(timestamp) else {
+        return "Unknown".to_string();
+    };
+    match jiff::Timestamp::from_second(secs) {
+        Ok(ts) => ts
+            .to_zoned(jiff::tz::TimeZone::system())
+            .strftime("%Y-%m-%d %H:%M")
+            .to_string(),
+        Err(_) => "Unknown".to_string(),
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -542,30 +550,30 @@ impl App {
             .trim()
             .parse::<u64>()
             .ok()
-            .map(|n| n * multiplier);
+            .map(|n| n.saturating_mul(multiplier));
         let max_size = self
             .max_size
             .trim()
             .parse::<u64>()
             .ok()
-            .map(|n| n * multiplier);
+            .map(|n| n.saturating_mul(multiplier));
 
-        let (mut min_size, mut max_size) = if min_size.is_none() && max_size.is_none() {
+        let (min_size, max_size) = if min_size.is_none() && max_size.is_none() {
             Self::parse_size_filter(&self.filter_size)
         } else {
             (min_size, max_size)
         };
 
-        let mut min_modified = self.get_min_modified();
+        let min_modified = self.get_min_modified();
 
-        query = parse_inline_query_filters(
-            &query,
-            &mut min_size,
-            &mut max_size,
-            &mut min_modified,
-            &mut extensions,
-        );
-
+        // Inline `ext:` / `path:` / `title:` / `size:` / `modified:` operators are
+        // NOT stripped here. `ParsedQuery` in the indexer is the single source of
+        // truth for that DSL and the searcher applies the results, so the GUI, the
+        // CLI, and the IPC endpoint all interpret a query identically. This used to
+        // run a second, divergent parser: it only understood a subset of operators,
+        // and its `modified:today` meant "last 24 hours" rather than "since
+        // midnight", so the same query returned different results depending on
+        // whether it came from the window or from `--cli`.
         let extension: Option<Vec<String>> = if extensions.is_empty() {
             None
         } else {
@@ -744,18 +752,24 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             app.hovered_item_index = idx;
             Task::none()
         }
-        Message::OpenFile(path) => {
-            let _ = opener::open(std::path::Path::new(&path));
-            Task::none()
-        }
-        Message::OpenFolder(path) => {
-            let _ = crate::commands::open_folder_internal(&path);
-            Task::none()
-        }
-        Message::CopyPath(path) => {
-            let _ = crate::commands::copy_to_clipboard_internal(&path);
-            Task::none()
-        }
+        Message::OpenFile(path) => Task::perform(
+            async move {
+                let _ = opener::open(std::path::Path::new(&path));
+            },
+            |_| Message::NoOp,
+        ),
+        Message::OpenFolder(path) => Task::perform(
+            async move {
+                let _ = crate::commands::open_folder_internal(&path);
+            },
+            |_| Message::NoOp,
+        ),
+        Message::CopyPath(path) => Task::perform(
+            async move {
+                let _ = crate::commands::copy_to_clipboard_internal(&path);
+            },
+            |_| Message::NoOp,
+        ),
         Message::FilterExtensionChanged(ext) => {
             app.filter_extension = ext;
             app.perform_search(true)
@@ -879,6 +893,10 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                 app.rebuild_progress = Some(0.0);
                 app.rebuild_status = Some("Rebuilding index...".to_string());
                 return Task::future(async move {
+                    // Stop any in-flight run *before* clearing, otherwise its
+                    // writer keeps flushing into the index we are about to drop.
+                    state.cancel_indexing();
+
                     if let Err(e) = state.indexer.clear() {
                         tracing::error!("Failed to clear search index: {e}");
                     }
@@ -886,11 +904,10 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                     if let Err(e) = state.metadata_db.clear() {
                         tracing::error!("Failed to clear metadata DB: {e}");
                     }
-                    if let Some(ref filename_index) = state.filename_index {
-                        let clear_res = filename_index.clear();
-                        if let Err(e) = clear_res {
-                            tracing::error!("Failed to clear filename index: {e}");
-                        }
+                    if let Some(ref filename_index) = state.filename_index
+                        && let Err(e) = filename_index.clear()
+                    {
+                        tracing::error!("Failed to clear filename index: {e}");
                     }
 
                     let dirs_to_scan = if index_dirs.is_empty() {
@@ -902,15 +919,17 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                         index_dirs
                     };
 
+                    // Route through `start_indexing` so the run is cancellable,
+                    // tracked, and honours the user's exclude patterns. Scanning
+                    // the directories sequentially keeps progress reporting
+                    // meaningful instead of interleaving several scans.
                     for dir in dirs_to_scan {
-                        let _ = state
-                            .scanner
-                            .scan_directory(
-                                std::path::PathBuf::from(dir),
-                                vec![],
-                                state.indexing_cancel.clone(),
-                            )
-                            .await;
+                        if let Err(e) = state
+                            .start_indexing(std::path::PathBuf::from(&dir))
+                            .await
+                        {
+                            tracing::error!("Failed to start indexing {dir}: {e}");
+                        }
                     }
                     Message::IndexRebuilt
                 });
@@ -926,14 +945,11 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                     let path_clone = dir;
                     let save_task = app.save_settings();
                     let scan_task = Task::future(async move {
-                        let _ = state
-                            .scanner
-                            .scan_directory(
-                                std::path::PathBuf::from(path_clone),
-                                vec![],
-                                state.indexing_cancel.clone(),
-                            )
-                            .await;
+                        if let Err(e) =
+                            state.start_indexing(std::path::PathBuf::from(path_clone)).await
+                        {
+                            tracing::error!("Failed to start indexing: {e}");
+                        }
                         Message::IndexRebuilt
                     });
                     return Task::batch(vec![save_task, scan_task]);
@@ -1032,14 +1048,11 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                     let path_clone = path;
                     let save_task = app.save_settings();
                     let scan_task = Task::future(async move {
-                        let _ = state
-                            .scanner
-                            .scan_directory(
-                                std::path::PathBuf::from(path_clone),
-                                vec![],
-                                state.indexing_cancel.clone(),
-                            )
-                            .await;
+                        if let Err(e) =
+                            state.start_indexing(std::path::PathBuf::from(path_clone)).await
+                        {
+                            tracing::error!("Failed to start indexing: {e}");
+                        }
                         Message::IndexRebuilt
                     });
                     return Task::batch(vec![save_task, scan_task]);
@@ -1059,31 +1072,7 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                     let save_task = app.save_settings();
 
                     let cleanup_task = Task::future(async move {
-                        if let Ok(all_paths) = state.metadata_db.get_all_file_paths() {
-                            let mut removed_any = false;
-                            for file_path in all_paths {
-                                let is_under = if file_path.starts_with(&removed_dir) {
-                                    let remaining = &file_path[removed_dir.len()..];
-                                    remaining.is_empty()
-                                        || remaining.starts_with('\\')
-                                        || remaining.starts_with('/')
-                                } else {
-                                    false
-                                };
-                                if is_under {
-                                    let _ = state.indexer.remove_document(&file_path);
-                                    let _ = state
-                                        .metadata_db
-                                        .remove_file(std::path::Path::new(&file_path));
-                                    removed_any = true;
-                                }
-                            }
-                            if removed_any {
-                                let _ = state.indexer.commit();
-                                state.indexer.invalidate_cache();
-                            }
-                        }
-                        Message::IndexRebuilt
+                        app_purge_directory(&state, &removed_dir).await
                     });
 
                     return Task::batch(vec![save_task, cleanup_task]);
@@ -1320,11 +1309,60 @@ pub fn subscription(app: &App) -> Subscription<Message> {
     Subscription::batch(vec![progress_sub, event_sub, system_sub, keyboard_sub])
 }
 
-pub const fn app_theme(app: &App) -> iced::Theme {
-    if app.is_dark {
-        iced::Theme::Dark
-    } else {
-        iced::Theme::Light
+/// Removes every indexed file under `dir` from both the search index and the
+/// metadata database.
+///
+/// The previous implementation materialised *every* stored path as a `String`,
+/// scanned the whole list, and then issued one `delete_term` plus one redb write
+/// transaction per match. Removing a 50 000-file directory meant 50 000
+/// transaction commits. This version does a single prefixed lookup, one batched
+/// delete, and one transaction, all on a blocking thread.
+async fn app_purge_directory(
+    state: &std::sync::Arc<crate::commands::AppState>,
+    dir: &str,
+) -> Message {
+    let dir = std::path::PathBuf::from(dir);
+    let indexer = state.indexer.clone();
+    let metadata_db = state.metadata_db.clone();
+
+    let result = tokio::task::spawn_blocking(move || -> crate::error::Result<usize> {
+        let paths = metadata_db.paths_under(&dir)?;
+        if paths.is_empty() {
+            return Ok(0);
+        }
+
+        let borrowed: Vec<&std::path::Path> =
+            paths.iter().map(std::path::Path::new).collect();
+        metadata_db.remove_files(&borrowed)?;
+        indexer.remove_documents_batch(&paths)?;
+        indexer.commit()?;
+        Ok(paths.len())
+    })
+    .await;
+
+    match result {
+        Ok(Ok(count)) => {
+            tracing::info!("Removed {count} files from the index after dropping a directory");
+            state.indexer.invalidate_cache();
+        }
+        Ok(Err(e)) => tracing::error!("Failed to purge removed directory from index: {e}"),
+        Err(e) => tracing::error!("Directory purge task panicked: {e}"),
+    }
+
+    Message::IndexRebuilt
+}
+
+pub fn app_theme(app: &App) -> iced::Theme {
+    match app.settings.theme {
+        crate::settings::Theme::Dark => iced::Theme::Dark,
+        crate::settings::Theme::Light => iced::Theme::Light,
+        crate::settings::Theme::Auto => {
+            if app.is_dark {
+                iced::Theme::Dark
+            } else {
+                iced::Theme::Light
+            }
+        }
     }
 }
 
@@ -1335,18 +1373,23 @@ pub fn app_title(app: &App) -> String {
     )
 }
 
-/// # Panics
+/// Runs the Iced application.
 ///
-/// Panics if the application fails to run.
+/// # Errors
+///
+/// Returns a `FlashError` if the window fails to run. This used to `panic!`,
+/// which under the release profile's `panic = "abort"` meant an immediate process
+/// kill with no unwinding and no chance to persist the index or write a crash
+/// note.
 pub fn run_ui(
     state: &Result<std::sync::Arc<AppState>, String>,
     progress_rx: flume::Receiver<ProgressEvent>,
     initial_dir: Option<String>,
-) {
+) -> crate::error::Result<()> {
     let state_clone = state.clone();
     let progress_rx = Arc::new(Mutex::new(Some(progress_rx)));
     let initial_dir_clone = initial_dir;
-    if let Err(e) = iced::application(
+    iced::application(
         move || {
             let rx = progress_rx.lock().take();
             let app = App::new(state_clone.clone(), rx, initial_dir_clone.clone());
@@ -1363,93 +1406,9 @@ pub fn run_ui(
     .title(app_title)
     .theme(app_theme)
     .subscription(subscription)
+    .font(icons::FONT_BYTES)
     .run()
-    {
-        tracing::error!("Iced application failed to run: {e}");
-        panic!("Iced application failed to run: {e}");
-    }
-}
-
-fn parse_inline_query_filters(
-    query_str: &str,
-    min_size: &mut Option<u64>,
-    max_size: &mut Option<u64>,
-    min_modified: &mut Option<u64>,
-    extensions: &mut ahash::AHashSet<String>,
-) -> String {
-    let mut clean_words = Vec::new();
-
-    for word in query_str.split_whitespace() {
-        if let Some(ext) = word.strip_prefix("ext:") {
-            extensions.insert(ext.to_lowercase());
-        } else if let Some(size_filter) = word.strip_prefix("size:") {
-            if let Some(stripped) = size_filter.strip_prefix('>') {
-                if let Some(parsed) = parse_size_val(stripped) {
-                    *min_size = Some(parsed);
-                }
-            } else if let Some(stripped) = size_filter.strip_prefix('<') {
-                if let Some(parsed) = parse_size_val(stripped) {
-                    *max_size = Some(parsed);
-                }
-            } else if let Some(parsed) = parse_size_val(size_filter) {
-                *min_size = Some(parsed);
-            }
-        } else if let Some(mod_filter) = word.strip_prefix("modified:") {
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs();
-            let one_day = 86400;
-
-            match mod_filter.to_lowercase().as_str() {
-                "today" => {
-                    *min_modified = Some(now.saturating_sub(one_day));
-                }
-                "yesterday" => {
-                    *min_modified = Some(now.saturating_sub(one_day * 2));
-                }
-                "week" | "last-week" => {
-                    *min_modified = Some(now.saturating_sub(one_day * 7));
-                }
-                "month" | "last-month" => {
-                    *min_modified = Some(now.saturating_sub(one_day * 30));
-                }
-                "year" | "last-year" => {
-                    *min_modified = Some(now.saturating_sub(one_day * 365));
-                }
-                _ => {}
-            }
-        } else {
-            clean_words.push(word);
-        }
-    }
-
-    clean_words.join(" ")
-}
-
-fn parse_size_val(val: &str) -> Option<u64> {
-    let val = val.trim();
-    if val.is_empty() {
-        return None;
-    }
-
-    let (num_str, multiplier) = if val.ends_with("kb") || val.ends_with("KB") {
-        (&val[..val.len() - 2], 1024)
-    } else if val.ends_with("mb") || val.ends_with("MB") {
-        (&val[..val.len() - 2], 1024 * 1024)
-    } else if val.ends_with("gb") || val.ends_with("GB") {
-        (&val[..val.len() - 2], 1024 * 1024 * 1024)
-    } else if val.ends_with('k') || val.ends_with('K') {
-        (&val[..val.len() - 1], 1024)
-    } else if val.ends_with('m') || val.ends_with('M') {
-        (&val[..val.len() - 1], 1024 * 1024)
-    } else if val.ends_with('g') || val.ends_with('G') {
-        (&val[..val.len() - 1], 1024 * 1024 * 1024)
-    } else {
-        (val, 1)
-    };
-
-    num_str.parse::<u64>().ok().map(|n| n * multiplier)
+    .map_err(|e| crate::error::FlashError::config("run_ui", format!("Iced failed to run: {e}")))
 }
 
 #[cfg(test)]
@@ -1496,33 +1455,67 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_size_val() {
-        assert_eq!(parse_size_val("500"), Some(500));
-        assert_eq!(parse_size_val("10KB"), Some(10 * 1024));
-        assert_eq!(parse_size_val("5mb"), Some(5 * 1024 * 1024));
-        assert_eq!(parse_size_val("2g"), Some(2 * 1024 * 1024 * 1024));
+    fn test_format_date_handles_extreme_timestamps() {
+        // Must never panic: this runs on the render path and the release profile
+        // uses `panic = "abort"`. The exact string depends on the local zone, so
+        // only the overflow behaviour is asserted.
+        assert_eq!(format_date(u64::MAX), "Unknown");
+        let rendered = format_date(0);
+        assert!(rendered.starts_with("1970-01-01"), "got {rendered}");
     }
 
     #[test]
-    fn test_parse_inline_query_filters() {
-        let mut min_size = None;
-        let mut max_size = None;
-        let mut min_modified = None;
-        let mut extensions = ahash::AHashSet::new();
+    fn test_size_and_date_filters_parse_from_query() {
+        // The UI no longer strips inline operators itself; `ParsedQuery` in the
+        // indexer is the single parser. Verify it agrees with what the sidebar
+        // produces so the two input paths cannot drift.
+        use crate::indexer::query_parser::ParsedQuery;
 
-        let clean = parse_inline_query_filters(
-            "hello world ext:pdf size:>2MB modified:today",
-            &mut min_size,
-            &mut max_size,
-            &mut min_modified,
-            &mut extensions,
-        );
+        let parsed = ParsedQuery::new("hello world ext:pdf size:>2MB", false);
+        assert_eq!(parsed.text_query, "hello world");
+        assert_eq!(parsed.extensions, vec!["pdf".to_string()]);
+        assert_eq!(parsed.min_size, Some(2 * 1024 * 1024));
+        assert_eq!(parsed.max_size, None);
 
-        assert_eq!(clean, "hello world");
-        assert_eq!(min_size, Some(2 * 1024 * 1024));
-        assert_eq!(max_size, None);
-        assert!(min_modified.is_some());
-        assert!(extensions.contains("pdf"));
+        // The sidebar's "> 1MB" adds 1 because Tantivy ranges are inclusive; the
+        // inline operator has the same effect. Both therefore exclude exactly
+        // 1 MiB, so they must agree.
+        let (min, max) = App::parse_size_filter("> 1MB");
+        assert_eq!(min, Some(1_048_576 + 1));
+        let parsed = ParsedQuery::new("x size:>1MB", false);
+        assert_eq!(parsed.min_size.map(|v| v + 1), min);
+        assert_eq!(parsed.max_size, max);
+    }
+
+    #[test]
+    fn test_repeated_ext_operators_are_or_ed() {
+        use crate::indexer::query_parser::ParsedQuery;
+
+        let parsed = ParsedQuery::new("report ext:pdf ext:docx", false);
+        assert_eq!(parsed.text_query, "report");
+        assert_eq!(parsed.extensions, vec!["pdf".to_string(), "docx".to_string()]);
+    }
+
+    #[test]
+    fn test_operator_text_is_not_eaten_from_free_text() {
+        use crate::indexer::query_parser::ParsedQuery;
+
+        // Regression: the old implementation removed operators with
+        // `String::replace`, which also stripped any identical free-text word.
+        let parsed = ParsedQuery::new("ext:pdf ext:pdf notes", false);
+        assert_eq!(parsed.text_query, "notes");
+
+        let parsed = ParsedQuery::new("path:docs path:docs notes", false);
+        assert_eq!(parsed.text_query, "notes");
+    }
+
+    #[test]
+    fn test_contradictory_size_bounds_return_nothing_rather_than_everything() {
+        use crate::indexer::query_parser::ParsedQuery;
+
+        let parsed = ParsedQuery::new("x size:>10MB size:<1MB", false);
+        assert_eq!(parsed.min_size, Some(10_485_760));
+        assert_eq!(parsed.max_size, Some(1_048_576));
     }
 }
 

@@ -6,3 +6,4 @@
 # everyone who runs the test benefits from these saved cases.
 cc 14ddad6ec9c94fd8097d78d1753b59155c1b44afa5eb0ab2e667fb68ce7d11d3 # shrinks to op = "ext", val = "0", text = ""
 cc bcd12ab182c9b49cd3319d1ecc98910c640053b2a999d8d46e4263528372e1cb # shrinks to op = "ext", val = ".", text = ""
+cc d2c0e159a4a0fa3da574f69f7ef759feba0fa154458352601f3ba3de982bea0f # shrinks to op = "ext", val = ".", text = ""
