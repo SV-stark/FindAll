@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.17.0] - 2026-10-02
+## [0.17.0] - 2026-10-03
 
 Indexes are rebuilt automatically on upgrade: the Tantivy schema version moved to
 `2.1.0`. Local integrations that scripted the search endpoint need the IPC token
