@@ -486,8 +486,7 @@ impl IndexSearcher {
 
         // Explicit filter arguments (from the sidebar/CLI) and inline `ext:`
         // operators are OR-ed together, so either source can select types.
-        let mut file_extensions: smallvec::SmallVec<[CompactString; 8]> =
-            smallvec::SmallVec::new();
+        let mut file_extensions: smallvec::SmallVec<[CompactString; 8]> = smallvec::SmallVec::new();
         for ext in params.file_extensions.unwrap_or_default() {
             let lower = ext.to_ascii_lowercase();
             if !lower.is_empty() && !file_extensions.iter().any(|e| *e == lower) {
@@ -535,7 +534,10 @@ impl IndexSearcher {
         #[allow(clippy::type_complexity)]
         let run_query = |text_query: Box<dyn tantivy::query::Query>,
                          limit: usize|
-         -> Result<(Vec<(f32, tantivy::DocAddress)>, Box<dyn tantivy::query::Query>)> {
+         -> Result<(
+            Vec<(f32, tantivy::DocAddress)>,
+            Box<dyn tantivy::query::Query>,
+        )> {
             let mut combine: Vec<(Occur, Box<dyn tantivy::query::Query>)> =
                 vec![(Occur::Must, text_query)];
 
@@ -572,12 +574,11 @@ impl IndexSearcher {
                         extensions
                             .iter()
                             .map(|ext| {
-                                let term = tantivy::Term::from_field_text(self.extension_field, ext);
-                                let q: Box<dyn tantivy::query::Query> =
-                                    Box::new(tantivy::query::TermQuery::new(
-                                        term,
-                                        IndexRecordOption::Basic,
-                                    ));
+                                let term =
+                                    tantivy::Term::from_field_text(self.extension_field, ext);
+                                let q: Box<dyn tantivy::query::Query> = Box::new(
+                                    tantivy::query::TermQuery::new(term, IndexRecordOption::Basic),
+                                );
                                 (Occur::Should, q)
                             })
                             .collect(),
@@ -595,28 +596,31 @@ impl IndexSearcher {
 
         // Build the parsed text query once and reuse it for the snippet
         // generator, instead of re-parsing per query twice.
-        let (text_query, used_query_str): (Box<dyn tantivy::query::Query>, &str) =
-            if parsed.text_query == "*" {
-                (Box::new(tantivy::query::AllQuery), parsed.text_query.as_str())
-            } else {
-                let mut query_parser = tantivy::query::QueryParser::for_index(
-                    searcher.index(),
-                    vec![self.content_field],
-                );
-                query_parser.set_conjunction_by_default();
+        let (text_query, used_query_str): (Box<dyn tantivy::query::Query>, &str) = if parsed
+            .text_query
+            == "*"
+        {
+            (
+                Box::new(tantivy::query::AllQuery),
+                parsed.text_query.as_str(),
+            )
+        } else {
+            let mut query_parser =
+                tantivy::query::QueryParser::for_index(searcher.index(), vec![self.content_field]);
+            query_parser.set_conjunction_by_default();
 
-                match query_parser.parse_query(&parsed.text_query) {
-                    Ok(q) => (q, parsed.text_query.as_str()),
-                    Err(_) => (
-                        Box::new(tantivy::query::FuzzyTermQuery::new(
-                            Term::from_field_text(self.content_field, &parsed.text_query),
-                            1,
-                            true,
-                        )),
-                        parsed.text_query.as_str(),
-                    ),
-                }
-            };
+            match query_parser.parse_query(&parsed.text_query) {
+                Ok(q) => (q, parsed.text_query.as_str()),
+                Err(_) => (
+                    Box::new(tantivy::query::FuzzyTermQuery::new(
+                        Term::from_field_text(self.content_field, &parsed.text_query),
+                        1,
+                        true,
+                    )),
+                    parsed.text_query.as_str(),
+                ),
+            }
+        };
 
         // `path:`/`title:` are substring filters, which Tantivy cannot express as
         // a query, so they are applied per-document. Over-fetch so that filtering
@@ -643,9 +647,7 @@ impl IndexSearcher {
                 1,
                 true,
             );
-            if let Ok((fuzzy_docs, _)) =
-                run_query(Box::new(fuzzy_query), params.limit)
-            {
+            if let Ok((fuzzy_docs, _)) = run_query(Box::new(fuzzy_query), params.limit) {
                 return self.process_top_docs(
                     &searcher,
                     fuzzy_docs,
@@ -683,17 +685,9 @@ impl IndexSearcher {
         } else {
             let query_parser =
                 tantivy::query::QueryParser::for_index(searcher.index(), vec![self.content_field]);
-            query_parser
-                .parse_query(query)
-                .ok()
-                .and_then(|q| {
-                    tantivy::snippet::SnippetGenerator::create(
-                        searcher,
-                        &*q,
-                        self.content_field,
-                    )
-                    .ok()
-                })
+            query_parser.parse_query(query).ok().and_then(|q| {
+                tantivy::snippet::SnippetGenerator::create(searcher, &*q, self.content_field).ok()
+            })
         };
 
         // Cache segment readers / columnar fast-field readers per segment instead
@@ -729,8 +723,14 @@ impl IndexSearcher {
                 .entry(doc_address.segment_ord)
                 .or_insert_with(|| SegmentMeta::for_doc(searcher, doc_address.segment_ord));
 
-            let result =
-                self.retrieve_result_with_doc(entry, score, doc_address, &doc, highlight_terms, snippet_generator.as_ref());
+            let result = self.retrieve_result_with_doc(
+                entry,
+                score,
+                doc_address,
+                &doc,
+                highlight_terms,
+                snippet_generator.as_ref(),
+            );
             results.push(result);
         }
 
@@ -863,10 +863,10 @@ impl IndexSearcher {
                 let entry = segments
                     .entry(doc_address.segment_ord)
                     .or_insert_with(|| SegmentMeta::for_doc(&searcher, doc_address.segment_ord));
-                let mut res = self.retrieve_result_with_doc(entry, 0.0, doc_address, &doc, &[], None);
-                res.modified = mod_time.map(|t| {
-                    u64::try_from(t.into_timestamp_secs()).unwrap_or(0)
-                });
+                let mut res =
+                    self.retrieve_result_with_doc(entry, 0.0, doc_address, &doc, &[], None);
+                res.modified =
+                    mod_time.map(|t| u64::try_from(t.into_timestamp_secs()).unwrap_or(0));
                 results.push(res);
             }
         }
@@ -890,8 +890,8 @@ impl IndexSearcher {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::writer::IndexWriterManager;
+    use super::*;
     use crate::parsers::ParsedDocument;
     use tempfile::tempdir;
 
@@ -980,7 +980,11 @@ mod tests {
                 result.file_path
             );
         }
-        assert!(results.iter().any(|r| r.extension.as_deref() == Some("pdf")));
+        assert!(
+            results
+                .iter()
+                .any(|r| r.extension.as_deref() == Some("pdf"))
+        );
         assert!(results.iter().any(|r| r.extension.as_deref() == Some("md")));
     }
 
@@ -1006,12 +1010,7 @@ mod tests {
         let (_dir, index) = fixture();
         let results = search(&index, |b| b.query("quarterly ext:pdf"));
         assert_eq!(results.len(), 1);
-        assert!(
-            results[0]
-                .file_path
-                .to_ascii_lowercase()
-                .ends_with(".pdf")
-        );
+        assert!(results[0].file_path.to_ascii_lowercase().ends_with(".pdf"));
     }
 
     #[test]
@@ -1050,20 +1049,16 @@ mod tests {
         let (_dir, index) = fixture();
         let results = search(&index, |b| b.query("quarterly size:>1000"));
         assert_eq!(results.len(), 1, "only the 4096-byte PDF passes");
-        assert!(
-            results[0]
-                .file_path
-                .to_ascii_lowercase()
-                .ends_with(".pdf")
-        );
+        assert!(results[0].file_path.to_ascii_lowercase().ends_with(".pdf"));
     }
 
     #[test]
     fn test_date_filter_narrows_results() {
         let (_dir, index) = fixture();
-        let recent = search(&index, |b| b.query("quarterly").min_modified(Some(
-            1_700_000_000 - 2 * 86_400,
-        )));
+        let recent = search(&index, |b| {
+            b.query("quarterly")
+                .min_modified(Some(1_700_000_000 - 2 * 86_400))
+        });
         assert_eq!(recent.len(), 2);
     }
 
@@ -1155,7 +1150,10 @@ mod tests {
 
     #[test]
     fn test_directory_size_helper_handles_missing_directory() {
-        assert_eq!(directory_size_sync(std::path::Path::new("definitely-not-here")), 0);
+        assert_eq!(
+            directory_size_sync(std::path::Path::new("definitely-not-here")),
+            0
+        );
     }
 
     #[test]
@@ -1172,7 +1170,10 @@ mod tests {
         assert_eq!(safe_timestamp_secs(0), 0);
         assert_eq!(safe_timestamp_secs(1_700_000_000), 1_700_000_000);
         assert_eq!(safe_timestamp_secs(u64::MAX), 4_102_444_800);
-        assert_eq!(safe_timestamp_secs(MAX_SAFE_TIMESTAMP_SECS + 1), 4_102_444_800);
+        assert_eq!(
+            safe_timestamp_secs(MAX_SAFE_TIMESTAMP_SECS + 1),
+            4_102_444_800
+        );
 
         // And it must actually be constructible.
         let _ = tantivy::DateTime::from_timestamp_secs(safe_timestamp_secs(u64::MAX));
@@ -1183,10 +1184,8 @@ mod tests {
         // The sidebar's "Modified" filters always set only a lower bound.
         let (_dir, index) = fixture();
         let results = search(&index, |b| {
-            b.query("quarterly")
-                .min_modified(Some(1_699_827_200))
+            b.query("quarterly").min_modified(Some(1_699_827_200))
         });
         assert_eq!(results.len(), 2);
     }
 }
-

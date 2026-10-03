@@ -397,9 +397,8 @@ mod windows_usn {
                                     );
 
                                     let parent_frn = record.ParentFileReferenceNumber as u64;
-                                    let is_dir = (record.FileAttributes
-                                        & FILE_ATTRIBUTE_DIRECTORY.0)
-                                        != 0;
+                                    let is_dir =
+                                        (record.FileAttributes & FILE_ATTRIBUTE_DIRECTORY.0) != 0;
 
                                     if is_dir {
                                         // Learn this directory's path so its
@@ -426,11 +425,12 @@ mod windows_usn {
                                         let mut changed_path = parent;
                                         changed_path.push(&name);
 
-                                        let action = if (record.Reason & USN_REASON_FILE_DELETE) != 0 {
-                                            crate::watcher::WatcherAction::Remove
-                                        } else {
-                                            crate::watcher::WatcherAction::Index
-                                        };
+                                        let action =
+                                            if (record.Reason & USN_REASON_FILE_DELETE) != 0 {
+                                                crate::watcher::WatcherAction::Remove
+                                            } else {
+                                                crate::watcher::WatcherAction::Index
+                                            };
 
                                         if tx.blocking_send((changed_path, action)).is_err() {
                                             let _ = CloseHandle(handle);

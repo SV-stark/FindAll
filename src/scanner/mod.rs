@@ -359,10 +359,7 @@ impl Scanner {
             match metadata_db.batch_update_metadata(meta_batch) {
                 Ok(written) => stats.metadata_written += written,
                 Err(e) => {
-                    error!(
-                        "Failed to write {} metadata rows: {e}",
-                        meta_batch.len()
-                    );
+                    error!("Failed to write {} metadata rows: {e}", meta_batch.len());
                     stats.write_errors += meta_batch.len();
                 }
             }
@@ -498,14 +495,11 @@ impl Scanner {
                 chunk.push((path, modified, size));
 
                 if chunk.len() >= CHUNK_SIZE
-                    && send_stale_chunk(
-                        &metadata_db_for_filter,
-                        &chunk_tx,
-                        &mut chunk,
-                    ) {
-                        // Downstream is gone; stop feeding it.
-                        return;
-                    }
+                    && send_stale_chunk(&metadata_db_for_filter, &chunk_tx, &mut chunk)
+                {
+                    // Downstream is gone; stop feeding it.
+                    return;
+                }
             }
 
             // Flush remainder

@@ -510,20 +510,16 @@ impl MetadataDb {
                 Ok(None) => true,
                 Ok(Some(metadata)) => {
                     let bytes = metadata.value();
-                    decode_metadata(bytes, |meta| {
-                        meta.modified != modified || meta.size != size
-                    })
-                    // A row that fails to decode is treated as stale so the file
-                    // gets rewritten with a valid record.
-                    .unwrap_or(true)
+                    decode_metadata(bytes, |meta| meta.modified != modified || meta.size != size)
+                        // A row that fails to decode is treated as stale so the file
+                        // gets rewritten with a valid record.
+                        .unwrap_or(true)
                 }
             })
             .collect();
 
         if read_errors > 0 {
-            tracing::warn!(
-                "{read_errors} metadata reads failed; those files will be re-indexed"
-            );
+            tracing::warn!("{read_errors} metadata reads failed; those files will be re-indexed");
         }
 
         Ok(results)

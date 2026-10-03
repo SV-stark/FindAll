@@ -34,9 +34,10 @@ fn get_index_meta_path(index_path: &Path) -> PathBuf {
 
 fn read_schema_version(index_path: &Path) -> Option<String> {
     if let Ok(content) = std::fs::read_to_string(get_index_meta_path(index_path))
-        && let Ok(meta) = serde_json::from_str::<IndexMetaInfo>(&content) {
-            return Some(meta.schema_version);
-        }
+        && let Ok(meta) = serde_json::from_str::<IndexMetaInfo>(&content)
+    {
+        return Some(meta.schema_version);
+    }
     std::fs::read_to_string(get_schema_version_path(index_path))
         .ok()
         .map(|s| s.trim().to_string())
@@ -93,9 +94,10 @@ impl IndexManager {
             let mut existing_backups = Vec::new();
             for entry in entries.flatten() {
                 if let Ok(name) = entry.file_name().into_string()
-                    && name.starts_with(&prefix) {
-                        existing_backups.push(entry.path());
-                    }
+                    && name.starts_with(&prefix)
+                {
+                    existing_backups.push(entry.path());
+                }
             }
             existing_backups.sort();
             while existing_backups.len() >= 2 {
@@ -293,7 +295,10 @@ impl IndexManager {
 
     /// Blocking search, for callers already on a worker thread (tests, the CLI
     /// on a runtime thread, and startup warmup).
-    pub fn search_blocking(&self, params: &searcher::SearchParams<'_>) -> Result<Vec<SearchResult>> {
+    pub fn search_blocking(
+        &self,
+        params: &searcher::SearchParams<'_>,
+    ) -> Result<Vec<SearchResult>> {
         self.searcher.search_sync(params)
     }
 

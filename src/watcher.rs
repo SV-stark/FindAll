@@ -120,10 +120,7 @@ impl WatcherManager {
             exclude_globs: Arc::clone(&current.exclude_globs),
             enable_ocr: current.enable_ocr,
         }));
-        info!(
-            "Updated watcher extensions ({} types)",
-            extensions.len()
-        );
+        info!("Updated watcher extensions ({} types)", extensions.len());
     }
 
     /// Updates whether OCR is attempted for newly changed documents.
@@ -240,7 +237,10 @@ impl WatcherManager {
         for path in &removals {
             let path_str = path.to_string_lossy();
             if let Err(e) = indexer.remove_document(&path_str) {
-                error!("Watcher failed to remove {} from index: {e}", path.display());
+                error!(
+                    "Watcher failed to remove {} from index: {e}",
+                    path.display()
+                );
             }
             match metadata_db.remove_file(path) {
                 Ok(true) => {
@@ -248,7 +248,10 @@ impl WatcherManager {
                     info!("Removed file (watcher): {:?}", path);
                 }
                 Ok(false) => {}
-                Err(e) => error!("Watcher failed to remove {} from metadata: {e}", path.display()),
+                Err(e) => error!(
+                    "Watcher failed to remove {} from metadata: {e}",
+                    path.display()
+                ),
             }
         }
 
@@ -287,9 +290,7 @@ impl WatcherManager {
             }
         }
 
-        if needs_commit
-            && let Err(e) = indexer.commit()
-        {
+        if needs_commit && let Err(e) = indexer.commit() {
             error!("Watcher failed to commit index: {e}");
         }
     }
@@ -574,7 +575,11 @@ mod tests {
         let (_, _, mut watcher) = test_manager(temp.path());
 
         let missing = temp.path().join("does_not_exist");
-        assert!(watcher.update_watch_list(&[missing.to_string_lossy().to_string()]).is_ok());
+        assert!(
+            watcher
+                .update_watch_list(&[missing.to_string_lossy().to_string()])
+                .is_ok()
+        );
         assert!(watcher.watchers.is_empty());
     }
 
@@ -610,11 +615,15 @@ mod tests {
         let (_, metadata, _) = test_manager(temp.path());
 
         let file_path = temp.path().join("test.txt");
-        fs::File::create(&file_path).unwrap().write_all(b"one\n").unwrap();
-        let (_, modified, size, hash) = WatcherManager::reindex_single_file(&file_path, &metadata, false)
-            .await
+        fs::File::create(&file_path)
             .unwrap()
+            .write_all(b"one\n")
             .unwrap();
+        let (_, modified, size, hash) =
+            WatcherManager::reindex_single_file(&file_path, &metadata, false)
+                .await
+                .unwrap()
+                .unwrap();
         metadata
             .update_metadata(&file_path, modified, size, hash)
             .unwrap();
@@ -649,14 +658,7 @@ mod tests {
         // Simulate a noisy burst: every file modified several times.
         let events: Vec<(PathBuf, WatcherAction)> = [file_a.clone(), file_b.clone()]
             .into_iter()
-            .flat_map(|p| {
-                (0..5).map(move |_| {
-                    (
-                        p.clone(),
-                        WatcherAction::Index,
-                    )
-                })
-            })
+            .flat_map(|p| (0..5).map(move |_| (p.clone(), WatcherAction::Index)))
             .collect();
 
         WatcherManager::process_events(events, &indexer, &metadata, &config).await;
@@ -691,7 +693,9 @@ mod tests {
                 .unwrap()
                 .unwrap();
         indexer.add_document(&doc, modified, size).unwrap();
-        metadata.update_metadata(&file_path, modified, size, hash).unwrap();
+        metadata
+            .update_metadata(&file_path, modified, size, hash)
+            .unwrap();
         indexer.commit().unwrap();
 
         assert!(metadata.get_metadata(&file_path).unwrap().is_some());
@@ -722,7 +726,10 @@ mod tests {
                     .build(),
             )
             .unwrap();
-        assert!(remaining.is_empty(), "document must be removed from the index");
+        assert!(
+            remaining.is_empty(),
+            "document must be removed from the index"
+        );
     }
 
     #[tokio::test]

@@ -34,10 +34,7 @@ fn split_operators(input: &str) -> (Vec<OperatorToken<'_>>, String) {
 
     for cap in operator_regex.captures_iter(input) {
         let whole = cap.get(0).expect("group 0 of a match is always present");
-        let value = cap
-            .get(2)
-            .or_else(|| cap.get(3))
-            .map_or("", |m| m.as_str());
+        let value = cap.get(2).or_else(|| cap.get(3)).map_or("", |m| m.as_str());
 
         if whole.start() < cursor {
             // Overlapping match (should not happen with `captures_iter`, but
@@ -384,7 +381,10 @@ mod tests {
     #[test]
     fn test_repeated_ext_operators_accumulate() {
         let parsed = ParsedQuery::new("report ext:pdf ext:docx ext:PDF", false);
-        assert_eq!(parsed.extensions, vec!["pdf".to_string(), "docx".to_string()]);
+        assert_eq!(
+            parsed.extensions,
+            vec!["pdf".to_string(), "docx".to_string()]
+        );
         assert_eq!(parsed.text_query, "report");
     }
 
@@ -435,11 +435,10 @@ mod tests {
 
     #[test]
     fn test_operator_regex_compiles() {
-        OPERATOR_REGEX
-            .get_or_init(|| {
-                Regex::new(r#"(?i)(ext|path|title|size|modified|date):(?:"([^"]*)"|(\S+))"#)
-                    .expect("OPERATOR_REGEX must be a valid regex")
-            });
+        OPERATOR_REGEX.get_or_init(|| {
+            Regex::new(r#"(?i)(ext|path|title|size|modified|date):(?:"([^"]*)"|(\S+))"#)
+                .expect("OPERATOR_REGEX must be a valid regex")
+        });
         assert!(!OPERATOR_REGEX.get().unwrap().as_str().is_empty());
     }
 

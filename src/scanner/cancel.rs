@@ -108,7 +108,10 @@ mod tests {
         let first = controller.begin();
         let second = controller.begin();
 
-        assert!(first.is_cancelled(), "superseded run must observe cancellation");
+        assert!(
+            first.is_cancelled(),
+            "superseded run must observe cancellation"
+        );
         assert!(!second.is_cancelled());
     }
 
@@ -147,6 +150,9 @@ mod tests {
         assert!(token.check().is_ok());
         controller.cancel();
         assert_eq!(token.check(), Err(Cancelled));
-        assert_eq!(token.check().unwrap_err().to_string(), "indexing run was cancelled");
+        assert_eq!(
+            token.check().unwrap_err().to_string(),
+            "indexing run was cancelled"
+        );
     }
 }

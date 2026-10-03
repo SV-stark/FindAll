@@ -182,7 +182,10 @@ impl FilenameIndex {
 
     fn load_rkyv_entries(bin_path: &Path) -> Vec<FilenameEntry> {
         let Ok(file) = std::fs::File::open(bin_path) else {
-            warn!("Failed to open filename index {:?}; starting empty", bin_path);
+            warn!(
+                "Failed to open filename index {:?}; starting empty",
+                bin_path
+            );
             return Vec::new();
         };
         // SAFETY: the mapping is read-only and dropped before this function
@@ -190,7 +193,10 @@ impl FilenameIndex {
         // mapped, which is guaranteed because every write goes through a
         // write-to-temp + rename.
         let Ok(mmap) = (unsafe { memmap2::MmapOptions::new().map(&file) }) else {
-            warn!("Failed to map filename index {:?}; starting empty", bin_path);
+            warn!(
+                "Failed to map filename index {:?}; starting empty",
+                bin_path
+            );
             return Vec::new();
         };
 
@@ -409,25 +415,26 @@ impl FilenameIndex {
 
         // 1. FST lookup over the committed prefix.
         if !snapshot.fst.is_empty()
-            && let Ok(map) = fst::Map::new(&snapshot.fst) {
-                let automaton = Subsequence::new(&query_lower);
-                let mut stream = map.search(automaton).into_stream();
-                while let Some((_, value)) = stream.next() {
-                    let Ok(idx) = usize::try_from(value) else {
-                        continue;
-                    };
-                    // Values beyond the FST's coverage belong to the appended
-                    // tail, which is scanned linearly below.
-                    if idx >= snapshot.fst_entries {
-                        continue;
-                    }
-                    let Some(entry) = snapshot.entries.get(idx) else {
-                        continue;
-                    };
-                    seen += 1;
-                    consider(&entry.name, idx, &query_lower, limit, &mut best);
+            && let Ok(map) = fst::Map::new(&snapshot.fst)
+        {
+            let automaton = Subsequence::new(&query_lower);
+            let mut stream = map.search(automaton).into_stream();
+            while let Some((_, value)) = stream.next() {
+                let Ok(idx) = usize::try_from(value) else {
+                    continue;
+                };
+                // Values beyond the FST's coverage belong to the appended
+                // tail, which is scanned linearly below.
+                if idx >= snapshot.fst_entries {
+                    continue;
                 }
+                let Some(entry) = snapshot.entries.get(idx) else {
+                    continue;
+                };
+                seen += 1;
+                consider(&entry.name, idx, &query_lower, limit, &mut best);
             }
+        }
 
         // 2. Linear scan over entries appended since the last commit.
         for (offset, entry) in snapshot.entries[snapshot.fst_entries..].iter().enumerate() {
@@ -474,17 +481,20 @@ impl FilenameIndex {
                 .into_iter()
                 .filter_map(|hit| {
                     if hit.idx < snapshot.entries.len() {
-                        return snapshot.entries.get(hit.idx).map(|entry| FilenameSearchResult {
-                            file_path: entry.path.clone(),
-                            file_name: entry.name.clone(),
-                        });
+                        return snapshot
+                            .entries
+                            .get(hit.idx)
+                            .map(|entry| FilenameSearchResult {
+                                file_path: entry.path.clone(),
+                                file_name: entry.name.clone(),
+                            });
                     }
-                    staging
-                        .get(hit.idx - snapshot.entries.len())
-                        .map(|entry| FilenameSearchResult {
+                    staging.get(hit.idx - snapshot.entries.len()).map(|entry| {
+                        FilenameSearchResult {
                             file_path: entry.path.clone(),
                             file_name: entry.name.clone(),
-                        })
+                        }
+                    })
                 })
                 .collect())
         }
@@ -749,14 +759,19 @@ mod tests {
     fn round_trips_through_disk() {
         let dir = tempdir().unwrap();
         let index = FilenameIndex::open(dir.path()).unwrap();
-        let expected: Vec<String> = (0..500)
-            .map(|i| format!("/docs/file-{i}.txt"))
-            .collect();
+        let expected: Vec<String> = (0..500).map(|i| format!("/docs/file-{i}.txt")).collect();
         assert_eq!(
             index.add_files_batch(
                 expected
                     .iter()
-                    .map(|p| entry(p, std::path::Path::new(p).file_name().unwrap().to_str().unwrap()))
+                    .map(|p| entry(
+                        p,
+                        std::path::Path::new(p)
+                            .file_name()
+                            .unwrap()
+                            .to_str()
+                            .unwrap()
+                    ))
                     .collect(),
             ),
             expected.len()
