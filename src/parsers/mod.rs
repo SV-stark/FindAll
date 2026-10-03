@@ -137,30 +137,6 @@ pub fn ensure_initialized() {
     let _ = xberg::core::mime::list_supported_formats();
 }
 
-/// Returns all supported file extensions dynamically registered in the active build.
-#[must_use]
-pub fn list_supported_extensions() -> Vec<String> {
-    xberg::core::mime::list_supported_formats()
-        .into_iter()
-        .map(|f| f.extension)
-        .collect()
-}
-
-/// Check if a path corresponds to a supported document or plaintext file format.
-#[must_use]
-pub fn is_supported_file(path: &Path) -> bool {
-    if is_plaintext_fast_path(path) {
-        return true;
-    }
-    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-        let ext_lower = ext.to_lowercase();
-        return xberg::core::mime::list_supported_formats()
-            .iter()
-            .any(|f| f.extension.eq_ignore_ascii_case(&ext_lower));
-    }
-    false
-}
-
 /// Streams a file through BLAKE3 without loading it into memory.
 ///
 /// The heavy extraction path used to `read_file` the *entire* document a second
@@ -171,8 +147,7 @@ pub fn is_supported_file(path: &Path) -> bool {
 fn hash_file_streaming(path: &Path) -> Result<[u8; 32]> {
     use std::io::Read;
 
-    let file = std::fs::File::open(path)
-        .map_err(|e| FlashError::Io(std::sync::Arc::new(e)))?;
+    let file = std::fs::File::open(path).map_err(|e| FlashError::Io(std::sync::Arc::new(e)))?;
 
     let mut hasher = blake3::Hasher::new();
     let mut buffer = vec![0u8; 256 * 1024];
@@ -244,7 +219,10 @@ pub async fn parse_file_with_hash(
         FlashError::parse(path, "Extraction returned empty results list".to_string())
     })?;
 
-    Ok((map_extracted_document(path, doc), hash_file_streaming(path)?))
+    Ok((
+        map_extracted_document(path, doc),
+        hash_file_streaming(path)?,
+    ))
 }
 
 /// Builds the Xberg extraction config used for indexing.
@@ -391,9 +369,11 @@ async fn parse_plaintext_files(paths: &[PathBuf]) -> Result<Vec<ParsedSlot>> {
             .collect()
     })
     .await
-    .map_err(|e| FlashError::Io(std::sync::Arc::new(std::io::Error::other(format!(
-        "Plaintext parse pool panicked: {e}"
-    )))))
+    .map_err(|e| {
+        FlashError::Io(std::sync::Arc::new(std::io::Error::other(format!(
+            "Plaintext parse pool panicked: {e}"
+        ))))
+    })
 }
 
 /// Parses a batch of files: plaintext/code on the rayon pool, everything else via

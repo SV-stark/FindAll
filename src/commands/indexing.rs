@@ -1,6 +1,6 @@
 use crate::commands::AppState;
 use crate::indexer::searcher::IndexStatistics;
-use crate::models::{IndexStatus, RecentFile};
+use crate::models::IndexStatus;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -57,28 +57,4 @@ pub async fn get_index_statistics_internal(
     state: &Arc<AppState>,
 ) -> Result<IndexStatistics, String> {
     state.indexer.get_statistics().map_err(|e| e.to_string())
-}
-
-/// Gets a list of recently indexed files.
-///
-/// # Errors
-///
-/// Returns an error if the database query fails.
-pub async fn get_recent_files_internal(
-    limit: usize,
-    state: &Arc<AppState>,
-) -> Result<Vec<RecentFile>, String> {
-    let files = state
-        .indexer
-        .get_recent_files(limit)
-        .map_err(|e| e.to_string())?;
-    Ok(files
-        .into_iter()
-        .map(|r| RecentFile {
-            path: r.file_path,
-            title: r.title,
-            modified: r.modified.unwrap_or(0),
-            size: r.size.unwrap_or(0),
-        })
-        .collect())
 }

@@ -1,28 +1,22 @@
-mod autostart;
 mod export;
 mod indexing;
 mod search;
 mod settings;
 mod system;
 
-pub use autostart::{is_auto_start_enabled, set_auto_start};
 pub use export::{export_results_csv, export_results_json};
 pub use indexing::{
     cancel_indexing_internal, get_index_statistics_internal, get_index_status_internal,
-    get_recent_files_internal, start_indexing_internal,
+    start_indexing_internal,
 };
 pub use search::{
     get_file_preview_highlighted_internal, get_file_preview_internal,
     get_filename_index_stats_internal, search_filenames_internal, search_query_internal,
 };
-pub use settings::{
-    add_recent_search_internal, add_search_history_internal, clear_recent_searches_internal,
-    get_pinned_files_internal, get_recent_searches_internal, get_search_history_internal,
-    get_settings_internal, pin_file_internal, save_settings_internal, unpin_file_internal,
-};
+pub use settings::{get_settings_internal, save_settings_internal};
 pub use system::{
     copy_to_clipboard_internal, export_results_internal, get_home_dir_internal,
-    open_folder_internal, select_folder_internal,
+    open_folder_internal,
 };
 
 use crate::indexer::{IndexManager, filename_index::FilenameIndex};
@@ -73,7 +67,10 @@ impl AppState {
     ///
     /// Propagates a panic from the previous run's task and any error returned by
     /// the scanner.
-    pub async fn start_indexing(self: &Arc<Self>, path: std::path::PathBuf) -> crate::error::Result<()> {
+    pub async fn start_indexing(
+        self: &Arc<Self>,
+        path: std::path::PathBuf,
+    ) -> crate::error::Result<()> {
         // Supersede the previous run *first*, then wait for it to actually stop.
         let previous = self.indexing_handle.lock().take();
         let cancel = self.indexing_control.begin();
@@ -82,12 +79,9 @@ impl AppState {
             // The token above already told every stage to stop. Give the run a
             // moment to flush and release the index writer so the new run does
             // not interleave with a still-draining one.
-            if tokio::time::timeout(
-                std::time::Duration::from_secs(5),
-                previous,
-            )
-            .await
-            .is_err()
+            if tokio::time::timeout(std::time::Duration::from_secs(5), previous)
+                .await
+                .is_err()
             {
                 tracing::warn!("Previous indexing run did not stop within 5s; continuing anyway");
             }
@@ -246,9 +240,7 @@ impl AppStateBuilder {
     /// `setup_app` in a single place, so a missing field is a wiring bug that
     /// should fail loudly at startup rather than degrade silently.
     pub fn build(self) -> AppState {
-        let settings_manager = self
-            .settings_manager
-            .expect("settings_manager is required");
+        let settings_manager = self.settings_manager.expect("settings_manager is required");
         let settings = self.settings.unwrap_or_else(|| {
             settings_manager.load().unwrap_or_else(|e| {
                 tracing::warn!("Failed to load settings (using defaults): {e}");

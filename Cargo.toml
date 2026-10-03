@@ -75,7 +75,6 @@ compact_str = { version = "0.9", features = ["rkyv", "serde"] }
 smallvec = "1.13"
 ahash = "0.8"
 csv = "1.3"
-zstd = "0.13"
 memchr = "2.7"
 aho-corasick = "1.1"
 

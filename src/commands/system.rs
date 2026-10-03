@@ -28,14 +28,6 @@ pub fn open_folder_internal(path: &str) -> Result<()> {
     }
 }
 
-pub async fn select_folder_internal() -> Result<Option<String>> {
-    let handle = rfd::AsyncFileDialog::new()
-        .set_title("Select Folder to Index")
-        .pick_folder()
-        .await;
-    Ok(handle.map(|h| h.path().to_string_lossy().to_string()))
-}
-
 pub fn copy_to_clipboard_internal(text: &str) -> Result<()> {
     use arboard::Clipboard;
     let mut clipboard = Clipboard::new()

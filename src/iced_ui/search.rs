@@ -2,74 +2,12 @@ use super::{App, DateFilter, Message, SearchMode, SortBy, Tab, theme};
 use crate::models::{DocumentElementHighlight, ElementType};
 use iced::widget::{
     Space, TextInput, button, checkbox, column, container, mouse_area, rich_text, row, scrollable,
-    span, text,
+    span, stack, text,
 };
 use iced::{Alignment, Element, Font, Length, Padding, font};
 
 // --- Icons from TTF Font ---
 use crate::iced_ui::icons::{load_icon, load_icon_size};
-
-use std::ops::Range;
-
-#[allow(dead_code)]
-struct TermHighlighter {
-    matcher: Option<aho_corasick::AhoCorasick>,
-}
-
-impl TermHighlighter {
-    #[allow(dead_code)]
-    #[must_use]
-    pub fn new(terms: &[String]) -> Self {
-        let valid_terms: Vec<&str> = terms
-            .iter()
-            .map(String::as_str)
-            .filter(|t| !t.is_empty())
-            .collect();
-
-        let matcher = if valid_terms.is_empty() {
-            None
-        } else {
-            aho_corasick::AhoCorasick::builder()
-                .ascii_case_insensitive(true)
-                .match_kind(aho_corasick::MatchKind::LeftmostFirst)
-                .build(&valid_terms)
-                .ok()
-        };
-
-        Self { matcher }
-    }
-
-    #[allow(dead_code)]
-    fn highlight_line(&self, line: &str) -> Vec<(Range<usize>, iced::Color)> {
-        let Some(ref matcher) = self.matcher else {
-            return Vec::new();
-        };
-
-        let mut matches = Vec::new();
-        for m in matcher.find_iter(line) {
-            matches.push(m.start()..m.end());
-        }
-
-        if matches.is_empty() {
-            return Vec::new();
-        }
-        matches.sort_by_key(|r| r.start);
-
-        let mut merged: Vec<Range<usize>> = Vec::new();
-        for m in matches {
-            #[allow(clippy::collapsible_if)]
-            if let Some(last) = merged.last_mut() {
-                if m.start <= last.end {
-                    last.end = last.end.max(m.end);
-                    continue;
-                }
-            }
-            merged.push(m);
-        }
-
-        merged.into_iter().map(|r| (r, theme::HIT_AMBER)).collect()
-    }
-}
 
 fn sidebar_section<'a>(
     title: &'a str,
@@ -77,7 +15,7 @@ fn sidebar_section<'a>(
 ) -> Element<'a, Message> {
     column![
         text(title)
-            .size(12)
+            .size(theme::fs(12.0))
             .font(Font {
                 weight: font::Weight::Bold,
                 ..Font::default()
@@ -97,7 +35,8 @@ fn render_element(element: &DocumentElementHighlight) -> Element<'_, Message> {
         .spans
         .iter()
         .map(|(text_part, color_opt)| {
-            let mut s: iced::widget::text::Span<'_, Message> = span(text_part).size(13);
+            let mut s: iced::widget::text::Span<'_, Message> =
+                span(text_part).size(theme::fs(13.0));
             if element.element_type == ElementType::CodeBlock {
                 s = s.font(Font::MONOSPACE);
             }
@@ -111,7 +50,7 @@ fn render_element(element: &DocumentElementHighlight) -> Element<'_, Message> {
     let content = rich_text(spans);
 
     match element.element_type {
-        ElementType::Title => container(content.size(22).font(Font {
+        ElementType::Title => container(content.size(theme::fs(22.0)).font(Font {
             weight: font::Weight::Bold,
             ..Font::default()
         }))
@@ -120,7 +59,7 @@ fn render_element(element: &DocumentElementHighlight) -> Element<'_, Message> {
             ..Padding::default()
         })
         .into(),
-        ElementType::Heading => container(content.size(16).font(Font {
+        ElementType::Heading => container(content.size(theme::fs(16.0)).font(Font {
             weight: font::Weight::Bold,
             ..Font::default()
         }))
@@ -130,7 +69,9 @@ fn render_element(element: &DocumentElementHighlight) -> Element<'_, Message> {
             ..Padding::default()
         })
         .into(),
-        ElementType::ListItem => row![text(" • ").size(13), content].spacing(8).into(),
+        ElementType::ListItem => row![text(" • ").size(theme::fs(13.0)), content]
+            .spacing(8)
+            .into(),
         ElementType::CodeBlock => container(content)
             .padding(12)
             .style(theme::code_block_container)
@@ -157,10 +98,10 @@ pub fn search_view(app: &App) -> Element<'_, Message> {
                 row![
                     load_icon_size("warning", 16.0),
                     text(" Metadata database was corrupted and has been reset. Full re-index recommended.")
-                        .size(13)
+                        .size(theme::fs(13.0))
                         .style(theme::danger_text_style()),
                     Space::new().width(Length::Fill),
-                    button(text("Dismiss").size(12))
+                    button(text("Dismiss").size(theme::fs(12.0)))
                         .on_press(Message::DismissError)
                         .padding(Padding::from([4, 8]))
                         .style(theme::ghost_button())
@@ -180,10 +121,10 @@ pub fn search_view(app: &App) -> Element<'_, Message> {
                 row![
                     load_icon_size("warning", 16.0),
                     text(format!("Error: {err}"))
-                        .size(13)
+                        .size(theme::fs(13.0))
                         .style(theme::danger_text_style()),
                     Space::new().width(Length::Fill),
-                    button(text("Dismiss").size(12))
+                    button(text("Dismiss").size(theme::fs(12.0)))
                         .on_press(Message::DismissError)
                         .padding(Padding::from([4, 8]))
                         .style(theme::ghost_button())
@@ -211,12 +152,12 @@ fn top_navigation(app: &App) -> Element<'_, Message> {
             .padding(6)
             .style(theme::accent_badge_container),
         column![
-            text("FindAll").size(17).font(Font {
+            text("FindAll").size(theme::fs(17.0)).font(Font {
                 weight: font::Weight::Bold,
                 ..Font::default()
             }),
             text("Instant Local Search")
-                .size(10)
+                .size(theme::fs(10.0))
                 .style(theme::dim_text_style()),
         ]
         .spacing(1),
@@ -244,7 +185,7 @@ fn top_navigation(app: &App) -> Element<'_, Message> {
                 left: 8.0,
                 right: 8.0,
             })
-            .size(15)
+            .size(theme::fs(15.0))
             .style(theme::search_input())
             .width(Length::Fill),
             if app.search_query.is_empty() {
@@ -258,7 +199,7 @@ fn top_navigation(app: &App) -> Element<'_, Message> {
                 )
             },
             // Case Match Toggle Button ("Aa")
-            button(text("Aa").size(12).font(Font {
+            button(text("Aa").size(theme::fs(12.0)).font(Font {
                 weight: font::Weight::Bold,
                 ..Font::default()
             }))
@@ -266,7 +207,7 @@ fn top_navigation(app: &App) -> Element<'_, Message> {
             .style(move |t, s| theme::nav_button(app.settings.case_sensitive)(t, s))
             .padding(Padding::from([5, 8])),
             // Whole Word Toggle Button ("W")
-            button(text("W").size(12).font(Font {
+            button(text("W").size(theme::fs(12.0)).font(Font {
                 weight: font::Weight::Bold,
                 ..Font::default()
             }))
@@ -287,7 +228,7 @@ fn top_navigation(app: &App) -> Element<'_, Message> {
                         SearchMode::FullText => "Text",
                         SearchMode::Filename => "File",
                     })
-                    .size(11)
+                    .size(theme::fs(11.0))
                     .font(Font {
                         weight: font::Weight::Bold,
                         ..Font::default()
@@ -307,15 +248,19 @@ fn top_navigation(app: &App) -> Element<'_, Message> {
             .padding(Padding::from([5, 10])),
             if app.is_searching {
                 Element::from(
-                    container(text("Searching...").size(12).style(theme::dim_text_style()))
-                        .padding(Padding::from([4, 12])),
+                    container(
+                        text("Searching...")
+                            .size(theme::fs(12.0))
+                            .style(theme::dim_text_style()),
+                    )
+                    .padding(Padding::from([4, 12])),
                 )
             } else {
                 Element::from(
                     button(
                         row![
                             load_icon_size("arrow-right", 14.0),
-                            text("Search").size(12).font(Font {
+                            text("Search").size(theme::fs(12.0)).font(Font {
                                 weight: font::Weight::Bold,
                                 ..Font::default()
                             })
@@ -382,7 +327,7 @@ fn main_layout(app: &App) -> Element<'_, Message> {
         left_sidebar(app)
     };
 
-    row![
+    let body = row![
         sidebar,
         column![
             filter_chips(app),
@@ -397,7 +342,98 @@ fn main_layout(app: &App) -> Element<'_, Message> {
         .width(Length::Fill),
     ]
     .width(Length::Fill)
-    .height(Length::Fill)
+    .height(Length::Fill);
+
+    // The context menu floats above the results list and swallows clicks so
+    // clicking a menu entry does not also select the row underneath it.
+    let body: Element<'_, Message> = match &app.context_menu {
+        Some(menu_state) => {
+            let menu = context_menu_overlay(menu_state);
+            stack![body, menu].into()
+        }
+        None => body.into(),
+    };
+
+    // Clicking anywhere outside an open menu dismisses it.
+    mouse_area(body).on_press(Message::HideContextMenu).into()
+}
+
+/// Right-click menu for a single result.
+///
+/// Positioned in the upper-left of the results pane rather than at the cursor:
+/// Iced 0.14 does not expose pointer coordinates through `MouseArea`, and a menu
+/// pinned to a known corner is predictable and cannot fall off-screen.
+fn context_menu_overlay(state: &super::ContextMenuState) -> Element<'_, Message> {
+    let path = state.path.clone();
+    let name = std::path::Path::new(&path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(&path)
+        .to_string();
+
+    let (toggle_pin_label, toggle_pin_icon) = if state.pinned {
+        ("Unpin from quick access", "x")
+    } else {
+        ("Pin to quick access", "star")
+    };
+    let toggle_pin_message = if state.pinned {
+        Message::UnpinFile(path.clone())
+    } else {
+        Message::PinFile(path.clone())
+    };
+
+    let menu = column![
+        container(
+            column![
+                text(name).size(theme::fs(12.0)).font(Font::MONOSPACE),
+                text(path)
+                    .size(theme::fs(11.0))
+                    .style(theme::dim_text_style()),
+            ]
+            .spacing(2)
+        )
+        .padding(Padding::new(12.0))
+        .style(theme::badge_container)
+        .width(Length::Fill),
+        container(Space::new().height(1.0))
+            .style(theme::hit_highlight_container)
+            .width(Length::Fill),
+        context_menu_button("file-text", "Open", Message::OpenSelectedResult),
+        context_menu_button(
+            "folder-open",
+            "Show in folder",
+            Message::ShowSelectedInFolder
+        ),
+        context_menu_button("copy", "Copy full path", Message::CopySelectedPath),
+        context_menu_button(toggle_pin_icon, toggle_pin_label, toggle_pin_message),
+    ]
+    .spacing(2)
+    .width(Length::Fixed(320.0));
+
+    container(menu)
+        .style(theme::padded_card_container)
+        .padding(Padding::new(4.0))
+        .width(Length::Fixed(332.0))
+        .into()
+}
+
+fn context_menu_button<'a>(
+    icon: &'a str,
+    label: &'a str,
+    message: Message,
+) -> Element<'a, Message> {
+    button(
+        row![
+            load_icon_size(icon, 14.0),
+            text(label).size(theme::fs(12.0))
+        ]
+        .spacing(10)
+        .align_y(Alignment::Center),
+    )
+    .on_press(message)
+    .padding(Padding::from([10, 12]))
+    .width(Length::Fill)
+    .style(theme::ghost_button())
     .into()
 }
 
@@ -409,7 +445,7 @@ fn filter_chips(app: &App) -> Element<'_, Message> {
     let mut chips_row = row![
         load_icon_size("filter", 14.0),
         text("Active Filters:")
-            .size(12)
+            .size(theme::fs(12.0))
             .style(theme::dim_text_style())
     ]
     .spacing(8)
@@ -426,7 +462,7 @@ fn filter_chips(app: &App) -> Element<'_, Message> {
         chips_row = chips_row.push(
             container(
                 row![
-                    text(ext).size(11).font(Font {
+                    text(ext).size(theme::fs(11.0)).font(Font {
                         weight: font::Weight::Bold,
                         ..Font::default()
                     }),
@@ -468,7 +504,7 @@ fn collapsed_sidebar(_app: &App) -> Element<'_, Message> {
 fn left_sidebar(app: &App) -> Element<'_, Message> {
     let filter_header = row![
         load_icon_size("filter", 16.0),
-        text("Filter Options").size(15).font(Font {
+        text("Filter Options").size(theme::fs(15.0)).font(Font {
             weight: font::Weight::Bold,
             ..Font::default()
         }),
@@ -493,7 +529,7 @@ fn left_sidebar(app: &App) -> Element<'_, Message> {
             button(
                 row![
                     load_icon_size("x", 14.0),
-                    text("Reset All Filters").size(12)
+                    text("Reset All Filters").size(theme::fs(12.0))
                 ]
                 .spacing(6)
                 .align_y(Alignment::Center)
@@ -560,14 +596,16 @@ fn size_filter_section(app: &App) -> Element<'_, Message> {
                 TextInput::new("Min", &app.min_size)
                     .on_input(Message::MinSizeChanged)
                     .padding(Padding::new(7.0))
-                    .size(12)
+                    .size(theme::fs(12.0))
                     .style(theme::search_input())
                     .width(Length::Fill),
-                text("-").size(14).style(theme::dim_text_style()),
+                text("-")
+                    .size(theme::fs(14.0))
+                    .style(theme::dim_text_style()),
                 TextInput::new("Max", &app.max_size)
                     .on_input(Message::MaxSizeChanged)
                     .padding(Padding::new(7.0))
-                    .size(12)
+                    .size(theme::fs(12.0))
                     .style(theme::search_input())
                     .width(Length::Fill),
             ]
@@ -600,7 +638,7 @@ fn date_filter_section(app: &App) -> Element<'_, Message> {
 fn match_options_section(app: &App) -> iced::widget::Column<'_, Message> {
     column![
         text("Search Scope")
-            .size(12)
+            .size(theme::fs(12.0))
             .font(Font {
                 weight: font::Weight::Bold,
                 ..Font::default()
@@ -618,7 +656,7 @@ fn match_options_section(app: &App) -> iced::widget::Column<'_, Message> {
         .width(Length::Fill),
         Space::new().height(Length::Fixed(6.0)),
         text("Match Flags")
-            .size(12)
+            .size(theme::fs(12.0))
             .font(Font {
                 weight: font::Weight::Bold,
                 ..Font::default()
@@ -629,12 +667,12 @@ fn match_options_section(app: &App) -> iced::widget::Column<'_, Message> {
                 checkbox(app.settings.case_sensitive)
                     .label("Match Case")
                     .on_toggle(Message::ToggleCaseSensitive)
-                    .size(16)
+                    .size(theme::fs(16.0))
                     .text_size(12),
                 checkbox(app.settings.whole_word)
                     .label("Whole Word")
                     .on_toggle(Message::ToggleWholeWord)
-                    .size(16)
+                    .size(theme::fs(16.0))
                     .text_size(12),
             ]
             .spacing(8)
@@ -648,7 +686,7 @@ fn match_options_section(app: &App) -> iced::widget::Column<'_, Message> {
 
 fn search_mode_button<'a>(label: &'a str, mode: SearchMode, app: &App) -> Element<'a, Message> {
     let is_active = app.search_mode == mode;
-    button(text(label).size(11).font(Font {
+    button(text(label).size(theme::fs(11.0)).font(Font {
         weight: font::Weight::Bold,
         ..Font::default()
     }))
@@ -690,7 +728,7 @@ fn results_panel(app: &App) -> Element<'_, Message> {
                     max_display,
                     app.results.len()
                 ))
-                .size(11)
+                .size(theme::fs(11.0))
                 .style(theme::dim_text_style()),
             )
             .padding(12)
@@ -708,6 +746,77 @@ fn results_panel(app: &App) -> Element<'_, Message> {
 }
 
 #[allow(clippy::too_many_lines)]
+/// Recent searches, ranked by how often each was run.
+///
+/// The history was recorded and persisted from the start but never surfaced,
+/// so the feature was invisible. Clicking an entry re-runs that query.
+fn recent_searches_card(app: &App) -> Element<'_, Message> {
+    const MAX_SHOWN: usize = 6;
+
+    if !app.settings.search_history_enabled {
+        return Space::new().height(0).into();
+    }
+
+    let history = &app.settings.search_history;
+    if history.is_empty() {
+        return Space::new().height(0).into();
+    }
+
+    let mut rows = column![].spacing(6);
+    for item in history.iter().take(MAX_SHOWN) {
+        rows = rows.push(
+            button(
+                row![
+                    load_icon_size("search", 13.0),
+                    text(&item.query).size(theme::fs(13.0)).width(Length::Fill),
+                    text(format!("{}x", item.frequency))
+                        .size(theme::fs(11.0))
+                        .style(theme::dim_text_style()),
+                ]
+                .spacing(10)
+                .align_y(Alignment::Center),
+            )
+            .on_press(Message::RunRecentSearch(item.query.clone()))
+            .padding(Padding::from([8, 12]))
+            .width(Length::Fill)
+            .style(theme::ghost_button()),
+        );
+    }
+
+    container(
+        column![
+            row![
+                load_icon_size("keyboard", 15.0),
+                text("Recent Searches").size(theme::fs(14.0)).font(Font {
+                    weight: font::Weight::Bold,
+                    ..Font::default()
+                }),
+                Space::new().width(Length::Fill),
+                button(
+                    row![
+                        load_icon_size("trash", 13.0),
+                        text("Clear").size(theme::fs(12.0)),
+                    ]
+                    .spacing(6)
+                    .align_y(Alignment::Center)
+                )
+                .on_press(Message::ClearSearchHistory)
+                .padding(Padding::from([6, 10]))
+                .style(theme::ghost_button()),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center),
+            Space::new().height(Length::Fixed(10.0)),
+            rows,
+        ]
+        .width(Length::Fill),
+    )
+    .padding(18)
+    .style(theme::padded_card_container)
+    .width(Length::Fill)
+    .into()
+}
+
 fn welcome_hero_view(app: &App) -> Element<'_, Message> {
     let hero = column![
         Space::new().height(Length::Fixed(16.0)),
@@ -716,12 +825,14 @@ fn welcome_hero_view(app: &App) -> Element<'_, Message> {
                 .padding(14)
                 .style(theme::accent_badge_container),
             column![
-                text("FindAll Instant Search").size(22).font(Font {
-                    weight: font::Weight::Bold,
-                    ..Font::default()
-                }),
+                text("FindAll Instant Search")
+                    .size(theme::fs(22.0))
+                    .font(Font {
+                        weight: font::Weight::Bold,
+                        ..Font::default()
+                    }),
                 text("Ultrafast local text, document, and filename search engine")
-                    .size(13)
+                    .size(theme::fs(13.0))
                     .style(theme::dim_text_style()),
             ]
             .spacing(4),
@@ -729,66 +840,10 @@ fn welcome_hero_view(app: &App) -> Element<'_, Message> {
         .spacing(16)
         .align_y(Alignment::Center),
         Space::new().height(Length::Fixed(24.0)),
-        // Client Feature & Shortcut Cards
-        row![
-            // Shortcuts Card
-            container(
-                column![
-                    row![
-                        load_icon_size("keyboard", 16.0),
-                        text("Keyboard Shortcuts").size(14).font(Font {
-                            weight: font::Weight::Bold,
-                            ..Font::default()
-                        }),
-                    ]
-                    .spacing(8)
-                    .align_y(Alignment::Center),
-                    Space::new().height(Length::Fixed(8.0)),
-                    shortcut_row("Alt + Space", "Global Search Window"),
-                    shortcut_row("Ctrl + F", "Focus Search Input"),
-                    shortcut_row("↑ / ↓", "Navigate Results"),
-                    shortcut_row("Enter", "Open Selected File"),
-                    shortcut_row("Ctrl + Enter", "Open Containing Folder"),
-                    shortcut_row("Ctrl + C", "Copy File Path"),
-                ]
-                .spacing(8)
-            )
-            .padding(18)
-            .style(theme::padded_card_container)
-            .width(Length::FillPortion(1)),
-            // Features Card
-            container(
-                column![
-                    row![
-                        load_icon_size("star", 16.0),
-                        text("Pro Search Capabilities").size(14).font(Font {
-                            weight: font::Weight::Bold,
-                            ..Font::default()
-                        }),
-                    ]
-                    .spacing(8)
-                    .align_y(Alignment::Center),
-                    Space::new().height(Length::Fixed(8.0)),
-                    feature_tip("Full Text vs Filename", "Toggle search scope in top bar"),
-                    feature_tip(
-                        "Extension Filter",
-                        "Filter PDF, MD, RS, TXT, Code in sidebar"
-                    ),
-                    feature_tip("Exact & Case Match", "Use 'Aa' and 'W' flags for precision"),
-                    feature_tip(
-                        "Instant Document Preview",
-                        "Inspect text snippets & tables live"
-                    ),
-                ]
-                .spacing(8)
-            )
-            .padding(18)
-            .style(theme::padded_card_container)
-            .width(Length::FillPortion(1)),
-        ]
-        .spacing(16)
-        .width(Length::Fill),
+        shortcut_and_feature_cards(),
         Space::new().height(Length::Fixed(20.0)),
+        recent_searches_card(app),
+        Space::new().height(Length::Fixed(12.0)),
         // System Index Status Pill
         container(
             row![
@@ -797,7 +852,7 @@ fn welcome_hero_view(app: &App) -> Element<'_, Message> {
                     "Index Status: {} files indexed ({})",
                     app.files_indexed, app.index_size
                 ))
-                .size(12)
+                .size(theme::fs(12.0))
                 .style(theme::muted_text_style()),
             ]
             .spacing(10)
@@ -818,15 +873,85 @@ fn welcome_hero_view(app: &App) -> Element<'_, Message> {
         .into()
 }
 
+/// Shortcut reference and feature summary shown on the start screen.
+///
+/// Kept apart from `welcome_hero_view` so the shortcut list stays readable and
+/// independently editable.
+fn shortcut_and_feature_cards() -> Element<'static, Message> {
+    let card_header = |icon: &'static str, title: &'static str| {
+        row![
+            load_icon_size(icon, 16.0),
+            text(title).size(theme::fs(14.0)).font(Font {
+                weight: font::Weight::Bold,
+                ..Font::default()
+            }),
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center)
+    };
+
+    let shortcuts = container(
+        column![
+            card_header("keyboard", "Keyboard Shortcuts"),
+            Space::new().height(Length::Fixed(8.0)),
+            shortcut_row("Alt + Space", "Global Search Window"),
+            shortcut_row("Ctrl + F", "Focus Search Input"),
+            shortcut_row("↑ / ↓", "Navigate Results"),
+            shortcut_row("Enter", "Open Selected File"),
+            shortcut_row("Ctrl + Enter", "Open Containing Folder"),
+            shortcut_row("Ctrl + C", "Copy File Path"),
+            shortcut_row("Right Click", "Open Result Menu"),
+            shortcut_row("Esc", "Close Menu / Clear Selection"),
+            shortcut_row("Double Click", "Run the chosen result action"),
+        ]
+        .spacing(8),
+    )
+    .padding(18)
+    .style(theme::padded_card_container)
+    .width(Length::FillPortion(1));
+
+    let features = container(
+        column![
+            card_header("star", "Pro Search Capabilities"),
+            Space::new().height(Length::Fixed(8.0)),
+            feature_tip("Full Text vs Filename", "Toggle search scope in top bar"),
+            feature_tip(
+                "Extension Filter",
+                "Filter PDF, MD, RS, TXT, Code in sidebar",
+            ),
+            feature_tip("Exact & Case Match", "Use 'Aa' and 'W' flags for precision"),
+            feature_tip(
+                "Instant Document Preview",
+                "Inspect text snippets & tables live",
+            ),
+            feature_tip(
+                "Query Operators",
+                "path:, title:, ext:, size:>10MB, modified:>7d"
+            ),
+        ]
+        .spacing(8),
+    )
+    .padding(18)
+    .style(theme::padded_card_container)
+    .width(Length::FillPortion(1));
+
+    row![shortcuts, features]
+        .spacing(16)
+        .width(Length::Fill)
+        .into()
+}
+
 fn shortcut_row<'a>(key: &'a str, desc: &'a str) -> Element<'a, Message> {
     row![
-        container(text(key).size(11).font(Font {
+        container(text(key).size(theme::fs(11.0)).font(Font {
             weight: font::Weight::Bold,
             ..Font::default()
         }))
         .padding(Padding::from([3, 8]))
         .style(theme::badge_container),
-        text(desc).size(12).style(theme::muted_text_style()),
+        text(desc)
+            .size(theme::fs(12.0))
+            .style(theme::muted_text_style()),
     ]
     .spacing(10)
     .align_y(Alignment::Center)
@@ -835,11 +960,13 @@ fn shortcut_row<'a>(key: &'a str, desc: &'a str) -> Element<'a, Message> {
 
 fn feature_tip<'a>(title: &'a str, desc: &'a str) -> Element<'a, Message> {
     column![
-        text(title).size(12).font(Font {
+        text(title).size(theme::fs(12.0)).font(Font {
             weight: font::Weight::Bold,
             ..Font::default()
         }),
-        text(desc).size(11).style(theme::dim_text_style()),
+        text(desc)
+            .size(theme::fs(11.0))
+            .style(theme::dim_text_style()),
     ]
     .spacing(2)
     .into()
@@ -849,28 +976,32 @@ fn no_results_view(_app: &App) -> Element<'_, Message> {
     container(
         column![
             load_icon_size("warning", 40.0),
-            text("No matching results found").size(17).font(Font {
-                weight: font::Weight::Bold,
-                ..Font::default()
-            }),
+            text("No matching results found")
+                .size(theme::fs(17.0))
+                .font(Font {
+                    weight: font::Weight::Bold,
+                    ..Font::default()
+                }),
             text("Try adjusting your query or expanding search filters")
-                .size(13)
+                .size(theme::fs(13.0))
                 .style(theme::dim_text_style()),
             Space::new().height(Length::Fixed(12.0)),
             container(
                 column![
-                    text("Troubleshooting Suggestions:").size(12).font(Font {
-                        weight: font::Weight::Bold,
-                        ..Font::default()
-                    }),
+                    text("Troubleshooting Suggestions:")
+                        .size(theme::fs(12.0))
+                        .font(Font {
+                            weight: font::Weight::Bold,
+                            ..Font::default()
+                        }),
                     text("• Check spelling or try simpler keywords")
-                        .size(12)
+                        .size(theme::fs(12.0))
                         .style(theme::muted_text_style()),
                     text("• Switch between Full Text and Filename search modes")
-                        .size(12)
+                        .size(theme::fs(12.0))
                         .style(theme::muted_text_style()),
                     text("• Clear active file extension filters in the left sidebar")
-                        .size(12)
+                        .size(theme::fs(12.0))
                         .style(theme::muted_text_style()),
                 ]
                 .spacing(6)
@@ -904,17 +1035,23 @@ fn result_item_view<'a>(
         actions_row = actions_row.push(
             row![
                 button(
-                    row![load_icon_size("external-link", 13.0), text("Open").size(11)]
-                        .spacing(4)
-                        .align_y(Alignment::Center)
+                    row![
+                        load_icon_size("external-link", 13.0),
+                        text("Open").size(theme::fs(11.0))
+                    ]
+                    .spacing(4)
+                    .align_y(Alignment::Center)
                 )
                 .on_press(Message::OpenFile(res.path.clone()))
                 .style(theme::ghost_button())
                 .padding(Padding::from([4, 8])),
                 button(
-                    row![load_icon_size("folder-open", 13.0), text("Folder").size(11)]
-                        .spacing(4)
-                        .align_y(Alignment::Center)
+                    row![
+                        load_icon_size("folder-open", 13.0),
+                        text("Folder").size(theme::fs(11.0))
+                    ]
+                    .spacing(4)
+                    .align_y(Alignment::Center)
                 )
                 .on_press(Message::OpenFolder(res.path.clone()))
                 .style(theme::ghost_button())
@@ -942,7 +1079,7 @@ fn result_item_view<'a>(
     let card_content = column![
         row![
             load_icon_size(file_icon_name, 18.0),
-            text(&*res.title).size(14).font(Font {
+            text(&*res.title).size(theme::fs(14.0)).font(Font {
                 weight: font::Weight::Bold,
                 ..Font::default()
             }),
@@ -951,12 +1088,18 @@ fn result_item_view<'a>(
         ]
         .spacing(10)
         .align_y(Alignment::Center),
-        text(&res.path).size(12).style(theme::dim_text_style()),
+        text(&res.path)
+            .size(theme::fs(12.0))
+            .style(theme::dim_text_style()),
         row![
-            container(text(ext_str.to_uppercase()).size(10).font(Font {
-                weight: font::Weight::Bold,
-                ..Font::default()
-            }))
+            container(
+                text(ext_str.to_uppercase())
+                    .size(theme::fs(10.0))
+                    .font(Font {
+                        weight: font::Weight::Bold,
+                        ..Font::default()
+                    })
+            )
             .padding(Padding::from([2, 6]))
             .style(|t| theme::file_badge_container(t, res.extension.as_deref())),
             container(
@@ -964,7 +1107,7 @@ fn result_item_view<'a>(
                     res.size
                         .map_or_else(|| "Unknown size".to_string(), crate::iced_ui::format_size)
                 )
-                .size(10)
+                .size(theme::fs(10.0))
             )
             .padding(Padding::from([2, 6]))
             .style(theme::badge_container),
@@ -973,7 +1116,7 @@ fn result_item_view<'a>(
                     res.modified
                         .map_or_else(|| "Unknown date".to_string(), crate::iced_ui::format_date)
                 )
-                .size(10)
+                .size(theme::fs(10.0))
             )
             .padding(Padding::from([2, 6]))
             .style(theme::badge_container),
@@ -1062,7 +1205,7 @@ fn parse_snippet<'a>(content: &'a str) -> Element<'a, Message> {
         let absolute_start = current_pos + start;
 
         if absolute_start > current_pos {
-            spans.push(span(&content[current_pos..absolute_start]).size(13));
+            spans.push(span(&content[current_pos..absolute_start]).size(theme::fs(13.0)));
         }
 
         current_pos = absolute_start + 3;
@@ -1071,7 +1214,7 @@ fn parse_snippet<'a>(content: &'a str) -> Element<'a, Message> {
             let absolute_end = current_pos + end;
             spans.push(
                 span(&content[current_pos..absolute_end])
-                    .size(13)
+                    .size(theme::fs(13.0))
                     .font(Font {
                         weight: font::Weight::Bold,
                         ..Font::default()
@@ -1080,21 +1223,25 @@ fn parse_snippet<'a>(content: &'a str) -> Element<'a, Message> {
             );
             current_pos = absolute_end + 4;
         } else {
-            spans.push(span(&content[current_pos..]).size(13).font(Font {
-                weight: font::Weight::Bold,
-                ..Font::default()
-            }));
+            spans.push(
+                span(&content[current_pos..])
+                    .size(theme::fs(13.0))
+                    .font(Font {
+                        weight: font::Weight::Bold,
+                        ..Font::default()
+                    }),
+            );
             current_pos = content.len();
             break;
         }
     }
 
     if current_pos < content.len() {
-        spans.push(span(&content[current_pos..]).size(13));
+        spans.push(span(&content[current_pos..]).size(theme::fs(13.0)));
     }
 
     if spans.is_empty() {
-        return text(content).size(13).into();
+        return text(content).size(theme::fs(13.0)).into();
     }
 
     rich_text(spans).into()
@@ -1112,13 +1259,13 @@ fn right_panel(app: &App) -> Element<'_, Message> {
                     } else {
                         "Select a search result to preview"
                     })
-                    .size(16)
+                    .size(theme::fs(16.0))
                     .font(Font {
                         weight: font::Weight::Bold,
                         ..Font::default()
                     }),
                     text("Snippets and document preview will appear here")
-                        .size(12)
+                        .size(theme::fs(12.0))
                         .style(theme::dim_text_style()),
                 ]
                 .spacing(12)
@@ -1146,17 +1293,23 @@ fn right_panel(app: &App) -> Element<'_, Message> {
                 |r| {
                     row![
                         button(
-                            row![load_icon_size("external-link", 13.0), text("Open").size(11)]
-                                .spacing(4)
-                                .align_y(Alignment::Center)
+                            row![
+                                load_icon_size("external-link", 13.0),
+                                text("Open").size(theme::fs(11.0))
+                            ]
+                            .spacing(4)
+                            .align_y(Alignment::Center)
                         )
                         .on_press(Message::OpenFile(r.path.clone()))
                         .style(theme::ghost_button())
                         .padding(Padding::from([4, 8])),
                         button(
-                            row![load_icon_size("folder-open", 13.0), text("Folder").size(11)]
-                                .spacing(4)
-                                .align_y(Alignment::Center)
+                            row![
+                                load_icon_size("folder-open", 13.0),
+                                text("Folder").size(theme::fs(11.0))
+                            ]
+                            .spacing(4)
+                            .align_y(Alignment::Center)
                         )
                         .on_press(Message::OpenFolder(r.path.clone()))
                         .style(theme::ghost_button())
@@ -1175,12 +1328,12 @@ fn right_panel(app: &App) -> Element<'_, Message> {
                 row![
                     load_icon_size(file_icon, 20.0),
                     column![
-                        text(title).size(14).font(Font {
+                        text(title).size(theme::fs(14.0)).font(Font {
                             weight: font::Weight::Bold,
                             ..Font::default()
                         }),
                         text(res.map_or("", |r| &*r.path))
-                            .size(11)
+                            .size(theme::fs(11.0))
                             .style(theme::dim_text_style()),
                     ]
                     .spacing(2)
@@ -1214,7 +1367,7 @@ fn right_panel(app: &App) -> Element<'_, Message> {
                             row![
                                 load_icon_size("sparkles", 14.0),
                                 text("Matching Snippets")
-                                    .size(13)
+                                    .size(theme::fs(13.0))
                                     .font(Font {
                                         weight: font::Weight::Bold,
                                         ..Font::default()
@@ -1246,7 +1399,7 @@ fn right_panel(app: &App) -> Element<'_, Message> {
                                 "{} structural elements parsed",
                                 preview_result.elements.len()
                             ))
-                            .size(11)
+                            .size(theme::fs(11.0))
                         ]
                         .spacing(8)
                         .align_y(Alignment::Center)
@@ -1261,7 +1414,7 @@ fn right_panel(app: &App) -> Element<'_, Message> {
                     snippets,
                     Space::new().height(6.0),
                     text("Document Content")
-                        .size(13)
+                        .size(theme::fs(13.0))
                         .font(Font {
                             weight: font::Weight::Bold,
                             ..Font::default()
@@ -1288,7 +1441,7 @@ fn hit_row(idx: usize, content: &str) -> Element<'_, Message> {
     container(
         row![
             text(format!("{idx}."))
-                .size(12)
+                .size(theme::fs(12.0))
                 .font(Font {
                     weight: font::Weight::Bold,
                     ..Font::default()
@@ -1310,14 +1463,14 @@ fn status_bar(app: &App) -> Element<'_, Message> {
         container(
             row![
                 load_icon_size("database", 12.0),
-                text(format!("{} files indexed", app.files_indexed)).size(11),
+                text(format!("{} files indexed", app.files_indexed)).size(theme::fs(11.0)),
             ]
             .spacing(6)
             .align_y(Alignment::Center)
         ),
         Space::new().width(Length::Fixed(16.0)),
         text(&app.index_size)
-            .size(11)
+            .size(theme::fs(11.0))
             .style(theme::dim_text_style()),
         Space::new().width(Length::Fill),
     ];
@@ -1326,18 +1479,20 @@ fn status_bar(app: &App) -> Element<'_, Message> {
         status_row = status_row.push(
             row![
                 text(format!("{} results found", app.results.len()))
-                    .size(11)
+                    .size(theme::fs(11.0))
                     .style(theme::dim_text_style()),
                 Space::new().width(Length::Fixed(12.0)),
-                text("Export:").size(11).style(theme::dim_text_style()),
-                button(text("CSV").size(10).font(Font {
+                text("Export:")
+                    .size(theme::fs(11.0))
+                    .style(theme::dim_text_style()),
+                button(text("CSV").size(theme::fs(10.0)).font(Font {
                     weight: font::Weight::Bold,
                     ..Font::default()
                 }))
                 .on_press(Message::ExportResults("csv".to_string()))
                 .style(theme::secondary_button())
                 .padding(Padding::from([2, 8])),
-                button(text("JSON").size(10).font(Font {
+                button(text("JSON").size(theme::fs(10.0)).font(Font {
                     weight: font::Weight::Bold,
                     ..Font::default()
                 }))
@@ -1364,13 +1519,13 @@ fn status_bar(app: &App) -> Element<'_, Message> {
             } else {
                 format!("ETA: {eta}s")
             };
-            status_row = status_row.push(text(eta_str).size(11));
+            status_row = status_row.push(text(eta_str).size(theme::fs(11.0)));
             status_row = status_row.push(Space::new().width(Length::Fixed(8.0)));
         }
     }
 
     if let Some(status) = &app.rebuild_status {
-        status_row = status_row.push(text(status).size(11));
+        status_row = status_row.push(text(status).size(theme::fs(11.0)));
     }
 
     container(status_row.padding(Padding {
@@ -1388,14 +1543,14 @@ fn extension_checkbox<'a>(ext: &'a str, app: &App) -> Element<'a, Message> {
     checkbox(app.filter_extensions.contains(ext))
         .label(ext)
         .on_toggle(move |_| Message::ToggleFilterExtension(ext.to_string()))
-        .size(16)
+        .size(theme::fs(16.0))
         .text_size(12)
         .into()
 }
 
 fn size_unit_button<'a>(unit: &'a str, app: &App) -> Element<'a, Message> {
     let is_active = app.size_unit == unit;
-    button(text(unit).size(11).font(Font {
+    button(text(unit).size(theme::fs(11.0)).font(Font {
         weight: font::Weight::Bold,
         ..Font::default()
     }))
@@ -1413,7 +1568,7 @@ fn size_unit_button<'a>(unit: &'a str, app: &App) -> Element<'a, Message> {
 
 fn date_filter_button<'a>(label: &'a str, filter: DateFilter, app: &App) -> Element<'a, Message> {
     let is_active = app.date_filter == filter;
-    button(text(label).size(12))
+    button(text(label).size(theme::fs(12.0)))
         .on_press(Message::DateFilterChanged(filter))
         .style(move |t: &iced::Theme, s| {
             if is_active {
@@ -1442,7 +1597,7 @@ fn sort_order_section(app: &App) -> Element<'_, Message> {
 
 fn sort_button<'a>(label: &'a str, sort: SortBy, app: &App) -> Element<'a, Message> {
     let is_active = app.sort_by == sort;
-    button(text(label).size(12))
+    button(text(label).size(theme::fs(12.0)))
         .on_press(Message::SortByChanged(sort))
         .style(move |t: &iced::Theme, s| {
             if is_active {
@@ -1477,7 +1632,7 @@ fn category_preset_button<'a>(
     let is_active = exts.iter().all(|e| app.filter_extensions.contains(*e));
     let exts_vec: Vec<String> = exts.iter().map(|s| (*s).to_string()).collect();
 
-    button(text(label).size(12))
+    button(text(label).size(theme::fs(12.0)))
         .on_press(Message::ToggleCategory(exts_vec))
         .style(move |t: &iced::Theme, s| {
             if is_active {

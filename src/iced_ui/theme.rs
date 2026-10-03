@@ -4,6 +4,34 @@ use iced::{
     widget::{button, container, text, text_input},
 };
 
+/// User-selectable interface text scale, as a percentage.
+///
+/// Read through [`fs`] rather than captured per-view: every text size in the UI
+/// is a literal in a deeply nested widget tree with no `App` in scope, so the
+/// preference has to be reachable without threading state through the builder
+/// calls. It is a process-wide UI preference, so a global is the honest scope.
+static TEXT_SCALE_PERCENT: std::sync::atomic::AtomicU16 =
+    std::sync::atomic::AtomicU16::new(crate::settings::FontSize::Medium.scale_percent());
+
+/// Applies the user's font-size preference to a base text size.
+///
+/// Every literal size in the views passes through here, so the setting changes
+/// the whole interface rather than only the widgets that happened to remember.
+///
+/// No clamp is applied: the percentage comes from a closed enum, and a floor
+/// here would silently shrink the smallest captions (10px) even at the default
+/// setting.
+#[must_use]
+pub fn fs(base: f32) -> f32 {
+    let percent = TEXT_SCALE_PERCENT.load(std::sync::atomic::Ordering::Relaxed);
+    base * f32::from(percent) / 100.0
+}
+
+/// Publishes the user's font-size preference to [`fs`].
+pub fn set_text_scale(size: crate::settings::FontSize) {
+    TEXT_SCALE_PERCENT.store(size.scale_percent(), std::sync::atomic::Ordering::Relaxed);
+}
+
 // --- Color Palette (Windows 11 Fluent UI Standards) ---
 pub const SURFACE_DARK: Color = Color::from_rgb(0.125, 0.125, 0.125); // #202020 (Fluent Mica Dark)
 pub const PANEL_DARK: Color = Color::from_rgb(0.176, 0.176, 0.176); // #2d2d2d (Fluent Solid Layer)
@@ -618,6 +646,26 @@ pub fn tab_button(is_active: bool) -> impl Fn(&Theme, button::Status) -> button:
     nav_button(is_active)
 }
 
+/// Button style for a mutually-exclusive option group (font size, double-click
+/// action), where the selected option must read as pressed.
+///
+/// `primary_button` and `ghost_button` are distinct `impl Fn` types, so an
+/// `if selected { primary_button() } else { ghost_button() }` cannot typecheck.
+/// This collapses the choice into one closure behind a single opaque type.
+pub fn selectable_button(
+    is_selected: bool,
+) -> impl Fn(&Theme, button::Status) -> button::Style + use<> {
+    let primary = primary_button();
+    let ghost = ghost_button();
+    move |theme, status| {
+        if is_selected {
+            primary(theme, status)
+        } else {
+            ghost(theme, status)
+        }
+    }
+}
+
 #[must_use]
 pub fn padded_card_container(theme: &Theme) -> container::Style {
     let is_dark = is_dark_theme(theme);
@@ -644,4 +692,110 @@ pub fn sidebar_panel_container(theme: &Theme) -> container::Style {
 #[must_use]
 pub fn error_container_style() -> container::Style {
     error_container(&Theme::Dark)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Serialises the scale tests, which share one process-wide atomic.
+    static TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// The scale currently published, so a guard can put it back.
+    fn current_text_scale() -> crate::settings::FontSize {
+        let percent = TEXT_SCALE_PERCENT.load(std::sync::atomic::Ordering::Relaxed);
+        [
+            crate::settings::FontSize::Small,
+            crate::settings::FontSize::Medium,
+            crate::settings::FontSize::Large,
+        ]
+        .into_iter()
+        .find(|size| size.scale_percent() == percent)
+        // Unreachable: only `set_text_scale` writes the atomic, and it only
+        // writes values produced by `scale_percent`.
+        .unwrap_or(crate::settings::FontSize::Medium)
+    }
+
+    /// Restores the process-wide scale so tests cannot leak a preference into
+    /// each other, and holds a mutex so concurrent tests do not observe each
+    /// other's setting.
+    struct ScaleGuard {
+        _lock: std::sync::MutexGuard<'static, ()>,
+        previous: crate::settings::FontSize,
+    }
+
+    impl ScaleGuard {
+        fn set(size: crate::settings::FontSize) -> Self {
+            let lock = TEST_LOCK
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let previous = current_text_scale();
+            set_text_scale(size);
+            Self {
+                _lock: lock,
+                previous,
+            }
+        }
+    }
+
+    impl Drop for ScaleGuard {
+        fn drop(&mut self) {
+            set_text_scale(self.previous);
+        }
+    }
+
+    #[test]
+    fn medium_scale_is_identity() {
+        let _guard = ScaleGuard::set(crate::settings::FontSize::Medium);
+        assert!((fs(14.0) - 14.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn scale_is_monotonic_across_sizes() {
+        let small = {
+            let _g = ScaleGuard::set(crate::settings::FontSize::Small);
+            fs(20.0)
+        };
+        let medium = {
+            let _g = ScaleGuard::set(crate::settings::FontSize::Medium);
+            fs(20.0)
+        };
+        let large = {
+            let _g = ScaleGuard::set(crate::settings::FontSize::Large);
+            fs(20.0)
+        };
+        assert!(
+            small < medium,
+            "small ({small}) must be under medium ({medium})"
+        );
+        assert!(
+            medium < large,
+            "medium ({medium}) must be under large ({large})"
+        );
+    }
+
+    #[test]
+    fn scale_has_a_legibility_floor() {
+        let _guard = ScaleGuard::set(crate::settings::FontSize::Small);
+        // 10px captions are the smallest literal in the views. Shrinking them
+        // further would be the floor's job, but a floor would also shrink them
+        // at the default setting -- so the smallest preset is what sets the
+        // effective minimum instead.
+        assert!((fs(10.0) - 9.0).abs() < 0.001, "got {}", fs(10.0));
+    }
+
+    /// Guards the invariant the mechanical `.size(N)` -> `.size(theme::fs(N))`
+    /// rewrite depends on: the default setting must be an exact identity
+    /// transform, or the whole UI silently reflows.
+    #[test]
+    fn default_scale_is_an_exact_identity() {
+        let _guard = ScaleGuard::set(crate::settings::FontSize::Medium);
+        for base in [10.0, 11.0, 12.0, 13.0, 14.0, 16.0, 18.0, 24.0] {
+            assert!(
+                (fs(base) - base).abs() < 1e-6,
+                "base {base} was altered at the default scale, got {}",
+                fs(base)
+            );
+        }
+    }
 }

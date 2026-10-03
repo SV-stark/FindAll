@@ -124,7 +124,10 @@ fn test_metadata_round_trip_and_staleness() -> Result<()> {
     assert!(db.needs_reindex(&path, 100, 10)?, "unknown file is stale");
 
     db.update_metadata(&path, 100, 10, hash)?;
-    assert!(!db.needs_reindex(&path, 100, 10)?, "unchanged file is fresh");
+    assert!(
+        !db.needs_reindex(&path, 100, 10)?,
+        "unchanged file is fresh"
+    );
     assert!(db.needs_reindex(&path, 200, 10)?, "new mtime is stale");
     assert!(db.needs_reindex(&path, 100, 11)?, "new size is stale");
 
@@ -133,7 +136,10 @@ fn test_metadata_round_trip_and_staleness() -> Result<()> {
     assert_eq!(stored.size, 10);
 
     assert!(db.remove_file(&path)?);
-    assert!(!db.remove_file(&path)?, "second remove reports nothing removed");
+    assert!(
+        !db.remove_file(&path)?,
+        "second remove reports nothing removed"
+    );
     assert!(db.get_metadata(&path)?.is_none());
 
     Ok(())
@@ -158,14 +164,16 @@ fn test_metadata_batch_operations_agree_with_single_ops() -> Result<()> {
         .map(|(p, m, s)| (p.to_string_lossy().to_string(), *m, *s))
         .collect();
 
-    assert!(db
-        .batch_needs_reindex(&as_strings)?
-        .iter()
-        .all(|stale| *stale));
-    assert!(db
-        .batch_needs_reindex_paths_paths(&borrowed, &stamps)?
-        .iter()
-        .all(|stale| *stale));
+    assert!(
+        db.batch_needs_reindex(&as_strings)?
+            .iter()
+            .all(|stale| *stale)
+    );
+    assert!(
+        db.batch_needs_reindex_paths_paths(&borrowed, &stamps)?
+            .iter()
+            .all(|stale| *stale)
+    );
 
     db.batch_update_metadata(
         &as_strings
@@ -175,10 +183,7 @@ fn test_metadata_batch_operations_agree_with_single_ops() -> Result<()> {
     )?;
 
     assert!(db.batch_needs_reindex(&as_strings)?.iter().all(|s| !s));
-    assert!(db
-        .batch_needs_reindex_paths(&entries)?
-        .iter()
-        .all(|s| !s));
+    assert!(db.batch_needs_reindex_paths(&entries)?.iter().all(|s| !s));
 
     // Bump one file's mtime; only that entry goes stale.
     let mut bumped = entries.clone();
@@ -232,7 +237,11 @@ fn test_metadata_paths_under_and_remove_files() -> Result<()> {
 
     let under = db.paths_under(&root)?;
     assert_eq!(under.len(), 10, "prefix match must not include siblings");
-    assert!(under.iter().all(|p| p.starts_with(&root.to_string_lossy().to_string())));
+    assert!(
+        under
+            .iter()
+            .all(|p| p.starts_with(&root.to_string_lossy().to_string()))
+    );
 
     let borrowed: Vec<&std::path::Path> = under.iter().map(std::path::Path::new).collect();
     assert_eq!(db.remove_files(&borrowed)?, 10);
@@ -299,7 +308,10 @@ async fn test_scan_directory_indexes_and_is_idempotent() -> Result<()> {
 
     assert!(!report.cancelled);
     assert_eq!(report.write_errors, 0, "scan must not report write errors");
-    assert_eq!(report.documents_written, 2, "only supported types are indexed");
+    assert_eq!(
+        report.documents_written, 2,
+        "only supported types are indexed"
+    );
 
     let results = indexer
         .search(
@@ -377,7 +389,11 @@ async fn test_scan_skips_files_over_the_size_limit() -> Result<()> {
     settings.index_file_size_limit_mb = 0; // 0 MiB => nothing fits
     let (scanner, _, _) = build_scanner(temp.path(), settings)?;
     let report = scanner
-        .scan_directory(data, vec![], flash_search::scanner::cancel::CancelToken::never())
+        .scan_directory(
+            data,
+            vec![],
+            flash_search::scanner::cancel::CancelToken::never(),
+        )
         .await?;
 
     assert_eq!(report.documents_written, 0);
@@ -394,7 +410,10 @@ async fn test_cancelled_scan_flushes_what_it_already_wrote() -> Result<()> {
     let data = temp.path().join("data");
     fs::create_dir_all(&data)?;
     for i in 0..5 {
-        fs::write(data.join(format!("f{i}.txt")), format!("content uniqueword {i}"))?;
+        fs::write(
+            data.join(format!("f{i}.txt")),
+            format!("content uniqueword {i}"),
+        )?;
     }
 
     let (scanner, indexer, metadata_db) = build_scanner(temp.path(), test_settings())?;
@@ -441,11 +460,7 @@ async fn test_a_new_scan_supersedes_the_previous_one() -> Result<()> {
     fs::write(data.path().join("src/a.txt"), "uniqueword")?;
 
     let report = scanner
-        .scan_directory(
-            data.path().join("src"),
-            vec![],
-            second.clone(),
-        )
+        .scan_directory(data.path().join("src"), vec![], second.clone())
         .await?;
     assert!(!report.cancelled);
     assert_eq!(report.documents_written, 1);
@@ -588,3 +603,80 @@ async fn test_purge_directory_removes_only_that_subtree() -> Result<()> {
     Ok(())
 }
 
+/// `App::save_settings` used to re-implement the save and skip the
+/// `settings_cache` update and the watcher reconfiguration. This asserts the
+/// save path every UI toggle goes through actually reaches the shared cache
+/// that the scanner and watcher read from.
+#[tokio::test]
+async fn test_save_settings_reaches_the_shared_cache() -> Result<()> {
+    use flash_search::commands::AppState;
+    use flash_search::scanner::{ProgressEvent, Scanner};
+    use flash_search::settings::{AppSettings, SettingsManager};
+    use flash_search::watcher::WatcherManager;
+
+    let temp_workspace = tempdir()?;
+    let index_dir = temp_workspace.path().join("index");
+    // redb creates a *file*, so the metadata DB cannot live inside the
+    // directory Tantivy owns.
+    let metadata_db_path = temp_workspace.path().join("metadata.redb");
+    let settings_dir = temp_workspace.path().join("settings");
+    let data_dir = temp_workspace.path().join("data");
+
+    fs::create_dir_all(&index_dir)?;
+    fs::create_dir_all(&settings_dir)?;
+    fs::create_dir_all(&data_dir)?;
+
+    let indexer = Arc::new(IndexManager::open(&index_dir, 100)?);
+    let metadata_db = Arc::new(MetadataDb::open(&metadata_db_path)?.0);
+
+    let base_settings = AppSettings::default();
+    let (progress_tx, _progress_rx) = flume::bounded::<ProgressEvent>(64);
+    let watcher = WatcherManager::new(
+        Arc::clone(&indexer),
+        Arc::clone(&metadata_db),
+        base_settings.get_allowed_extensions().clone(),
+        base_settings.enable_ocr,
+    );
+    let settings_manager = SettingsManager::new(&settings_dir);
+    let scanner = Arc::new(Scanner::new(
+        Arc::clone(&indexer),
+        Arc::clone(&metadata_db),
+        None,
+        Some(progress_tx.clone()),
+        base_settings.clone(),
+    ));
+
+    let state = Arc::new(
+        AppState::builder()
+            .indexer(indexer)
+            .metadata_db(metadata_db)
+            .settings(base_settings)
+            .settings_manager(SettingsManager::new(&settings_dir))
+            .watcher(watcher)
+            .progress_tx(progress_tx)
+            .scanner(scanner)
+            .build(),
+    );
+
+    let mut updated = state.settings_cache.load().as_ref().clone();
+    updated.exclude_patterns = vec!["node_modules".to_string()];
+    updated.index_dirs = vec![data_dir.to_string_lossy().to_string()];
+
+    flash_search::commands::save_settings_internal(&updated, &state)
+        .map_err(|e| flash_search::error::FlashError::config("save_settings", e))?;
+
+    // The scanner reads its configuration from this cache on every run, so a
+    // save that skipped it left indexing using the startup values.
+    assert_eq!(
+        state.settings_cache.load().exclude_patterns,
+        vec!["node_modules".to_string()],
+        "saved exclude patterns must reach the shared cache"
+    );
+    assert_eq!(state.settings_cache.load().index_dirs.len(), 1);
+
+    // And the change must survive a restart, not just live in memory.
+    let reloaded = settings_manager.load()?;
+    assert_eq!(reloaded.exclude_patterns, vec!["node_modules".to_string()]);
+
+    Ok(())
+}

@@ -9,6 +9,25 @@ Indexes are rebuilt automatically on upgrade: the Tantivy schema version moved t
 (see Security).
 
 ### Added
+- **Right-click menu on results.** Right-clicking a row emitted `ShowContextMenu`,
+  which no handler matched, so the gesture did nothing. The menu offers Open,
+  Show in folder, Copy full path, and Pin/Unpin.
+- **Double-click to open a result.** Iced's `MouseArea` exposes only single- and
+  right-click, so there was no pointer-driven way to open a file at all — only the
+  Enter key worked. Double-clicks are now reconstructed by timing two presses on the
+  same row, and the action is configurable (open / show in folder / preview only)
+  via the previously inert `double_click_action` setting.
+- **Recent searches on the start screen.** Search history was recorded and
+  persisted but never surfaced anywhere, so the feature was invisible. Submitted
+  queries are now ranked by frequency, listed on the welcome screen, clickable to
+  re-run, and clearable. Turning the setting off also discards what was collected.
+- **Working font-size setting.** `font_size` was persisted but never applied —
+  every text size in the views is a literal. All 135 of them now route through
+  `theme::fs`, so the Small/Medium/Large picker resizes the whole interface.
+- **`Esc` key.** Dismisses the context menu, then the selection, then the query.
+  Without it the context menu had no keyboard dismissal path.
+- **`Ctrl+F` actually focuses the search box.** The shortcut was advertised on the
+  welcome screen but no handler was bound to it.
 - Optional `ocr` cargo feature for scanned-PDF/image text extraction. Off by
   default because `xberg-tesseract` downloads and CMake-builds Leptonica and
   Tesseract from source, which would otherwise require network access, CMake, and
@@ -20,12 +39,41 @@ Indexes are rebuilt automatically on upgrade: the Tantivy schema version moved t
 - `MetadataDb::paths_under` and `MetadataDb::remove_files` for bulk, single
   transaction directory removal.
 - `CancelToken::check`, `IndexingReport`, and `WatchList` helpers for tooling.
-- 62 new tests (94 total), covering the operator DSL, end-to-end search and
+- `system::startup::sync_auto_start` and `system::context_menu::sync_context_menu`,
+  which reconcile the stored settings against the real OS registration at launch.
+- 21 new tests (115 total), covering the operator DSL, end-to-end search and
   filtering, the scanner pipeline, cancellation, watcher bursts, metadata
-  batching, directory purging, filename-index persistence, and IPC token
-  generation.
+  batching, directory purging, filename-index persistence, IPC token
+  generation, settings migration, the settings-save path reaching the shared
+  cache, and the new UI state transitions.
 
 ### Fixed
+- **"Start automatically at boot" and "Add to the right-click menu" were lies.**
+  Both checkboxes flipped a persisted setting and did nothing else — no registry
+  write ever happened. They now perform the real registration on a blocking thread,
+  revert the checkbox and surface the error if it fails, and are reconciled against
+  the OS state at launch so the setting and reality cannot drift apart.
+- **Settings text fields could not be cleared.** `max_results` was a `usize` written
+  through on every keystroke, so an unparseable value (including empty) silently
+  snapped the box back. `exclude_patterns` was worse: the view rendered
+  `join(", ")` while the handler split on `,` and dropped empties, so typing a
+  separator re-flowed the text under the cursor. Both now own their raw text and
+  commit on submit, on Save, and on leaving the Settings tab. `max_results` is
+  clamped to a usable band, and unparseable input keeps the previous value.
+- **Settings could be written back over an unsaved edit.** `save_settings` took
+  `&self`, so any unrelated toggle persisted the document while a typed-in value
+  was still pending. Every write now folds the pending text in first.
+- **UI settings saves never reached the running workers.** The UI's `save_settings`
+  re-implemented persistence instead of calling `save_settings_internal`, and the
+  partial copy skipped the `settings_cache` update and the watcher reconfiguration.
+  Editing exclude patterns or custom extensions wrote them to disk while the
+  scanner and watcher kept using their startup values, so the change appeared to do
+  nothing until restart. Both now go through the single save path, and a failure is
+  reported to the user rather than discarded.
+- **Settings were not durable.** The save wrote a temp file and renamed it without
+  flushing, so a power loss could leave an empty `settings.json`. It is now synced
+  before the rename, and a failed rename cleans up the temp file.
+- **Leaving the Settings tab discarded edits** made but not submitted.
 - **Silent index corruption.** The scanner's final flush was gated on
   `!doc_batch.is_empty()`, so cancelling an index run just after a batch
   boundary discarded every accumulated metadata row and filename entry and
@@ -89,6 +137,12 @@ Indexes are rebuilt automatically on upgrade: the Tantivy schema version moved t
   a click being emitted and the message being handled.
 - `format_date` no longer unwraps on the render path, and `run_ui` returns an
   error instead of panicking.
+- The Explorer context-menu registration silently wrote an empty `command` value if
+  the executable path could not be resolved, leaving a broken verb in the shell. An
+  unresolvable path is now an error.
+- Selecting Filename mode while the filename index is disabled failed deep in the
+  search layer with an opaque message. It is now refused up front, and the mode is
+  left if the setting is turned off while it is active.
 
 ### Security
 - The local search endpoint on `127.0.0.1:9095` was unauthenticated with no input
@@ -97,6 +151,27 @@ Indexes are rebuilt automatically on upgrade: the Tantivy schema version moved t
   connections, and backs off instead of spinning when `accept` fails.
 
 ### Changed
+- **Removed dead settings that could not do anything.** `fuzzy_matching` and
+  `show_file_extensions` were persisted but had no consumer and no unambiguous
+  meaning; inventing semantics for them would have been worse than dropping them.
+  `double_click_action`, `font_size`, `search_history_enabled`, and
+  `filename_index_enabled` were equally inert but had obvious intent, so they are
+  wired up instead. Existing `settings.json` files carrying the removed keys still
+  load unchanged (covered by a test).
+- **Collapsed duplicated persistence paths.** Search history and pinned files each
+  had a dedicated command that re-implemented the ranking and wrote the whole
+  settings document, racing the normal save path and double-counting entries. Both
+  are now ordinary settings mutations.
+- **Removed duplicate types.** `FilenameSearchResult` and `FilenameIndexStats` were
+  declared twice — once in `models`, once in `indexer::filename_index` — with every
+  hit converted field by field. The `models` copies are gone.
+- **Removed dead code:** the orphan `commands/autostart.rs` (a second, unused
+  registry implementation next to `system/startup`), `system/compression.rs` and
+  its `zstd` dependency, the unreferenced `self_update` installer, the folder
+  picker that `Message::PickFolder` had superseded, the unused
+  `parsers::{list_supported_extensions, is_supported_file}`, `TermHighlighter`,
+  `models::RecentFile`, and five message variants that were handled but never
+  emitted.
 - **Symlinks are no longer followed** when scanning. `follow_links(true)` with no
   loop detection let a self-referential junction make a scan descend until the
   disk filled.
@@ -118,6 +193,9 @@ Indexes are rebuilt automatically on upgrade: the Tantivy schema version moved t
 - Removed dead code: the unused `fast_walker` module, an uncompiled test file, a
   cache that was written but never read, and structured outputs that were
   debug-formatted and discarded.
+- The welcome screen's shortcut and feature cards were extracted into
+  `shortcut_and_feature_cards`, and the shortcut list now documents the
+  double-click and `Esc` gestures rather than omitting them.
 - `cargo clippy --all-targets` is clean under the configured `pedantic`, `nursery`,
   and `all` lint groups.
 

@@ -1,4 +1,3 @@
-use self_update::Status;
 use self_update::backends::github::Update;
 
 /// Summary result of checking GitHub releases for new versions.
@@ -30,18 +29,4 @@ pub fn check_for_updates() -> Result<UpdateCheckResult, String> {
         latest_version,
         update_available,
     })
-}
-
-/// Performs binary download and self-update swapping.
-pub fn perform_update() -> Result<Status, String> {
-    let updater = Update::configure()
-        .repo_owner("SV-stark")
-        .repo_name("findall")
-        .bin_name("flash-search")
-        .current_version(env!("CARGO_PKG_VERSION"))
-        .show_download_progress(true)
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    updater.update().map_err(|e| e.to_string())
 }

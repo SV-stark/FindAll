@@ -96,14 +96,21 @@ pub fn setup_app() -> std::result::Result<
     let metadata_db_shared = Arc::new(metadata_db);
     let indexer_shared = Arc::new(indexer);
 
-    let filename_index =
+    // The filename index is only built when the setting asks for it; otherwise the
+    // FST is never written and never opened, so the on-disk artifact is not even
+    // created for users who never switch to Filename mode.
+    let filename_index = if settings.filename_index_enabled {
         match indexer::filename_index::FilenameIndex::open(&app_data_dir.join("filename_index")) {
             Ok(idx) => Some(Arc::new(idx)),
             Err(e) => {
                 error!("Failed to open filename index: {}", e);
                 None
             }
-        };
+        }
+    } else {
+        info!("Filename index disabled in settings; skipping");
+        None
+    };
 
     // The watcher must see the same extension set and exclude globs the scanner
     // uses; otherwise a file the scanner skips still triggers a re-index, or vice
@@ -280,12 +287,10 @@ async fn start_ipc_server(state: Arc<AppState>) {
             )
             .await;
 
-            let auth_ok = matches!(
-                read,
-                Ok(Ok(_))
-            ) && String::from_utf8_lossy(&auth_line)
-                .trim()
-                .eq_ignore_ascii_case(token.as_str());
+            let auth_ok = matches!(read, Ok(Ok(_)))
+                && String::from_utf8_lossy(&auth_line)
+                    .trim()
+                    .eq_ignore_ascii_case(token.as_str());
 
             if !auth_ok {
                 tracing::warn!("Rejected unauthenticated local search request");
@@ -304,9 +309,7 @@ async fn start_ipc_server(state: Arc<AppState>) {
             {
                 Ok(n) if n <= MAX_QUERY_BYTES => {}
                 Ok(_) => {
-                    let _ = writer
-                        .write_all(b"{\"error\":\"query too long\"}\n")
-                        .await;
+                    let _ = writer.write_all(b"{\"error\":\"query too long\"}\n").await;
                     return;
                 }
                 Err(e) => {
@@ -339,9 +342,8 @@ async fn start_ipc_server(state: Arc<AppState>) {
                             })
                         })
                         .collect();
-                    serde_json::to_string(&json_results).unwrap_or_else(|e| {
-                        format!(r#"{{"error":"{e}"}}"#)
-                    })
+                    serde_json::to_string(&json_results)
+                        .unwrap_or_else(|e| format!(r#"{{"error":"{e}"}}"#))
                 }
                 Err(e) => serde_json::json!({ "error": e.to_string() }).to_string(),
             };
@@ -370,14 +372,11 @@ pub fn ensure_ipc_token(app_data_dir: &std::path::Path) -> crate::error::Result<
     let token = {
         let mut bytes = [0u8; 32];
         getrandom(&mut bytes);
-        bytes.iter().fold(
-            String::with_capacity(64),
-            |mut acc, b| {
-                use std::fmt::Write;
-                let _ = write!(acc, "{b:02x}");
-                acc
-            },
-        )
+        bytes.iter().fold(String::with_capacity(64), |mut acc, b| {
+            use std::fmt::Write;
+            let _ = write!(acc, "{b:02x}");
+            acc
+        })
     };
 
     std::fs::create_dir_all(app_data_dir)
@@ -431,7 +430,8 @@ fn weak_random_fill(buffer: &mut [u8]) {
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0x9E37_79B9_7F4A_7C15, |d| {
             u64::try_from(d.as_nanos()).unwrap_or(0x9E37_79B9_7F4A_7C15)
-        }) ^ (buffer.as_ptr() as u64);
+        })
+        ^ (buffer.as_ptr() as u64);
 
     for slot in buffer.iter_mut() {
         seed ^= seed >> 12;
@@ -487,5 +487,3 @@ mod tests {
         assert!(dir.path().join("ipc_token").exists());
     }
 }
-
-

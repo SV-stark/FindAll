@@ -1,6 +1,7 @@
 use crate::commands::AppState;
+use crate::indexer::filename_index::{FilenameIndexStats, FilenameSearchResult};
 use crate::indexer::searcher::{SearchParams, SearchResult};
-use crate::models::{FilenameIndexStats, FilenameSearchResult, PreviewResult};
+use crate::models::PreviewResult;
 use crate::parsers::{PreviewElement, parse_file_preview};
 use iced::widget::text::Highlighter as _;
 use mini_moka::sync::Cache;
@@ -220,23 +221,14 @@ pub async fn search_filenames_internal(
     limit: usize,
     state: &Arc<AppState>,
 ) -> Result<Vec<FilenameSearchResult>, String> {
-    state.filename_index.as_ref().map_or_else(
-        || Err("Filename index not initialized".to_string()),
-        |filename_index| {
-            filename_index
-                .search(&query, limit)
-                .map(|results| {
-                    results
-                        .into_iter()
-                        .map(|r| FilenameSearchResult {
-                            file_path: r.file_path,
-                            file_name: r.file_name,
-                        })
-                        .collect()
-                })
-                .map_err(|e| e.to_string())
-        },
-    )
+    // Results are already the index's own type; an identical copy lived in
+    // `models` and every hit was converted into it field by field.
+    state
+        .filename_index
+        .as_ref()
+        .ok_or_else(|| "Filename index not initialized".to_string())?
+        .search(&query, limit)
+        .map_err(|e| e.to_string())
 }
 
 /// Gets statistics for the filename index.
@@ -247,13 +239,10 @@ pub async fn search_filenames_internal(
 pub async fn get_filename_index_stats_internal(
     state: &Arc<AppState>,
 ) -> Result<FilenameIndexStats, String> {
-    if let Some(ref filename_index) = state.filename_index {
-        let index_stats = filename_index.get_stats().map_err(|e| e.to_string())?;
-        Ok(FilenameIndexStats {
-            total_files: index_stats.total_files,
-            index_size_bytes: index_stats.index_size_bytes,
-        })
-    } else {
-        Err("Filename index not initialized".to_string())
-    }
+    state
+        .filename_index
+        .as_ref()
+        .ok_or_else(|| "Filename index not initialized".to_string())?
+        .get_stats()
+        .map_err(|e| e.to_string())
 }

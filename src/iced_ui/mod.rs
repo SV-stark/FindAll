@@ -60,8 +60,8 @@ impl From<SearchResult> for FileItem {
     }
 }
 
-impl From<crate::models::FilenameSearchResult> for FileItem {
-    fn from(r: crate::models::FilenameSearchResult) -> Self {
+impl From<crate::indexer::filename_index::FilenameSearchResult> for FileItem {
+    fn from(r: crate::indexer::filename_index::FilenameSearchResult) -> Self {
         let path_clone = r.file_path.clone();
         Self {
             score: 1.0,
@@ -77,6 +77,32 @@ impl From<crate::models::FilenameSearchResult> for FileItem {
         }
     }
 }
+
+/// Which result a right-click context menu is acting on.
+///
+/// Right-clicking a result used to emit `ShowContextMenu`, which no handler
+/// matched, so the right-click silently did nothing. The menu state is explicit
+/// so the action buttons always know which row they refer to, even if the results
+/// list changes underneath them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContextMenuState {
+    pub result_index: usize,
+    pub path: String,
+    pub pinned: bool,
+}
+
+/// A press on the results list, retained long enough to pair with the next one.
+#[derive(Debug, Clone, Copy)]
+pub struct LastClick {
+    pub result_index: usize,
+    pub at: std::time::Instant,
+}
+
+/// Maximum gap between two presses on the same row that still counts as a double-click.
+///
+/// Windows' own default double-click time is 500ms; slightly under that keeps
+/// the app feeling responsive without misfiring on slow deliberate clicks.
+pub const DOUBLE_CLICK_WINDOW: std::time::Duration = std::time::Duration::from_millis(400);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum DateFilter {
@@ -185,6 +211,8 @@ pub enum Message {
     TabChanged(Tab),
     SearchQueryChanged(String),
     SearchSubmitted,
+    RunRecentSearch(String),
+    ClearSearchHistory,
     SearchResultsReceived(usize, Vec<FileItem>),
     SearchError(FlashError),
     ResultSelected(usize),
@@ -193,6 +221,7 @@ pub enum Message {
     OpenFolder(String),
     CopyPath(String),
     ShowContextMenu(usize),
+    HideContextMenu,
     // Filters
     FilterExtensionChanged(String),
     ToggleFilterExtension(String),
@@ -209,17 +238,25 @@ pub enum Message {
     // Settings
     MaxResultsChanged(String),
     ExcludePatternsChanged(String),
+    CommitTextInputs,
     CustomExtensionsChanged(String),
     GlobalHotkeyChanged(String),
     AddFolder,
     RemoveFolder(usize),
     ToggleMinimizeToTray(bool),
     ToggleAutoStart(bool),
+    ToggleAutoStartDone(bool),
+    ToggleAutoStartFailed(bool, String),
     ToggleContextMenu(bool),
+    DoubleClickActionChanged(crate::settings::DoubleClickAction),
+    TogglePreviewPanel(bool),
+    ToggleSearchHistory(bool),
+    ToggleFilenameIndex(bool),
+    ToggleContextMenuDone(bool),
+    ToggleContextMenuFailed(bool, String),
     ToggleGitignore(bool),
     ToggleTheme,
     RebuildIndex,
-    IndexDirAdded(String),
     RemoveIndexDir(usize),
     ExcludePatternAdded(String),
     RemoveExcludePattern(usize),
@@ -228,11 +265,9 @@ pub enum Message {
     ThemeChanged(crate::settings::Theme),
     FontSizeChanged(crate::settings::FontSize),
     // Lifecycle
-    PollProgress,
     PollProgressResult(Option<ProgressEvent>),
     PreviewLoaded(usize, crate::models::PreviewResult),
     IndexRebuilt,
-    RebuildProgress(f32),
     StatusUpdate(String),
     // Pinned
     PinFile(String),
@@ -254,6 +289,8 @@ pub enum Message {
     OpenSelectedResult,
     ShowSelectedInFolder,
     CopySelectedPath,
+    FocusSearch,
+    Escape,
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -266,6 +303,15 @@ pub struct App {
     pub(crate) search_query: String,
     pub(crate) results: Vec<FileItem>,
     pub(crate) selected_index: Option<usize>,
+    /// Previous click on the results list, used to synthesise a double-click.
+    ///
+    /// Iced's `MouseArea` exposes only single- and right-click, so a
+    /// double-click is reconstructed by timing two consecutive presses on the
+    /// same row. Without this there was no pointer-driven way to open a result
+    /// at all — only the Enter key worked.
+    pub(crate) last_click: Option<LastClick>,
+    /// `search_id` the pending [`LastClick`] belongs to.
+    pub(crate) click_search_id: usize,
     pub(crate) hovered_item_index: Option<usize>,
     pub(crate) is_searching: bool,
     pub(crate) search_id: usize,
@@ -286,10 +332,23 @@ pub struct App {
     pub(crate) is_dark: bool,
     pub(crate) sidebar_collapsed: bool,
     pub(crate) settings: AppSettings,
-    pub(crate) new_index_dir: String,
-    pub(crate) new_exclude_pattern: String,
+    /// Raw text currently in the "Maximum Search Results" field.
+    ///
+    /// Kept separate from `settings.max_results` because the setting is a
+    /// `usize`: writing through on every keystroke made an unparseable value
+    /// (including the empty string) silently snap the field back, so the box
+    /// could never be cleared. Committed by [`Message::CommitTextInputs`].
+    pub(crate) max_results_input: String,
+    /// Raw text currently in the "Exclude Patterns" field.
+    ///
+    /// Same round-trip problem as `max_results_input`, and worse: the view
+    /// rendered `exclude_patterns.join(", ")` while the handler split on `,`
+    /// and dropped empties, so typing a separator re-flowed the text under the
+    /// cursor.
+    pub(crate) exclude_patterns_input: String,
     pub(crate) preview_result: Option<crate::models::PreviewResult>,
     pub(crate) is_loading_preview: bool,
+    pub(crate) context_menu: Option<ContextMenuState>,
     #[allow(dead_code)]
     pub(crate) tray_icon: Option<tray_icon::TrayIcon>,
     pub(crate) window_id: Option<iced::window::Id>,
@@ -330,6 +389,8 @@ impl Default for App {
             search_query: String::new(),
             results: Vec::new(),
             selected_index: None,
+            last_click: None,
+            click_search_id: 0,
             hovered_item_index: None,
             is_searching: false,
             search_id: 0,
@@ -350,9 +411,10 @@ impl Default for App {
             is_dark: false,
             sidebar_collapsed: false,
             settings: AppSettings::default(),
-            new_index_dir: String::new(),
-            new_exclude_pattern: String::new(),
+            max_results_input: String::new(),
+            exclude_patterns_input: String::new(),
             preview_result: None,
+            context_menu: None,
             is_loading_preview: false,
             tray_icon: None,
             window_id: None,
@@ -400,6 +462,23 @@ impl App {
                 if let Some(dir) = initial_dir {
                     app.search_query = format!("path:\"{dir}\" ");
                 }
+
+                // Seed the settings-field drafts from what was actually loaded
+                // so the boxes start out showing the persisted values.
+                app.max_results_input = settings.max_results.to_string();
+                app.exclude_patterns_input = settings.exclude_patterns.join(", ");
+
+                // Publish the persisted font size before the first frame, so the
+                // very first render already uses it instead of flashing the
+                // default and then resizing.
+                theme::set_text_scale(settings.font_size);
+
+                // Reconcile the OS-side integration with the stored setting at
+                // launch. Previously the checkbox and the actual registry state
+                // could disagree indefinitely: the setting was persisted but
+                // nothing ever read it back to register or remove the entry.
+                crate::system::startup::sync_auto_start(settings.auto_start_on_boot);
+                crate::system::context_menu::sync_context_menu(settings.context_menu_enabled);
 
                 app
             }
@@ -661,20 +740,165 @@ impl App {
         }
     }
 
-    fn save_settings(&self) -> Task<Message> {
-        if let Some(state) = &self.state {
-            let settings = self.settings.clone();
-            let state = state.clone();
-            return Task::perform(
-                async move {
-                    let _ = state.settings_manager.save(&settings);
-                    let mut watcher = state.watcher.lock();
-                    let _ = watcher.update_watch_list(&settings.index_dirs);
-                },
-                |()| Message::NoOp,
-            );
+    /// Records the current query into the search history.
+    ///
+    /// No-op for an empty or whitespace-only query, and when
+    /// [`AppSettings::search_history_enabled`] is off. Returns the task that
+    /// persists the update; the in-memory copy is refreshed optimistically so the
+    /// welcome card appears immediately.
+    fn record_search_history(&mut self) -> Task<Message> {
+        let query = self.search_query.trim().to_string();
+        if !self.settings.search_history_enabled || query.is_empty() {
+            return Task::none();
         }
-        Task::none()
+
+        // Mirror the persistence layer's ranking so the UI and the stored value
+        // cannot disagree if the write fails.
+        let mut history = std::mem::take(&mut self.settings.search_history);
+        match history.iter_mut().find(|item| item.query == query) {
+            Some(item) => {
+                item.frequency = item.frequency.saturating_add(1);
+                item.last_used = crate::settings::now_unix_secs();
+            }
+            None => history.push(crate::settings::SearchHistoryItem {
+                query: query.clone(),
+                frequency: 1,
+                last_used: crate::settings::now_unix_secs(),
+            }),
+        }
+        history.sort_by_key(|item| std::cmp::Reverse(item.frequency));
+        history.truncate(50);
+        self.settings.search_history = history;
+
+        // Persisted through the single settings path rather than a dedicated
+        // command: a second implementation of the same ranking would either
+        // double-count the entry the UI already inserted or drift from it.
+        self.save_settings()
+    }
+
+    /// Whether a press at `idx` and `at` completes a double-click.
+    ///
+    /// Does not mutate state; the caller is responsible for re-arming
+    /// [`App::last_click`] so a triple-click is not counted twice.
+    fn pairs_as_double_click(&self, idx: usize, at: std::time::Instant) -> bool {
+        matches!(self.last_click, Some(prev)
+        if prev.result_index == idx && at.saturating_duration_since(prev.at) <= DOUBLE_CLICK_WINDOW)
+    }
+
+    /// Performs [`AppSettings::double_click_action`] against the selected result.
+    ///
+    /// Bounds-checked: the selection is re-read from `results` rather than
+    /// trusted from the click that triggered it.
+    fn run_double_click_action(&self) -> Task<Message> {
+        let Some(path) = self
+            .selected_index
+            .and_then(|idx| self.results.get(idx))
+            .map(|item| item.path.clone())
+        else {
+            return Task::none();
+        };
+
+        match self.settings.double_click_action {
+            crate::settings::DoubleClickAction::OpenFile => Task::perform(
+                async move {
+                    if let Err(e) = opener::open(std::path::Path::new(&path)) {
+                        tracing::error!("Double-click open failed for {path}: {e}");
+                        Message::StatusUpdate(format!("Could not open: {e}"))
+                    } else {
+                        Message::NoOp
+                    }
+                },
+                Message::from,
+            ),
+            crate::settings::DoubleClickAction::ShowInFolder => Task::perform(
+                async move {
+                    if let Err(e) = crate::commands::open_folder_internal(&path) {
+                        tracing::error!("Double-click reveal failed for {path}: {e}");
+                        Message::StatusUpdate(format!("Could not reveal in folder: {e}"))
+                    } else {
+                        Message::NoOp
+                    }
+                },
+                Message::from,
+            ),
+            crate::settings::DoubleClickAction::Preview => {
+                // The preview panel already loads on single click, so this arm
+                // is deliberately inert rather than re-fetching the same file.
+                Task::none()
+            }
+        }
+    }
+
+    /// Folds the settings-text drafts into [`AppSettings`].
+    ///
+    /// An unparseable `max_results` keeps the previous value instead of
+    /// resetting it, and the draft is reset to the value that was actually
+    /// applied so the box stops showing rejected input. `max_results` is
+    /// clamped to a sane band: zero would make every search return nothing and
+    /// an absurd value would let a single query allocate unboundedly.
+    fn commit_text_inputs(&mut self) {
+        match self.max_results_input.trim().parse::<usize>() {
+            Ok(n) => {
+                self.settings.max_results = n.clamp(1, crate::settings::MAX_RESULTS_LIMIT);
+            }
+            Err(_) if self.max_results_input.trim().is_empty() => {
+                self.settings.max_results = crate::settings::DEFAULT_MAX_RESULTS;
+            }
+            Err(_) => {
+                tracing::warn!(
+                    "Ignoring unparseable max_results input {:?}; keeping {}",
+                    self.max_results_input,
+                    self.settings.max_results
+                );
+            }
+        }
+        self.max_results_input = self.settings.max_results.to_string();
+
+        self.settings.exclude_patterns = self
+            .exclude_patterns_input
+            .split(',')
+            .map(str::trim)
+            .filter(|p| !p.is_empty())
+            .map(ToString::to_string)
+            .collect();
+        self.exclude_patterns_input = self.settings.exclude_patterns.join(", ");
+    }
+
+    /// Flushes the text drafts, persists settings, and pushes the new values into
+    /// the live background workers.
+    ///
+    /// Takes `&mut self` so every persist path necessarily folds the drafts in
+    /// first. Routing through one function is what stops an unrelated toggle
+    /// from writing settings to disk while a typed-in value is still pending in
+    /// a text box.
+    ///
+    /// Delegates to [`crate::commands::save_settings_internal`] rather than
+    /// writing the file directly. This used to re-implement the save, and the
+    /// partial copy skipped the `settings_cache` update and the watcher
+    /// reconfiguration — so editing exclude patterns or custom extensions
+    /// persisted to disk but the running scanner and watcher kept using the
+    /// values they captured at startup.
+    ///
+    /// Returns a task that reports a failure to the user rather than silently
+    /// discarding it.
+    fn save_settings(&mut self) -> Task<Message> {
+        self.commit_text_inputs();
+        let Some(state) = self.state.clone() else {
+            return Task::none();
+        };
+        let settings = self.settings.clone();
+        Task::perform(
+            async move {
+                match crate::commands::save_settings_internal(&settings, &state) {
+                    Ok(()) => Message::NoOp,
+                    Err(e) => {
+                        tracing::error!("Failed to save settings: {e}");
+                        Message::StatusUpdate(format!("Could not save settings: {e}"))
+                    }
+                }
+            },
+            Message::from,
+        )
     }
 }
 
@@ -682,14 +906,36 @@ impl App {
 pub fn update(app: &mut App, message: Message) -> Task<Message> {
     match message {
         Message::TabChanged(tab) => {
+            // Leaving Settings must flush the text drafts; otherwise a value
+            // typed but not submitted is silently dropped on tab change.
+            let leaving_settings = app.active_tab == Tab::Settings && tab != Tab::Settings;
             app.active_tab = tab;
-            Task::none()
+            if leaving_settings {
+                app.commit_text_inputs();
+                app.save_settings()
+            } else {
+                Task::none()
+            }
         }
         Message::SearchQueryChanged(q) => {
             app.search_query = q;
             app.perform_search(true)
         }
-        Message::SearchSubmitted => app.perform_search(false),
+        Message::SearchSubmitted => {
+            // Only an explicitly submitted query is recorded; recording every
+            // keystroke-driven search would fill the history with prefixes.
+            let record = app.record_search_history();
+            Task::batch(vec![app.perform_search(false), record])
+        }
+        Message::RunRecentSearch(query) => {
+            app.search_query = query;
+            let record = app.record_search_history();
+            Task::batch(vec![app.perform_search(true), record])
+        }
+        Message::ClearSearchHistory => {
+            app.settings.search_history.clear();
+            app.save_settings()
+        }
         Message::SearchResultsReceived(id, results) => {
             if id == app.search_id {
                 app.results = results;
@@ -719,6 +965,27 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                 return Task::none();
             };
             app.selected_index = Some(idx);
+
+            // Pair the press with the previous one to detect a double-click.
+            // A new search invalidates the pairing because indices now refer to
+            // different rows.
+            if app.search_id != app.click_search_id {
+                app.last_click = None;
+                app.click_search_id = app.search_id;
+            }
+            let now = std::time::Instant::now();
+            let is_double_click = app.pairs_as_double_click(idx, now);
+            // Always re-arm, so a triple-click is a double-click followed by a
+            // single click rather than two double-clicks.
+            app.last_click = Some(LastClick {
+                result_index: idx,
+                at: now,
+            });
+
+            if is_double_click {
+                return app.run_double_click_action();
+            }
+
             if app.settings.show_preview_panel {
                 let query = app.search_query.clone();
                 if let Some(state) = &app.state {
@@ -760,6 +1027,63 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             app.hovered_item_index = idx;
             Task::none()
         }
+        Message::ShowContextMenu(idx) => {
+            // Bounds-checked: the list can shrink between the click being
+            // emitted and this handler running.
+            app.context_menu = app.results.get(idx).map(|item| ContextMenuState {
+                result_index: idx,
+                path: item.path.clone(),
+                pinned: app.settings.pinned_files.contains(&item.path),
+            });
+            if app.context_menu.is_some() {
+                app.selected_index = Some(idx);
+            } else {
+                tracing::debug!("Ignoring context menu on out-of-range result {idx}");
+            }
+            Task::none()
+        }
+        Message::HideContextMenu => {
+            app.context_menu = None;
+            Task::none()
+        }
+        Message::FocusSearch => {
+            // Switching to the Search tab first, otherwise focus lands on an
+            // input that is not mounted.
+            app.active_tab = Tab::Search;
+            // Clear the pending double-click so a keyboard focus does not get
+            // mistaken for the second half of a click pair.
+            app.last_click = None;
+            iced::widget::operation::focus(get_search_input_id())
+        }
+        Message::Escape => {
+            // Dismiss in priority order: open menu, then selection, then query.
+            // The first two only mutate state, so they share a branch.
+            if app.context_menu.take().is_some() || app.selected_index.take().is_some() {
+                Task::none()
+            } else if !app.search_query.is_empty() {
+                app.search_query.clear();
+                app.perform_search(true)
+            } else {
+                Task::none()
+            }
+        }
+        Message::PinFile(path) => {
+            app.settings.pinned_files.push(path);
+            let save = app.save_settings();
+            if let Some(menu) = &mut app.context_menu {
+                menu.pinned = true;
+            }
+            save
+        }
+        Message::UnpinFile(path) => {
+            app.settings.pinned_files.retain(|p| p != &path);
+            let save = app.save_settings();
+            if let Some(menu) = &mut app.context_menu {
+                menu.pinned = false;
+            }
+            save
+        }
+
         Message::OpenFile(path) => Task::perform(
             async move {
                 let _ = opener::open(std::path::Path::new(&path));
@@ -820,6 +1144,14 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             app.perform_search(false)
         }
         Message::SearchModeChanged(m) => {
+            // The filename index is not built when the setting is off, so
+            // selecting that mode would fail deep in the search layer with an
+            // opaque error. Refuse it here instead.
+            if m == SearchMode::Filename && !app.settings.filename_index_enabled {
+                app.search_error =
+                    Some("Filename search is disabled. Enable it in Settings.".to_string());
+                return Task::none();
+            }
             app.search_mode = m;
             app.perform_search(false)
         }
@@ -840,18 +1172,18 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             app.perform_search(false)
         }
         Message::MaxResultsChanged(s) => {
-            if let Ok(n) = s.parse::<usize>() {
-                app.settings.max_results = n;
-            }
+            // Own the raw text only. Committing on every keystroke is what made
+            // the field un-clearable.
+            app.max_results_input = s;
             Task::none()
         }
         Message::ExcludePatternsChanged(s) => {
-            app.settings.exclude_patterns = s
-                .split(',')
-                .map(|p| p.trim().to_string())
-                .filter(|p| !p.is_empty())
-                .collect();
+            app.exclude_patterns_input = s;
             Task::none()
+        }
+        Message::CommitTextInputs => {
+            app.commit_text_inputs();
+            app.save_settings()
         }
         Message::CustomExtensionsChanged(s) => {
             app.settings.custom_extensions = s;
@@ -874,11 +1206,74 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             Task::none()
         }
         Message::ToggleAutoStart(b) => {
+            // The checkbox used to flip the setting and nothing else, so the
+            // app never actually registered with the OS. Perform the real
+            // registration and revert the checkbox if it fails, otherwise the
+            // setting and the OS state silently disagree.
+            //
+            // `set_auto_start` shells out to the platform helper on some
+            // backends, so it runs on a blocking thread rather than on an
+            // async worker.
+            Task::perform(
+                async move {
+                    let result = tokio::task::spawn_blocking(move || {
+                        crate::system::startup::set_auto_start(b)
+                    })
+                    .await;
+                    match result {
+                        Ok(Ok(())) => Message::ToggleAutoStartDone(b),
+                        Ok(Err(e)) => {
+                            tracing::error!("Failed to update auto-start registration: {e}");
+                            Message::ToggleAutoStartFailed(b, e.to_string())
+                        }
+                        Err(e) => {
+                            tracing::error!("Auto-start task panicked: {e}");
+                            Message::ToggleAutoStartFailed(b, e.to_string())
+                        }
+                    }
+                },
+                Message::from,
+            )
+        }
+        Message::ToggleAutoStartDone(b) => {
             app.settings.auto_start_on_boot = b;
+            app.save_settings()
+        }
+        Message::ToggleAutoStartFailed(b, error) => {
+            // Roll the checkbox back to its previous value and tell the user why.
+            app.settings.auto_start_on_boot = !b;
+            app.error = Some(format!("Could not update auto-start: {error}"));
             Task::none()
         }
-        Message::ToggleContextMenu(b) => {
+        Message::ToggleContextMenu(b) => Task::perform(
+            async move {
+                let result = tokio::task::spawn_blocking(move || {
+                    crate::system::context_menu::register_context_menu(b)
+                })
+                .await;
+                match result {
+                    Ok(Ok(())) => Message::ToggleContextMenuDone(b),
+                    Ok(Err(e)) => {
+                        tracing::error!("Failed to update shell context menu: {e}");
+                        Message::ToggleContextMenuFailed(b, e.to_string())
+                    }
+                    Err(e) => {
+                        tracing::error!("Context menu task panicked: {e}");
+                        Message::ToggleContextMenuFailed(b, e.to_string())
+                    }
+                }
+            },
+            Message::from,
+        ),
+        Message::ToggleContextMenuDone(b) => {
             app.settings.context_menu_enabled = b;
+            app.save_settings()
+        }
+        Message::ToggleContextMenuFailed(b, error) => {
+            app.settings.context_menu_enabled = !b;
+            app.error = Some(format!(
+                "Could not update the Explorer context menu: {error}"
+            ));
             Task::none()
         }
         Message::ToggleGitignore(b) => {
@@ -932,10 +1327,7 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                     // the directories sequentially keeps progress reporting
                     // meaningful instead of interleaving several scans.
                     for dir in dirs_to_scan {
-                        if let Err(e) = state
-                            .start_indexing(std::path::PathBuf::from(&dir))
-                            .await
-                        {
+                        if let Err(e) = state.start_indexing(std::path::PathBuf::from(&dir)).await {
                             tracing::error!("Failed to start indexing {dir}: {e}");
                         }
                     }
@@ -944,31 +1336,12 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             }
             Task::none()
         }
-        Message::IndexDirAdded(dir) => {
-            if !dir.is_empty() && !app.settings.index_dirs.contains(&dir) {
-                app.settings.index_dirs.push(dir.clone());
-                app.new_index_dir.clear();
-                if let Some(state) = &app.state {
-                    let state = state.clone();
-                    let path_clone = dir;
-                    let save_task = app.save_settings();
-                    let scan_task = Task::future(async move {
-                        if let Err(e) =
-                            state.start_indexing(std::path::PathBuf::from(path_clone)).await
-                        {
-                            tracing::error!("Failed to start indexing: {e}");
-                        }
-                        Message::IndexRebuilt
-                    });
-                    return Task::batch(vec![save_task, scan_task]);
-                }
-            }
-            Task::none()
-        }
         Message::ExcludePatternAdded(p) => {
             if !p.is_empty() && !app.settings.exclude_patterns.contains(&p) {
                 app.settings.exclude_patterns.push(p);
-                app.new_exclude_pattern.clear();
+                // Keep the draft in step, or the next `save_settings` would fold
+                // the stale draft back over the pattern just added.
+                app.exclude_patterns_input = app.settings.exclude_patterns.join(", ");
                 // Persist immediately: an exclude rule that is not saved is lost
                 // on restart, and `save_settings_internal` also pushes the new
                 // globs to the live watcher.
@@ -980,6 +1353,21 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::SaveSettings => app.save_settings(),
         Message::ResetSettings => {
             app.settings = AppSettings::default();
+            // Drafts are seeded from the settings they belong to; leaving them
+            // stale would let the next `save_settings` write the old values back
+            // over the reset.
+            app.max_results_input = app.settings.max_results.to_string();
+            app.exclude_patterns_input = app.settings.exclude_patterns.join(", ");
+            app.filter_extensions = app
+                .settings
+                .default_filters
+                .file_types
+                .iter()
+                .cloned()
+                .collect();
+            theme::set_text_scale(app.settings.font_size);
+            app.is_dark = matches!(app.settings.theme, crate::settings::Theme::Dark);
+            app.error = None;
             // Persist and reconfigure the live watcher; previously this only
             // mutated in-memory state and was lost on restart.
             app.save_settings()
@@ -990,7 +1378,41 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
         }
         Message::FontSizeChanged(f) => {
             app.settings.font_size = f;
-            Task::none()
+            theme::set_text_scale(f);
+            app.save_settings()
+        }
+        Message::DoubleClickActionChanged(action) => {
+            app.settings.double_click_action = action;
+            app.save_settings()
+        }
+        Message::TogglePreviewPanel(b) => {
+            app.settings.show_preview_panel = b;
+            if !b {
+                // Drop the loaded preview so the pane cannot keep rendering a
+                // stale file after being switched off.
+                app.preview_result = None;
+                app.is_loading_preview = false;
+            }
+            app.save_settings()
+        }
+        Message::ToggleSearchHistory(b) => {
+            app.settings.search_history_enabled = b;
+            if !b {
+                // Turning history off drops what was already collected: keeping
+                // it would leave the setting claiming nothing is recorded while
+                // a full query log sits on disk.
+                app.settings.search_history.clear();
+            }
+            app.save_settings()
+        }
+        Message::ToggleFilenameIndex(b) => {
+            app.settings.filename_index_enabled = b;
+            // Leave Filename mode if it is currently selected, otherwise the UI
+            // would sit in a mode that cannot run until the next restart.
+            if !b && app.search_mode == SearchMode::Filename {
+                app.search_mode = SearchMode::FullText;
+            }
+            app.save_settings()
         }
         Message::PollProgressResult(Some(event)) => {
             match event.ptype {
@@ -1063,8 +1485,9 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                     let path_clone = path;
                     let save_task = app.save_settings();
                     let scan_task = Task::future(async move {
-                        if let Err(e) =
-                            state.start_indexing(std::path::PathBuf::from(path_clone)).await
+                        if let Err(e) = state
+                            .start_indexing(std::path::PathBuf::from(path_clone))
+                            .await
                         {
                             tracing::error!("Failed to start indexing: {e}");
                         }
@@ -1086,9 +1509,10 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                     let state = state.clone();
                     let save_task = app.save_settings();
 
-                    let cleanup_task = Task::future(async move {
-                        app_purge_directory(&state, &removed_dir).await
-                    });
+                    let cleanup_task =
+                        Task::future(
+                            async move { app_purge_directory(&state, &removed_dir).await },
+                        );
 
                     return Task::batch(vec![save_task, cleanup_task]);
                 }
@@ -1098,6 +1522,7 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::RemoveExcludePattern(i) => {
             if i < app.settings.exclude_patterns.len() {
                 app.settings.exclude_patterns.remove(i);
+                app.exclude_patterns_input = app.settings.exclude_patterns.join(", ");
                 app.save_settings()
             } else {
                 Task::none()
@@ -1158,6 +1583,7 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             Task::none()
         }
         Message::OpenSelectedResult => {
+            app.context_menu = None;
             if let Some(idx) = app.selected_index
                 && idx < app.results.len()
             {
@@ -1167,6 +1593,7 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             Task::none()
         }
         Message::ShowSelectedInFolder => {
+            app.context_menu = None;
             if let Some(idx) = app.selected_index
                 && idx < app.results.len()
             {
@@ -1176,6 +1603,7 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             Task::none()
         }
         Message::CopySelectedPath => {
+            app.context_menu = None;
             if let Some(idx) = app.selected_index
                 && idx < app.results.len()
             {
@@ -1333,6 +1761,15 @@ pub fn subscription(app: &App) -> Subscription<Message> {
                 {
                     Message::CopySelectedPath
                 }
+                // Advertised on the welcome screen but never bound.
+                iced::keyboard::Key::Character(ref c)
+                    if c.eq_ignore_ascii_case("f") && modifiers.control() =>
+                {
+                    Message::FocusSearch
+                }
+                // Dismisses the right-click menu. Without this a menu with no
+                // clickable dismissal trap traps keyboard users.
+                iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape) => Message::Escape,
                 _ => Message::NoOp,
             }
         }
@@ -1364,8 +1801,7 @@ async fn app_purge_directory(
             return Ok(0);
         }
 
-        let borrowed: Vec<&std::path::Path> =
-            paths.iter().map(std::path::Path::new).collect();
+        let borrowed: Vec<&std::path::Path> = paths.iter().map(std::path::Path::new).collect();
         metadata_db.remove_files(&borrowed)?;
         indexer.remove_documents_batch(&paths)?;
         indexer.commit()?;
@@ -1447,6 +1883,168 @@ pub fn run_ui(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
+
+    fn app_with_drafts(max: &str, patterns: &str) -> App {
+        App {
+            max_results_input: max.to_string(),
+            exclude_patterns_input: patterns.to_string(),
+            ..App::default()
+        }
+    }
+
+    fn app_with_query(query: &str, history_enabled: bool) -> App {
+        App {
+            search_query: query.to_string(),
+            settings: AppSettings {
+                search_history_enabled: history_enabled,
+                ..AppSettings::default()
+            },
+            ..App::default()
+        }
+    }
+
+    /// The regression that motivated drafts at all: clearing the box used to
+    /// snap it back because the value could not be parsed.
+    #[test]
+    fn clearing_max_results_falls_back_to_the_default() {
+        let mut app = app_with_drafts("", "");
+        app.commit_text_inputs();
+        assert_eq!(
+            app.settings.max_results,
+            crate::settings::DEFAULT_MAX_RESULTS
+        );
+        assert_eq!(app.max_results_input, "50");
+    }
+
+    /// Unparseable input must not silently overwrite the previous value.
+    #[test]
+    fn unparseable_max_results_keeps_the_previous_value() {
+        let mut app = App {
+            max_results_input: "abc".to_string(),
+            settings: AppSettings {
+                max_results: 123,
+                ..AppSettings::default()
+            },
+            ..App::default()
+        };
+        app.commit_text_inputs();
+        assert_eq!(app.settings.max_results, 123);
+        // The box is reset so it stops showing text that was rejected.
+        assert_eq!(app.max_results_input, "123");
+    }
+
+    #[test]
+    fn max_results_is_clamped_to_a_usable_band() {
+        let mut app = app_with_drafts("0", "");
+        app.commit_text_inputs();
+        assert_eq!(app.settings.max_results, 1, "zero would return no results");
+
+        let mut app = app_with_drafts("999999999", "");
+        app.commit_text_inputs();
+        assert_eq!(
+            app.settings.max_results,
+            crate::settings::MAX_RESULTS_LIMIT,
+            "an unbounded cap must not be honoured"
+        );
+    }
+
+    /// The separator is typed progressively; re-flowing the box mid-edit used to
+    /// move the caret out from under the user.
+    #[test]
+    fn exclude_patterns_preserves_a_trailing_separator() {
+        let mut app = app_with_drafts("50", "target,");
+        app.commit_text_inputs();
+        assert_eq!(app.settings.exclude_patterns, vec!["target".to_string()]);
+        assert_eq!(app.exclude_patterns_input, "target");
+    }
+
+    #[test]
+    fn exclude_patterns_trim_and_drop_empties() {
+        let mut app = app_with_drafts("50", " *.git , , node_modules ");
+        app.commit_text_inputs();
+        assert_eq!(
+            app.settings.exclude_patterns,
+            vec!["*.git".to_string(), "node_modules".to_string()]
+        );
+    }
+
+    #[test]
+    fn exclude_patterns_can_be_emptied_entirely() {
+        let mut app = App {
+            exclude_patterns_input: "  ,  , ".to_string(),
+            settings: AppSettings {
+                exclude_patterns: vec!["target".to_string()],
+                ..AppSettings::default()
+            },
+            ..App::default()
+        };
+        app.commit_text_inputs();
+        assert!(app.settings.exclude_patterns.is_empty());
+        assert!(app.exclude_patterns_input.is_empty());
+    }
+
+    /// Clicking a recent search must bump its count rather than adding a
+    /// duplicate entry for the same query.
+    #[test]
+    fn recording_a_search_bumps_frequency_instead_of_duplicating() {
+        let mut app = app_with_query("invoice", true);
+
+        drop(app.record_search_history());
+        assert_eq!(app.settings.search_history.len(), 1);
+        assert_eq!(app.settings.search_history[0].frequency, 1);
+
+        drop(app.record_search_history());
+        assert_eq!(app.settings.search_history.len(), 1);
+        assert_eq!(app.settings.search_history[0].frequency, 2);
+
+        drop(app.record_search_history());
+        app.search_query = "receipt".to_string();
+        drop(app.record_search_history());
+        // Ranked by frequency, so the twice-run query stays first.
+        assert_eq!(app.settings.search_history[0].query, "invoice");
+        assert_eq!(app.settings.search_history.len(), 2);
+    }
+
+    #[test]
+    fn whitespace_only_searches_are_not_recorded() {
+        let mut app = app_with_query("   ", true);
+        drop(app.record_search_history());
+        assert!(app.settings.search_history.is_empty());
+    }
+
+    #[test]
+    fn history_is_not_recorded_when_disabled() {
+        let mut app = app_with_query("invoice", false);
+        drop(app.record_search_history());
+        assert!(app.settings.search_history.is_empty());
+    }
+
+    /// Two presses on the same row inside the window are a double-click; the
+    /// second one on a different row is not.
+    #[test]
+    fn double_click_pairs_only_consecutive_presses_on_one_row() {
+        let now = std::time::Instant::now();
+        let app = App {
+            last_click: Some(LastClick {
+                result_index: 3,
+                at: now,
+            }),
+            ..App::default()
+        };
+        assert!(
+            app.pairs_as_double_click(3, now + Duration::from_millis(100)),
+            "same row inside the window must pair"
+        );
+        assert!(
+            !app.pairs_as_double_click(4, now + Duration::from_millis(100)),
+            "a different row must not pair"
+        );
+        assert!(
+            !app.pairs_as_double_click(3, now + DOUBLE_CLICK_WINDOW + Duration::from_millis(1)),
+            "a press past the window must not pair"
+        );
+    }
 
     #[test]
     fn test_format_size() {
@@ -1526,7 +2124,10 @@ mod tests {
 
         let parsed = ParsedQuery::new("report ext:pdf ext:docx", false);
         assert_eq!(parsed.text_query, "report");
-        assert_eq!(parsed.extensions, vec!["pdf".to_string(), "docx".to_string()]);
+        assert_eq!(
+            parsed.extensions,
+            vec!["pdf".to_string(), "docx".to_string()]
+        );
     }
 
     #[test]
