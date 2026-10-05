@@ -278,6 +278,9 @@ pub enum Message {
     ExportResults(String), // format: "csv" or "json"
     WindowIdCaptured(iced::window::Id),
     WindowUnfocused(iced::window::Id),
+    /// The user asked to close the window. Honoured only when
+    /// `minimize_to_tray` is off, or turned into a minimize when it is on.
+    WindowCloseRequested(iced::window::Id),
     DismissError,
     Quit,
     NoOp,
@@ -439,7 +442,13 @@ impl App {
                     "{:.1} MB",
                     (index_stats.total_size_bytes as f64) / 1_048_576.0
                 );
-                let is_dark = matches!(settings.theme, crate::settings::Theme::Dark);
+                // `Auto` resolves against the OS appearance rather than
+                // defaulting to light.
+                let is_dark = match settings.theme {
+                    crate::settings::Theme::Dark => true,
+                    crate::settings::Theme::Light => false,
+                    crate::settings::Theme::Auto => system_prefers_dark(),
+                };
 
                 let mut app = Self {
                     state: Some(state),
@@ -1195,15 +1204,34 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
         }
         Message::AddFolder => Task::done(Message::PickFolder),
         Message::ToggleMinimizeToTray(b) => {
+            // The label on this checkbox is "minimize to system tray on window
+            // close", but there was no close-request handler anywhere, so
+            // closing the window quit the app regardless. The setting only
+            // decided whether a tray icon got created, and the toggle never
+            // called `save_settings()`, so it was also lost on restart.
+            //
+            // Now the tray icon follows the setting *and* the choice is
+            // persisted; `Message::WindowCloseRequested` (subscription) is what
+            // actually intercepts the close.
             app.settings.minimize_to_tray = b;
             if b {
                 if app.tray_icon.is_none() {
-                    app.tray_icon = crate::system::tray::create_tray_icon().ok();
+                    match crate::system::tray::create_tray_icon() {
+                        Ok(icon) => app.tray_icon = Some(icon),
+                        Err(e) => {
+                            tracing::error!("Failed to create tray icon: {e}");
+                            app.error = Some(format!("Could not create the system tray icon: {e}"));
+                            // Roll the checkbox back: the OS state and the
+                            // setting must not silently disagree.
+                            app.settings.minimize_to_tray = false;
+                            return app.save_settings();
+                        }
+                    }
                 }
             } else {
                 app.tray_icon = None;
             }
-            Task::none()
+            app.save_settings()
         }
         Message::ToggleAutoStart(b) => {
             // The checkbox used to flip the setting and nothing else, so the
@@ -1277,17 +1305,23 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             Task::none()
         }
         Message::ToggleGitignore(b) => {
+            // This only flipped the in-memory field and returned `Task::none()`,
+            // so the choice never reached disk and was gone on restart.
             app.settings.use_gitignore = b;
-            Task::none()
+            app.save_settings()
         }
         Message::ToggleTheme => {
-            app.is_dark = !app.is_dark;
-            app.settings.theme = if app.is_dark {
-                crate::settings::Theme::Dark
-            } else {
-                crate::settings::Theme::Light
+            // Cycle System -> Light -> Dark -> System, so `Theme::Auto` is
+            // reachable again. The old two-way flip overwrote the stored value
+            // with an explicit Light/Dark, which destroyed a user's `Auto`
+            // choice on the first toggle.
+            app.settings.theme = match app.settings.theme {
+                crate::settings::Theme::Auto => crate::settings::Theme::Light,
+                crate::settings::Theme::Light => crate::settings::Theme::Dark,
+                crate::settings::Theme::Dark => crate::settings::Theme::Auto,
             };
-            Task::none()
+            app.is_dark = app.resolve_is_dark();
+            app.save_settings()
         }
         Message::RebuildIndex => {
             if let Some(state) = &app.state {
@@ -1366,7 +1400,7 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                 .cloned()
                 .collect();
             theme::set_text_scale(app.settings.font_size);
-            app.is_dark = matches!(app.settings.theme, crate::settings::Theme::Dark);
+            app.is_dark = app.resolve_is_dark();
             app.error = None;
             // Persist and reconfigure the live watcher; previously this only
             // mutated in-memory state and was lost on restart.
@@ -1374,7 +1408,8 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
         }
         Message::ThemeChanged(t) => {
             app.settings.theme = t;
-            Task::none()
+            app.is_dark = app.resolve_is_dark();
+            app.save_settings()
         }
         Message::FontSizeChanged(f) => {
             app.settings.font_size = f;
@@ -1460,6 +1495,16 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             Task::none()
         }
         Message::WindowUnfocused(id) => iced::window::minimize(id, true),
+        Message::WindowCloseRequested(id) => {
+            // With the tray enabled, closing the window hides it instead of
+            // quitting. Without a tray there would be no way back, so the close
+            // proceeds.
+            if app.settings.minimize_to_tray && app.tray_icon.is_some() {
+                iced::window::minimize(id, true)
+            } else {
+                iced::window::close(id)
+            }
+        }
         Message::ToggleWindow | Message::RestoreWindow => app
             .window_id
             .map_or_else(Task::none, |id| iced::window::minimize(id, false)),
@@ -1650,6 +1695,11 @@ pub fn subscription(app: &App) -> Subscription<Message> {
         iced::window::Event::Opened { .. } | iced::window::Event::Focused => {
             Message::WindowIdCaptured(id)
         }
+        // Intercept the window close so `minimize_to_tray` actually means
+        // something. Previously there was no close handler at all, so the
+        // checkbox labelled "minimize to system tray on window close" did
+        // nothing except decide whether a tray icon was created at startup.
+        iced::window::Event::CloseRequested => Message::WindowCloseRequested(id),
         _ => Message::NoOp,
     });
 
@@ -1822,16 +1872,57 @@ async fn app_purge_directory(
 }
 
 pub const fn app_theme(app: &App) -> iced::Theme {
-    match app.settings.theme {
-        crate::settings::Theme::Dark => iced::Theme::Dark,
-        crate::settings::Theme::Light => iced::Theme::Light,
-        crate::settings::Theme::Auto => {
-            if app.is_dark {
-                iced::Theme::Dark
-            } else {
-                iced::Theme::Light
-            }
+    if app.is_dark {
+        iced::Theme::Dark
+    } else {
+        iced::Theme::Light
+    }
+}
+
+impl App {
+    /// Resolves the effective light/dark value for the current theme setting.
+    ///
+    /// `Theme::Auto` used to be treated as "light" unconditionally: `is_dark`
+    /// was initialised solely from `matches!(theme, Theme::Dark)`, so `Auto` and
+    /// `Light` were indistinguishable and following the OS appearance was
+    /// impossible. `Auto` now consults the OS preference directly.
+    #[must_use]
+    pub fn resolve_is_dark(&self) -> bool {
+        match self.settings.theme {
+            crate::settings::Theme::Dark => true,
+            crate::settings::Theme::Light => false,
+            crate::settings::Theme::Auto => system_prefers_dark(),
         }
+    }
+}
+
+/// Whether the OS is currently configured for a dark appearance.
+///
+/// `iced` 0.14 exposes no cross-platform "system appearance" query, so on
+/// Windows this reads `HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize`
+/// (`AppsUseLightTheme`), which is the same source Explorer and Settings use.
+/// Other platforms fall back to light, which is the previous behaviour rather
+/// than a new failure mode.
+fn system_prefers_dark() -> bool {
+    #[cfg(windows)]
+    {
+        use winreg::RegKey;
+        use winreg::enums::HKEY_CURRENT_USER;
+
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let Ok(key) =
+            hkcu.open_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize")
+        else {
+            return false;
+        };
+        // `AppsUseLightTheme` is 0 when Windows is in dark mode.
+        key.get_value::<u32, _>("AppsUseLightTheme")
+            .is_ok_and(|v| v == 0)
+    }
+
+    #[cfg(not(windows))]
+    {
+        false
     }
 }
 

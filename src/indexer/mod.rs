@@ -14,8 +14,11 @@ use std::sync::Arc;
 use tantivy::{Index, directory::MmapDirectory};
 use tracing::{error, info, warn};
 
-/// Current schema version - bump this when schema changes
-pub const SCHEMA_VERSION: &str = "2.1.0";
+/// Current schema version - bump this when schema changes.
+///
+/// Re-exported from [`schema`] so the layout definition and its version live in
+/// one file and cannot drift apart.
+pub use crate::indexer::schema::SCHEMA_LAYOUT_VERSION as SCHEMA_VERSION;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct IndexMetaInfo {
@@ -249,6 +252,16 @@ impl IndexManager {
     /// Clear all documents from the index
     pub fn clear(&self) -> Result<()> {
         self.writer.delete_all_documents()
+    }
+
+    /// The underlying writer, for callers that add documents directly.
+    ///
+    /// Used by tests and one-off indexing paths that bypass the scanner.
+    /// Callers must call [`Self::commit`] afterwards for the document to become
+    /// visible to searches.
+    #[must_use]
+    pub const fn writer(&self) -> &IndexWriterManager {
+        &self.writer
     }
 
     /// Commit pending changes and immediately reload reader

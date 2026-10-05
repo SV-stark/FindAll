@@ -35,5 +35,11 @@ pub fn save_settings_internal(settings: &AppSettings, state: &Arc<AppState>) -> 
     watcher.set_enable_ocr(settings.enable_ocr);
 
     drop(watcher);
+
+    // The scanner reads the same shared cell (`state.settings_cache`) once per
+    // run, so it picks up `custom_extensions`, `use_gitignore`,
+    // `index_file_size_limit_mb`, `indexing_threads`, and `enable_ocr` without a
+    // restart. It previously held its own clone taken at startup, so those five
+    // settings silently did nothing until the app was relaunched.
     Ok(())
 }

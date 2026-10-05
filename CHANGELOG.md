@@ -2,6 +2,68 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.18.0] - 2026-10-05
+
+The index is rebuilt automatically on upgrade: the Tantivy schema version moved to
+`3.0.0` and the `content` field is no longer stored. See "Removed" below for why.
+
+### Added
+- **MCP server (`2025-03-26`) on `127.0.0.1:9095`, replacing the bespoke IPC
+  protocol.** The old endpoint spoke a one-line-token/one-line-query format that no
+  agent could speak. It is now a JSON-RPC 2.0 HTTP endpoint exposing four read-only
+  tools — `search`, `search_filenames`, `read_file_text`, `index_stats` — with
+  JSON-Schema'd arguments so clients can validate before calling. Auth reuses the
+  existing per-user token, compared in constant time; the body is capped at 64 KB;
+  notifications get no response body, per JSON-RPC.
+- Snippets are now rebuilt from each file on demand (`snippet` module) rather than
+  read out of the index's doc store. Bounded to 50 extractions per query and cached
+  by `(path, mtime, size, terms)`.
+- 32 new tests (147 total), covering MCP auth and dispatch, schema/dispatch
+  agreement, argument validation, snippet rendering including multibyte text, and
+  the live-settings regression below.
+
+### Fixed
+- **Settings that did nothing until you restarted the app.** The scanner held its
+  own `AppSettings` clone taken at startup, so `custom_extensions`,
+  `use_gitignore`, the file-size limit, indexing threads, and OCR were all inert
+  until relaunch. It now shares the same live cell as the app state and the watcher,
+  which is the same class of bug previously fixed for the watcher alone.
+- **"Minimize to system tray on window close" was a lie.** There was no close-request
+  handler anywhere, so closing the window quit the app; the checkbox only decided
+  whether a tray icon was created, and the toggle was never even persisted. There is
+  now a real close handler, and the choice survives a restart.
+- **"Match Case" did nothing.** `case_sensitive` reached the query parser for the
+  `path:`/`title:` substring filters but was never applied to the text query, so
+  full-text matching was unconditionally case-insensitive. Tantivy's `default`
+  tokenizer lowercases the index, so casing is now enforced as a post-filter against
+  the re-extracted document text — free, since that text is read anyway for snippets.
+- **The theme toggle destroyed your choice and was not persisted.** It overwrote the
+  stored value with an explicit Light/Dark on first click, discarding `Auto`, and
+  never wrote to disk. It now cycles System → Light → Dark, persists, and `Auto`
+  reads the real OS preference (`AppsUseLightTheme`) instead of always meaning light.
+- **"Respect .gitignore" was never persisted.** The handler flipped an in-memory
+  field and returned `Task::none()`.
+
+### Changed
+- **The index no longer stores document text.** `content` carried `.set_stored()`,
+  which wrote every extracted document body into the doc store, so the index grew
+  with the corpus and each hit had to be fully decompressed just to render one line
+  of snippet. Snippets come from the file instead. This is why the schema version
+  moved to `3.0.0` and an automatic reindex is required.
+- The legacy raw-TCP IPC server is kept for existing scripted clients but is no
+  longer started; it is marked deprecated.
+
+### Known gaps
+- **Document extraction still runs in-process.** It parses untrusted files on the
+  same threads as the UI, under `panic = "abort"` with no `catch_unwind`, so one
+  malformed PDF or decompression bomb can kill the app — potentially while Tantivy
+  holds uncommitted documents. Isolating extraction in a restartable child process
+  is the next structural change; it was scoped but deliberately not landed here.
+- `index_stats` reports documents returned, not total matches. A real hit count
+  needs a second counting pass.
+- Snippet generation is capped at 50 files per query, so results beyond that show no
+  snippet.
+
 ## [0.17.0] - 2026-10-03
 
 Indexes are rebuilt automatically on upgrade: the Tantivy schema version moved to

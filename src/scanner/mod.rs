@@ -5,6 +5,8 @@ use crate::error::Result;
 use crate::indexer::IndexManager;
 use crate::metadata::MetadataDb;
 use crate::parsers::ParsedDocument;
+use crate::settings::AppSettings;
+use arc_swap::ArcSwap;
 use cancel::CancelToken;
 use drive_scanner::DriveScanner;
 use std::path::PathBuf;
@@ -108,17 +110,25 @@ pub struct Scanner {
     metadata_db: Arc<MetadataDb>,
     filename_index: Option<Arc<crate::indexer::filename_index::FilenameIndex>>,
     progress_tx: Option<flume::Sender<ProgressEvent>>,
-    settings: crate::settings::AppSettings,
+    /// Shared live settings cell (the same one `AppState` writes on save).
+    ///
+    /// This used to be a plain `AppSettings` clone captured at construction, so
+    /// every scan re-read the values the app started with. Changing
+    /// `custom_extensions`, `use_gitignore`, `index_file_size_limit_mb`,
+    /// `indexing_threads`, or `enable_ocr` and saving had no effect on the next
+    /// run. Taking a snapshot per `scan_directory` call fixes that.
+    settings: Arc<ArcSwap<AppSettings>>,
 }
 
 impl Scanner {
     /// Creates a new Scanner instance.
+    #[must_use]
     pub const fn new(
         indexer: Arc<IndexManager>,
         metadata_db: Arc<MetadataDb>,
         filename_index: Option<Arc<crate::indexer::filename_index::FilenameIndex>>,
         progress_tx: Option<flume::Sender<ProgressEvent>>,
-        settings: crate::settings::AppSettings,
+        settings: Arc<ArcSwap<AppSettings>>,
     ) -> Self {
         Self {
             indexer,
@@ -404,7 +414,12 @@ impl Scanner {
         let total = Arc::new(AtomicUsize::new(0));
         let total_for_scan = total.clone();
 
-        let use_gitignore = self.settings.use_gitignore;
+        // Snapshot the live settings once per run rather than reading them off
+        // `&self` field-by-field, so a settings save mid-scan cannot tear the
+        // set (e.g. a new thread count with the old size limit).
+        let settings = self.settings.load_full();
+
+        let use_gitignore = settings.use_gitignore;
         let cancel_for_scan = cancel.clone();
         let walker_handle = tokio::task::spawn_blocking(move || {
             scanner.scan(
@@ -433,11 +448,11 @@ impl Scanner {
         let progress_tx_clone = self.progress_tx.clone();
         let total_files = total.clone();
 
-        let indexing_threads = self.settings.indexing_threads;
-        let enable_ocr = self.settings.enable_ocr;
-        let file_size_limit_mb = self.settings.index_file_size_limit_mb;
+        let indexing_threads = settings.indexing_threads;
+        let enable_ocr = settings.enable_ocr;
+        let file_size_limit_mb = settings.index_file_size_limit_mb;
         let allowed_extensions: Arc<std::collections::HashSet<String>> = Arc::new(
-            self.settings
+            settings
                 .get_allowed_extensions()
                 .iter()
                 .map(|e| e.to_lowercase())
@@ -692,8 +707,10 @@ pub struct IndexingReport {
 mod tests {
     use super::*;
     use crate::indexer::IndexManager;
+    use crate::indexer::searcher::SearchParams;
     use crate::metadata::MetadataDb;
     use crate::settings::AppSettings;
+    use arc_swap::ArcSwap;
     use std::sync::Arc;
     use tempfile::tempdir;
 
@@ -703,13 +720,95 @@ mod tests {
         let index_path = dir.path().join("index");
         let db_path = dir.path().join("metadata.redb");
 
-        let settings = AppSettings::default();
+        let settings = Arc::new(ArcSwap::from_pointee(AppSettings::default()));
         let indexer = Arc::new(IndexManager::open(&index_path, 100).unwrap());
         let metadata_db = Arc::new(MetadataDb::open(&db_path).unwrap().0);
 
         let scanner = Scanner::new(indexer, metadata_db, None, None, settings);
 
         assert!(scanner.filename_index.is_none());
+    }
+
+    /// A settings save must reach the next scan without a restart. This is the
+    /// regression guard for the frozen-`AppSettings`-clone bug: the scanner used
+    /// to keep the values it was constructed with, so
+    /// `custom_extensions`/`use_gitignore`/size-limit/threads/OCR edits silently
+    /// did nothing until the app was relaunched.
+    #[tokio::test]
+    async fn scan_reads_settings_live_not_from_construction_snapshot() {
+        let dir = tempdir().unwrap();
+        let index_path = dir.path().join("index");
+        let db_path = dir.path().join("metadata.redb");
+        let src = dir.path().join("src");
+        std::fs::create_dir_all(&src).unwrap();
+
+        let indexer = Arc::new(IndexManager::open(&index_path, 100).unwrap());
+        let metadata_db = Arc::new(MetadataDb::open(&db_path).unwrap().0);
+
+        // `index_file_size_limit_mb` is used rather than `custom_extensions`
+        // because the allowed-extension set is always `COMMON_EXTENSIONS` plus
+        // the custom list, so it cannot be narrowed to nothing. The size limit can.
+        //
+        // Start below the file size, so the first scan must skip it.
+        let initial = AppSettings {
+            index_file_size_limit_mb: 0,
+            ..AppSettings::default()
+        };
+        let settings = Arc::new(ArcSwap::from_pointee(initial));
+        let scanner = Scanner::new(
+            Arc::clone(&indexer),
+            Arc::clone(&metadata_db),
+            None,
+            None,
+            Arc::clone(&settings),
+        );
+
+        std::fs::write(src.join("notes.txt"), "hello world").unwrap();
+
+        scanner
+            .scan_directory(
+                src.clone(),
+                Vec::new(),
+                cancel::CancellationController::new().begin(),
+            )
+            .await
+            .unwrap();
+        indexer.commit().unwrap();
+
+        let params = || {
+            SearchParams::builder()
+                .query("hello")
+                .limit(10)
+                .case_sensitive(false)
+                .build()
+        };
+        assert!(
+            indexer.search_blocking(&params()).unwrap().is_empty(),
+            "file should have been skipped by the size limit in force at construction"
+        );
+
+        // Raise the limit *after* the scanner was built. A frozen settings clone
+        // would keep the old value and the file would stay unindexed.
+        let mut updated = settings.load().as_ref().clone();
+        updated.index_file_size_limit_mb = 64;
+        settings.store(Arc::new(updated));
+
+        scanner
+            .scan_directory(
+                src.clone(),
+                Vec::new(),
+                cancel::CancellationController::new().begin(),
+            )
+            .await
+            .unwrap();
+        indexer.commit().unwrap();
+
+        let hits = indexer.search_blocking(&params()).unwrap();
+        assert_eq!(
+            hits.len(),
+            1,
+            "a settings save must reach the next scan without a restart"
+        );
     }
 
     #[test]

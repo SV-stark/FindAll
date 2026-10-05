@@ -19,20 +19,91 @@ fn get_preview_cache() -> &'static Cache<(String, u64), Vec<PreviewElement>> {
     })
 }
 
-/// Performs a search query against the index.
+/// Performs a search query against the index, then fills in snippets.
+///
+/// Snippets are generated here rather than inside the searcher because `content`
+/// is no longer `STORED` in the Tantivy index: the index knows *which*
+/// documents matched but no longer holds their text. Each hit is re-extracted
+/// from disk on a blocking thread, bounded to
+/// [`crate::snippet::MAX_SNIPPET_FILES_PER_QUERY`] files and cached by
+/// `(path, mtime, size, terms)`.
 ///
 /// # Errors
 ///
-/// Returns an error if the search query fails.
+/// Returns an error if the search query fails. A failure to extract an
+/// individual snippet is *not* an error: the result is still returned without
+/// one, matching the previous behaviour for a document with no locatable match.
 pub async fn search_query_internal(
     params: SearchParams<'_>,
     state: &Arc<AppState>,
 ) -> Result<Vec<SearchResult>, String> {
-    state
+    // Captured before `params` is consumed by `search`.
+    let query = params.query.to_string();
+    let case_sensitive = params.case_sensitive;
+
+    let mut results = state
         .indexer
         .search(params)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    let enable_ocr = state.settings_cache.load().enable_ocr;
+
+    // Concurrently, not sequentially: each extraction is I/O + CPU bound and
+    // independent, so a page of 50 results should not cost 50 round trips.
+    //
+    // `JoinSet` is used rather than a `Vec<JoinHandle>` because it drops the
+    // collection as soon as every task has been awaited, so no handles are left
+    // dangling when an early error returns.
+    let mut tasks = tokio::task::JoinSet::new();
+
+    for result in results
+        .iter()
+        .take(crate::snippet::MAX_SNIPPET_FILES_PER_QUERY)
+    {
+        let path = result.file_path.clone();
+        let query = query.clone();
+        tasks.spawn(async move {
+            let outcome =
+                crate::snippet::generate_snippets(&path, None, &query, case_sensitive, enable_ocr)
+                    .await;
+            (path, outcome)
+        });
+    }
+
+    let mut by_path: std::collections::HashMap<String, crate::snippet::SnippetOutcome> =
+        std::collections::HashMap::new();
+    while let Some(joined) = tasks.join_next().await {
+        match joined {
+            Ok((path, outcome)) => {
+                by_path.insert(path, outcome);
+            }
+            Err(e) => tracing::warn!("Snippet task failed: {e}"),
+        }
+    }
+
+    // A case-sensitive query drops hits whose text does not contain the exact
+    // spelling. This is the only place casing can be enforced, because the index
+    // stores lowercased terms only.
+    let enforce_case = case_sensitive
+        && crate::indexer::searcher::needs_case_post_filter(
+            &crate::indexer::query_parser::extract_highlight_terms(&query, case_sensitive),
+        );
+
+    results.retain(|result| {
+        by_path
+            .get(&result.file_path)
+            // Not examined (beyond the snippet cap): keep it, the indexer matched it.
+            .is_none_or(|outcome| !enforce_case || outcome.case_match)
+    });
+
+    for result in &mut results {
+        if let Some(outcome) = by_path.get(&result.file_path) {
+            result.snippets = outcome.snippets.clone();
+        }
+    }
+
+    Ok(results)
 }
 
 /// Gets a preview of the file content.
