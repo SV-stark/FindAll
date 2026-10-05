@@ -2,6 +2,42 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.18.2] - 2026-10-05
+
+No behaviour change. The search screen is split into panels.
+
+### Changed
+- **`search.rs` (1,647 lines) is now `search/`**, split along the dependency graph
+  which turned out to be acyclic: `mod` (shell — top nav, banners, three-column
+  layout, status bar), `filters` (sidebar sections and active-filter chips),
+  `results` (list and empty states), `preview` (right-hand document pane),
+  `welcome` (start screen), `context_menu` (right-click overlay), and `snippet`.
+  The largest file is now 410 lines, down from 1,647.
+- `snippet.rs` is its own module because it is the only piece of presentation
+  shared by the results list and the preview pane: both render the same
+  `<b>`-marked fragments, so escaping and wrapping changes have to apply to both
+  at once. Duplicating it, or giving it a single owner, would let the two drift
+  silently.
+- Only the panel entry points are `pub(super)`. `search_view` remains the sole
+  public item.
+
+### Verification
+- Confirmed as a pure move: every code line of the old file appears in the new
+  set, except nine signatures that gained `pub(super)`, two paths that were
+  rewritten (`super::FileItem` → `FileItem`, `super::ContextMenuState` →
+  `ContextMenuState`), and the import blocks. The remaining differences are
+  `cargo fmt` reflowing long widget calls across the new indentation, whose
+  string contents were checked byte-identical.
+
+### Known gaps
+- `filters.rs` (410) is the largest remaining panel file. It is cohesive — six
+  filter sections plus their per-option button builders — but could be split per
+  filter if that granularity is wanted.
+- `settings.rs` (543) has not been touched and is now the largest file in the UI
+  layer.
+- `app_purge_directory` is a backend operation living in `commands.rs`. It
+  returns a `Message`, so it is dispatch-adjacent, but it belongs in `commands/`.
+
 ## [0.18.1] - 2026-10-05
 
 No behaviour change. `iced_ui` is split into modules matching the Elm
