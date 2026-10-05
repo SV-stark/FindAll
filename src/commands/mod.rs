@@ -31,7 +31,15 @@ pub struct AppState {
     pub indexer: Arc<IndexManager>,
     pub metadata_db: Arc<MetadataDb>,
     pub settings_manager: Arc<SettingsManager>,
-    pub settings_cache: ArcSwap<AppSettings>,
+    /// Shared, live settings cache.
+    ///
+    /// This is an `Arc` so the [`crate::scanner::Scanner`] can hold the *same*
+    /// cell rather than a frozen clone taken at construction. It previously
+    /// stored a plain `AppSettings`, which meant the scanner kept using the
+    /// startup values for `custom_extensions`, `use_gitignore`,
+    /// `index_file_size_limit_mb`, `indexing_threads`, and `enable_ocr` — those
+    /// settings appeared to do nothing until the app was restarted.
+    pub settings_cache: Arc<ArcSwap<AppSettings>>,
     pub watcher: Mutex<WatcherManager>,
     pub filename_index: Option<Arc<FilenameIndex>>,
     pub progress_tx: flume::Sender<crate::scanner::ProgressEvent>,
@@ -50,6 +58,15 @@ pub struct AppState {
 impl AppState {
     pub fn builder() -> AppStateBuilder {
         AppStateBuilder::default()
+    }
+
+    /// Whether an indexing run is currently in flight.
+    ///
+    /// Used by the MCP `index_stats` tool so an agent can tell "not indexed yet"
+    /// apart from "indexed and genuinely has no match".
+    #[must_use]
+    pub fn is_indexing(&self) -> bool {
+        self.indexing_handle.lock().is_some()
     }
 
     /// Cancels any in-flight indexing run.
@@ -125,7 +142,7 @@ impl AppState {
     pub fn new(
         indexer: Arc<IndexManager>,
         metadata_db: Arc<MetadataDb>,
-        settings: AppSettings,
+        settings_cache: Arc<ArcSwap<AppSettings>>,
         settings_manager: SettingsManager,
         watcher: WatcherManager,
         filename_index: Option<Arc<FilenameIndex>>,
@@ -134,12 +151,12 @@ impl AppState {
         db_corrupted: bool,
     ) -> Self {
         let mut watcher = watcher;
-        let _ = watcher.update_watch_list(&settings.index_dirs);
+        let _ = watcher.update_watch_list(&settings_cache.load().index_dirs);
         Self {
             indexer,
             metadata_db,
             settings_manager: Arc::new(settings_manager),
-            settings_cache: ArcSwap::from_pointee(settings),
+            settings_cache,
             watcher: Mutex::new(watcher),
             filename_index,
             progress_tx,
@@ -156,6 +173,7 @@ pub struct AppStateBuilder {
     indexer: Option<Arc<IndexManager>>,
     metadata_db: Option<Arc<MetadataDb>>,
     settings: Option<AppSettings>,
+    settings_cache: Option<Arc<ArcSwap<AppSettings>>>,
     settings_manager: Option<SettingsManager>,
     watcher: Option<WatcherManager>,
     filename_index: Option<Arc<FilenameIndex>>,
@@ -185,6 +203,18 @@ impl AppStateBuilder {
     #[must_use]
     pub fn settings(mut self, settings: AppSettings) -> Self {
         self.settings = Some(settings);
+        self
+    }
+
+    /// Supplies the live settings cell.
+    ///
+    /// Takes precedence over [`Self::settings`]: when both are given, this cell is
+    /// the one the state uses, so the scanner can be handed the *same* cell
+    /// instead of a separate clone. Passing only `settings` still works and
+    /// builds a fresh cell.
+    #[must_use]
+    pub fn settings_cache(mut self, settings_cache: Arc<ArcSwap<AppSettings>>) -> Self {
+        self.settings_cache = Some(settings_cache);
         self
     }
 
@@ -241,17 +271,23 @@ impl AppStateBuilder {
     /// should fail loudly at startup rather than degrade silently.
     pub fn build(self) -> AppState {
         let settings_manager = self.settings_manager.expect("settings_manager is required");
-        let settings = self.settings.unwrap_or_else(|| {
-            settings_manager.load().unwrap_or_else(|e| {
-                tracing::warn!("Failed to load settings (using defaults): {e}");
-                AppSettings::default()
-            })
+        // The live cell wins when supplied, so the scanner and the state observe the
+        // same `Arc` and a settings save is seen by both. Falling back to building a
+        // fresh cell keeps the builder usable on its own (tests, CLI).
+        let settings_cache = self.settings_cache.unwrap_or_else(|| {
+            let settings = self.settings.unwrap_or_else(|| {
+                settings_manager.load().unwrap_or_else(|e| {
+                    tracing::warn!("Failed to load settings (using defaults): {e}");
+                    AppSettings::default()
+                })
+            });
+            Arc::new(ArcSwap::from_pointee(settings))
         });
 
         AppState::new(
             self.indexer.expect("indexer is required"),
             self.metadata_db.expect("metadata_db is required"),
-            settings,
+            settings_cache,
             settings_manager,
             self.watcher.expect("watcher is required"),
             self.filename_index,

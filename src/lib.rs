@@ -9,11 +9,13 @@ pub mod commands;
 pub mod error;
 pub mod iced_ui;
 pub mod indexer;
+pub mod mcp;
 pub mod metadata;
 pub mod models;
 pub mod parsers;
 pub mod scanner;
 pub mod settings;
+pub mod snippet;
 pub mod system;
 pub mod watcher;
 pub use iced_ui::{app_theme, app_title, subscription, update, view};
@@ -32,6 +34,7 @@ pub fn request_shutdown() {
 
 use crate::error::FlashError;
 use crate::indexer::searcher::SearchParams;
+use arc_swap::ArcSwap;
 use commands::AppState;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -125,19 +128,26 @@ pub fn setup_app() -> std::result::Result<
 
     let (progress_tx, progress_rx) = flume::bounded(100);
 
+    // One live settings cell, shared by the app state, the watcher, and the
+    // scanner. The scanner previously received its own clone, so settings saved
+    // after startup did not reach the next indexing run.
+    let settings_cache = Arc::new(ArcSwap::from_pointee(settings));
+
     let scanner = Arc::new(crate::scanner::Scanner::new(
         Arc::clone(&indexer_shared),
         Arc::clone(&metadata_db_shared),
         filename_index.clone(),
         Some(progress_tx.clone()),
-        settings.clone(),
+        Arc::clone(&settings_cache),
     ));
 
     let state = Arc::new(
         AppState::builder()
             .indexer(indexer_shared)
             .metadata_db(metadata_db_shared)
-            .settings(settings)
+            // The same live cell the scanner holds, so a settings save reaches
+            // both the watcher and the next indexing run.
+            .settings_cache(Arc::clone(&settings_cache))
             .settings_manager(settings_manager)
             .watcher(watcher)
             .maybe_filename_index(filename_index)
@@ -158,13 +168,51 @@ pub fn setup_app() -> std::result::Result<
 pub fn run_ui(initial_dir: Option<String>) -> std::result::Result<(), FlashError> {
     let (state_res, rx) = match setup_app() {
         Ok((state, rx)) => {
-            tokio::spawn(start_ipc_server(state.clone()));
+            // The MCP server reuses the IPC token: it is already per-user and
+            // owner-only, and it is exactly the credential an agent client
+            // needs. A missing token disables agent integration rather than
+            // opening an unauthenticated port.
+            match read_ipc_token() {
+                Ok(token) => {
+                    let mcp_state = Arc::clone(&state);
+                    // Detached on purpose: `serve` runs for the life of the
+                    // process, so awaiting it would stop the UI from starting.
+                    tokio::spawn(async move {
+                        mcp::serve(mcp_state, token).await;
+                    });
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "MCP server not started ({e}); agent integration is unavailable"
+                    );
+                }
+            }
             (Ok(state), rx)
         }
         Err(e) => (Err(e.to_string()), flume::bounded(1).1),
     };
 
     iced_ui::run_ui(&state_res, rx, initial_dir)
+}
+
+/// Reads the existing per-user IPC/MCP token from the app data directory.
+///
+/// Returns an error when the file is missing or blank, which callers treat as
+/// "integration disabled" rather than "generate a new token": a running GUI
+/// already owns the token, and minting a second one here would desynchronise
+/// whatever wrote it.
+fn read_ipc_token() -> crate::error::Result<String> {
+    let path = get_app_data_dir()?.join("ipc_token");
+    let token = std::fs::read_to_string(&path)
+        .map_err(|e| crate::error::FlashError::config("read ipc_token", e.to_string()))?;
+    let token = token.trim().to_string();
+    if token.is_empty() {
+        return Err(crate::error::FlashError::config(
+            "read ipc_token",
+            "token file is empty".to_string(),
+        ));
+    }
+    Ok(token)
 }
 
 pub async fn run_cli(
@@ -220,7 +268,18 @@ pub async fn run_cli(
 /// process (including other users' sandboxed apps and any web page able to reach
 /// `localhost`) could query the index and dump every indexed path. The previous
 /// implementation was an open, unauthenticated port with no input length cap.
-#[allow(clippy::too_many_lines)]
+///
+/// # Deprecated
+///
+/// Superseded by [`crate::mcp`], which speaks JSON-RPC 2.0 / MCP `2025-03-26`
+/// over HTTP instead of this bespoke one-line protocol. Kept only so an existing
+/// scripted client does not break on upgrade; new integrations should use the
+/// MCP endpoint.
+#[allow(
+    dead_code,
+    clippy::too_many_lines,
+    reason = "legacy protocol kept for compatibility"
+)]
 async fn start_ipc_server(state: Arc<AppState>) {
     const IPC_ADDR: &str = "127.0.0.1:9095";
     /// Maximum accepted query length in bytes.

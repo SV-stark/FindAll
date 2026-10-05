@@ -63,6 +63,52 @@ fn has_quoted_phrase(query: &str) -> bool {
         .is_match(query)
 }
 
+/// Extracts the literal terms the user typed, preserving case.
+///
+/// Operator syntax is skipped (`"..."` phrases are unwrapped, `+`/`-` prefixes
+/// and the `&|!()` boolean characters are dropped).
+#[must_use]
+pub fn collect_query_terms(query: &str) -> Vec<String> {
+    query
+        .split(|c: char| c.is_whitespace() || matches!(c, '(' | ')' | '&' | '|' | '!' | '+'))
+        .map(|t| t.trim_matches('"'))
+        .filter(|t| !t.is_empty() && !t.contains(':'))
+        .map(ToString::to_string)
+        .collect()
+}
+
+/// Whether `text` contains every term in `terms` with the exact casing given.
+///
+/// This is the part of case-sensitive matching the tokenizer cannot do, because
+/// the postings only ever contain lowercase terms.
+#[must_use]
+pub fn case_sensitive_post_filter(text: &str, terms: &[String]) -> bool {
+    if terms.is_empty() {
+        return true;
+    }
+    terms.iter().all(|term| text.contains(term.as_str()))
+}
+
+/// Whether a term list contains any uppercase character, i.e. whether matching
+/// it case-sensitively would actually differ from matching it case-insensitively.
+///
+/// Tantivy's `default` tokenizer lowercases at *index* time, so the postings
+/// hold only lowercase terms and a query cannot express case on its own. This is
+/// why `case_sensitive` previously did nothing for the text query: it reached
+/// `ParsedQuery` (affecting only the `path:`/`title:` substring filters) and was
+/// never applied to what the user actually searched for.
+///
+/// The fix is a post-filter over the re-extracted document text, which happens
+/// for free during snippet generation — see
+/// [`crate::snippet::generate_snippets`], called from
+/// [`crate::commands::search::search_query_internal`]. Results whose text does
+/// not contain the exact casing are dropped. A query with no uppercase terms is
+/// left alone, so the common case costs nothing.
+#[must_use]
+pub fn needs_case_post_filter(terms: &[String]) -> bool {
+    terms.iter().any(|t| t.chars().any(char::is_uppercase))
+}
+
 /// Sums the sizes of every file directly under `dir`.
 ///
 /// Best-effort: unreadable entries are skipped rather than failing the whole
@@ -196,6 +242,10 @@ pub struct IndexStatistics {
 }
 
 /// Cache key for search queries
+///
+/// `case_sensitive` is part of the key because it changes the *matching*, not
+/// just the post-filter: the tokenizer lowercases both index and query, so a
+/// case-sensitive query matches a different set of terms.
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
 pub(crate) struct CacheKey {
     pub(crate) query: String,
@@ -609,6 +659,10 @@ impl IndexSearcher {
                 tantivy::query::QueryParser::for_index(searcher.index(), vec![self.content_field]);
             query_parser.set_conjunction_by_default();
 
+            // The `default` tokenizer lowercases both the index and the query,
+            // so this parse is always case-insensitive. Case sensitivity cannot be
+            // expressed here (see `needs_case_post_filter`); it is applied
+            // downstream, against the re-extracted document text.
             match query_parser.parse_query(&parsed.text_query) {
                 Ok(q) => (q, parsed.text_query.as_str()),
                 Err(_) => (
@@ -680,15 +734,14 @@ impl IndexSearcher {
     ) -> Result<Vec<SearchResult>> {
         let mut results = Vec::with_capacity(top_docs.len().min(cache_key.limit));
 
-        let snippet_generator = if query.is_empty() || query == "*" {
-            None
-        } else {
-            let query_parser =
-                tantivy::query::QueryParser::for_index(searcher.index(), vec![self.content_field]);
-            query_parser.parse_query(query).ok().and_then(|q| {
-                tantivy::snippet::SnippetGenerator::create(searcher, &*q, self.content_field).ok()
-            })
-        };
+        // Snippets are no longer produced here.
+        //
+        // `content` is not STORED, so `SnippetGenerator::snippet_from_doc` cannot
+        // read a hit's body — and it would have to decompress the entire
+        // document per hit to do so. `query` is therefore unused by this
+        // function; snippets are rebuilt from disk by `crate::snippet` once the
+        // result paths are known.
+        let _ = query;
 
         // Cache segment readers / columnar fast-field readers per segment instead
         // of looking them up twice for every hit.
@@ -723,14 +776,8 @@ impl IndexSearcher {
                 .entry(doc_address.segment_ord)
                 .or_insert_with(|| SegmentMeta::for_doc(searcher, doc_address.segment_ord));
 
-            let result = self.retrieve_result_with_doc(
-                entry,
-                score,
-                doc_address,
-                &doc,
-                highlight_terms,
-                snippet_generator.as_ref(),
-            );
+            let result =
+                self.retrieve_result_with_doc(entry, score, doc_address, &doc, highlight_terms);
             results.push(result);
         }
 
@@ -745,7 +792,6 @@ impl IndexSearcher {
         doc_address: tantivy::DocAddress,
         doc: &tantivy::TantivyDocument,
         highlight_terms: &[String],
-        snippet_generator: Option<&tantivy::snippet::SnippetGenerator>,
     ) -> SearchResult {
         let size = segment
             .size
@@ -774,18 +820,10 @@ impl IndexSearcher {
             .and_then(|v| v.as_str())
             .map(CompactString::from);
 
-        let snippets = snippet_generator
-            .map(|sg| {
-                let snip = sg.snippet_from_doc(doc);
-                let html = snip.to_html();
-                if html.trim().is_empty() {
-                    Vec::new()
-                } else {
-                    vec![html]
-                }
-            })
-            .unwrap_or_default();
-
+        // `snippets` is filled in after the fact by `crate::snippet`, which
+        // re-extracts each hit from disk. Populating it here would require
+        // reading the document body out of the doc store, which is exactly the
+        // cost that removing `STORED` from `content` was meant to avoid.
         SearchResult {
             file_path,
             score,
@@ -794,7 +832,7 @@ impl IndexSearcher {
             modified,
             size,
             matched_terms: highlight_terms.to_vec(),
-            snippets,
+            snippets: Vec::new(),
         }
     }
 
@@ -863,8 +901,7 @@ impl IndexSearcher {
                 let entry = segments
                     .entry(doc_address.segment_ord)
                     .or_insert_with(|| SegmentMeta::for_doc(&searcher, doc_address.segment_ord));
-                let mut res =
-                    self.retrieve_result_with_doc(entry, 0.0, doc_address, &doc, &[], None);
+                let mut res = self.retrieve_result_with_doc(entry, 0.0, doc_address, &doc, &[]);
                 res.modified =
                     mod_time.map(|t| u64::try_from(t.into_timestamp_secs()).unwrap_or(0));
                 results.push(res);
@@ -1071,12 +1108,19 @@ mod tests {
     }
 
     #[test]
-    fn test_snippets_are_produced_for_term_queries() {
+    fn test_searcher_never_produces_snippets() {
+        // `content` is no longer STORED (schema 3.0.0), so the searcher cannot
+        // read a hit's text and must not pretend to. Snippets are rebuilt from
+        // disk by `crate::snippet`, which is wired in at the command layer.
         let (_dir, index) = fixture();
         let results = search(&index, |b| b.query("quarterly"));
         assert!(
-            results.iter().any(|r| !r.snippets.is_empty()),
-            "term queries must produce snippets for the results panel"
+            !results.is_empty(),
+            "the fixture must still match so this test is meaningful"
+        );
+        assert!(
+            results.iter().all(|r| r.snippets.is_empty()),
+            "the searcher must leave snippet generation to the command layer"
         );
     }
 

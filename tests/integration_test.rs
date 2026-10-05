@@ -55,9 +55,32 @@ async fn test_end_to_end_search() -> Result<()> {
         .await?;
     assert_eq!(results.len(), 1);
     assert!(results[0].file_path.contains("hello.txt"));
+    // Since schema 3.0.0 `content` is not STORED, so the indexer cannot produce a
+    // snippet. Snippets are re-extracted from disk by `flash_search::snippet`,
+    // which `commands::search_query_internal` drives. Asserting on the indexer's
+    // empty snippets here pins that split so it cannot regress silently.
     assert!(
-        !results[0].snippets.is_empty(),
-        "Snippets must not be empty with STORED content"
+        results[0].snippets.is_empty(),
+        "the indexer must not synthesize snippets now that content is not stored"
+    );
+
+    // The on-disk snippet path must still find the term and highlight it.
+    let outcome = flash_search::snippet::generate_snippets(
+        &results[0].file_path,
+        None,
+        "unique test string",
+        false,
+        false,
+    )
+    .await;
+    assert!(
+        !outcome.snippets.is_empty(),
+        "snippets must be rebuilt from the file on disk"
+    );
+    assert!(
+        outcome.snippets[0].contains("<b>"),
+        "rebuilt snippet should highlight the match, got: {:?}",
+        outcome.snippets[0]
     );
 
     let results = indexer
@@ -279,12 +302,15 @@ fn build_scanner(
 )> {
     let indexer = Arc::new(IndexManager::open(&root.join("index"), 64)?);
     let metadata_db = Arc::new(MetadataDb::open(&root.join("metadata.redb"))?.0);
+    // The scanner reads a shared live settings cell, so a test that wants to
+    // change settings mid-run must hold the same `Arc` and store into it.
+    let settings_cache = Arc::new(arc_swap::ArcSwap::from_pointee(settings));
     let scanner = Arc::new(flash_search::scanner::Scanner::new(
         indexer.clone(),
         metadata_db.clone(),
         None,
         None,
-        settings,
+        Arc::clone(&settings_cache),
     ));
     Ok((scanner, indexer, metadata_db))
 }
@@ -638,19 +664,22 @@ async fn test_save_settings_reaches_the_shared_cache() -> Result<()> {
         base_settings.enable_ocr,
     );
     let settings_manager = SettingsManager::new(&settings_dir);
+    // One live settings cell shared by the scanner and the app state, mirroring
+    // how `setup_app` wires them.
+    let settings_cache = Arc::new(arc_swap::ArcSwap::from_pointee(base_settings));
     let scanner = Arc::new(Scanner::new(
         Arc::clone(&indexer),
         Arc::clone(&metadata_db),
         None,
         Some(progress_tx.clone()),
-        base_settings.clone(),
+        Arc::clone(&settings_cache),
     ));
 
     let state = Arc::new(
         AppState::builder()
             .indexer(indexer)
             .metadata_db(metadata_db)
-            .settings(base_settings)
+            .settings_cache(Arc::clone(&settings_cache))
             .settings_manager(SettingsManager::new(&settings_dir))
             .watcher(watcher)
             .progress_tx(progress_tx)

@@ -226,6 +226,15 @@ pub async fn parse_file_with_hash(
 }
 
 /// Builds the Xberg extraction config used for indexing.
+///
+/// Exposed so on-demand snippet generation (`crate::snippet`) extracts text
+/// exactly the way the indexer did, instead of drifting to a different config.
+#[must_use]
+pub fn extraction_config_for(enable_ocr: bool) -> xberg::ExtractionConfig {
+    extraction_config(enable_ocr)
+}
+
+/// Builds the Xberg extraction config used for indexing.
 fn extraction_config(enable_ocr: bool) -> xberg::ExtractionConfig {
     xberg::ExtractionConfig {
         use_cache: false,
@@ -483,7 +492,7 @@ pub async fn parse_files_batch(
 /// `keywords`, `title`, and `path`), and populating them previously meant
 /// `format!("{value:?}")`-ing entire structured outputs on every document just
 /// to throw the string away.
-fn map_extracted_document(path: &Path, doc: xberg::ExtractedDocument) -> ParsedDocument {
+pub fn map_extracted_document(path: &Path, doc: xberg::ExtractedDocument) -> ParsedDocument {
     let language = doc
         .detected_languages
         .as_ref()
