@@ -2,6 +2,38 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.18.1] - 2026-10-05
+
+No behaviour change. `iced_ui` is split into modules matching the Elm
+architecture the project already documented.
+
+### Changed
+- **`iced_ui::mod` is now 47 lines of wiring** (was 2,332). The architecture
+  claimed in `AGENTS.md` had never been reflected in the file layout; the
+  message enum, the `App` struct, `update`, `view`, `subscription`, and the test
+  suite all lived in one file together with the window entry point. It is now
+  `state` (model), `commands` (update), `run` (view + wiring), `subscription`
+  (event streams), `model` (view models and formatting), `hotkey`, and `tests`.
+  The public surface is unchanged.
+- Two helpers were unified while being moved: the theme mapping existed twice,
+  once in `App::new` (before an `App` exists) and once in
+  `App::resolve_is_dark`, and could drift. Both now call one function.
+- 17 new tests (163 total). `model` and `hotkey` were previously untestable in
+  isolation because they lived inside the monolithic module; they are now pure
+  functions over data and are covered directly, including multibyte formatting,
+  out-of-range timestamps, and modifier-only hotkey rejection.
+
+### Known gaps
+- `commands.rs` (817 lines) and `state.rs` (798) remain large by design: `update`
+  is the complete dispatch table, and the compiler's exhaustiveness guarantee is
+  worth more than splitting it by message group. Both are annotated with the
+  reasoning.
+- `search.rs` (1,647 lines) is now the largest file in the UI layer and has the
+  same structural problem `mod.rs` had. Untouched here; it is the next target.
+- `app_purge_directory` is a backend operation living in the UI layer. It
+  returns a `Message`, so it is dispatch-adjacent, but it belongs in
+  `commands/`.
+
 ## [0.18.0] - 2026-10-05
 
 The index is rebuilt automatically on upgrade: the Tantivy schema version moved to
